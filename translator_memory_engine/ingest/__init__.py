@@ -1,0 +1,1 @@
+from translator_memory_engine.models import Chapter

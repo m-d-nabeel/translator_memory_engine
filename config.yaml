@@ -1,0 +1,35 @@
+project: Translator Memory Engine
+code_name: translator_memory_engine
+version: 0.1.0
+
+storage:
+  mode: prototype          # prototype = json, production = sqlite
+  policies_path: memory/policies.jsonl
+  glossary_path: memory/glossary.json
+
+ingest:
+  formats: [txt, epub]
+  chapter_marker: '(?i)^\s*(chapter|ch)\.?\s*\d+'
+  strip_patterns:
+    - '(?i)translator\'?s?\s*notes?'
+    - '(?i)editor\'?s?\s*notes?'
+    - '(?i)^{\s*note\s*}'
+
+extraction:
+  method: hybrid
+  source_languages: [korean, japanese, chinese]
+  min_support: 2
+  confidence:
+    base: 0.5
+    per_occurrence: 0.03
+    cap: 0.99
+  verification_backend: none     # none | llm | rules | human
+  verification:
+    provider: cloud
+    model: gpt-4o-mini
+    api_key_env: OPENAI_API_KEY
+
+goal: balanced
+
+corpus:
+  expected_size: 30-100
