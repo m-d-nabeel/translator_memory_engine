@@ -26,22 +26,34 @@ from translator_memory_engine.rewrite.prepass import apply_prepass
 from translator_memory_engine.rewrite.clean import clean_mtl_artifacts
 
 
-# Short voice reference pulled from the good-translation corpus. v0 has no
-# Language Memory (PLAN §15), so this few-shot excerpt is a lightweight anchor
-# that tells the LLM which translator's tone to preserve. Replace with a real
-# style-bank retrieval once Language Memory lands.
-_STYLE_REFERENCE = (
-    "His chirping words were dripping with pride in his culinary skills and "
-    "love for the people of the village.\n"
-    "A village that would welcome a stranger with neither home nor temple was "
-    "something that only existed in fairy tales."
-)
-
-
 def _load_policies(path: str) -> List[Policy]:
     store = PolicyStore()
     store.load(path)
     return store.all()
+
+
+def _split_paragraphs(text: str) -> List[str]:
+    return [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+
+
+def _para_ranges(paras: List[str], max_chars: int = 1800) -> List[tuple]:
+    """Group paragraph indices into windows capped at ``max_chars``.
+
+    Used so long chapters fit the small model's per-request token budget; the
+    same ranges are applied to the MTL and its published reference so chunks stay
+    aligned (supervised mode).
+    """
+    ranges: List[tuple] = []
+    start = 0
+    cur = 0
+    for i, p in enumerate(paras):
+        if cur + len(p) > max_chars and i > start:
+            ranges.append((start, i))
+            start = i
+            cur = 0
+        cur += len(p)
+    ranges.append((start, len(paras)))
+    return ranges
 
 
 def _apply_deterministic(text: str, policies: List[Policy]) -> str:
@@ -86,11 +98,41 @@ def _strip_echo(text: str) -> str:
     return out.strip()
 
 
+# Few-shot style anchor from the good corpus (used only as the ultimate fallback
+# when neither a published reference nor a learned style bank is available).
+_STYLE_REFERENCE = [
+    '"Elder, are you all right?"',
+    '"You\'re overthinking it, Calron. Eat."',
+    "\"He's the one who appointed me, after all.\"",
+    "The boy's stomach growled loud enough to shame him.",
+    "She didn't smile, exactly — more a baring of teeth that passed for warmth.",
+]
+
+# The LLM task is FAITHFUL REPAIR, not free rewriting: keep the existing wording,
+# only fix broken MTL, and preserve the translator's voice/metaphors/onomatopoeia.
+# Never invent. (8B models love to echo the scaffolding — see _strip_echo.)
+_FALLBACK_RULES = """Repair rules:
+- FIX machine-translation artifacts: duplicated or truncated sentence fragments (e.g. "With my daughter, with my daughter-."), bracketed thought markers, site watermarks, filler, and awkward repetition. Repair them into natural prose — do not just delete the sentence.
+- PRESERVE the translator's voice, tone, and register. Do not flatten the prose or make it generic. Keep the original paragraph structure and meaning.
+- Only improve fluency and apply the policies above. Do NOT invent new events or change the story.
+- Output ONLY the repaired chapter text. Do not add "Here is the repaired text", headers, or markdown code fences."""
+
+
 def build_prompt(
     prepassed_text: str,
     prompted_policies: List[Policy],
+    reference: Optional[str] = None,
+    style_profile: Optional[List[str]] = None,
 ) -> str:
-    """Build the LLM rewrite prompt with policy-augmented instructions."""
+    """Build the LLM rewrite prompt.
+
+    Three modes (PLAN §15, D11):
+      * reference      — supervised: a published translation of the SAME chapter
+                         exists; rewrite the MTL to read like it (max fidelity).
+      * style_profile  — unsupervised: no original for this chapter; preserve the
+                         translator's voice using learned excerpts from the bank.
+      * (neither)      — fallback faithful-repair using a fixed style anchor.
+    """
     lines = []
     for p in prompted_policies:
         render_as = p.action.get("render_as", p.trigger)
@@ -102,20 +144,49 @@ def build_prompt(
             lines.append(f'- Render "{p.trigger}" as "{render_as}".')
     instructions = "\n".join(lines) if lines else "  (no prompted policies)"
 
-    return f"""You are REPAIRING a machine-translated web novel — not reinventing it. The existing text is already in the translator's voice; your ONLY job is to fix broken machine-translation while keeping the translator's wording, tone, rhythm, and emotional weight intact.
+    if reference:
+        return f"""You are POST-EDITING a machine-translated web-novel chapter toward a published human translation of the SAME passage.
 
 Apply the following translator policies consistently:
 {instructions}
 
-Repair rules (read carefully):
-- KEEP the original sentences and phrasing wherever they are already grammatical. Do NOT rephrase for style or "improve" the prose.
-- FIX only what is actually broken: duplicated or truncated fragments (e.g. "With my daughter, with my daughter-."), bracketed thought markers, wrong word choices, and awkward grammar. Repair into natural prose — never just delete the sentence.
-- PRESERVE voice, metaphors, onomatopoeia, and emotional phrasing. Do NOT flatten the writing or make it generic.
-- Do NOT invent events, details, or narration the source lacks. Do not change settings, actions, or a character's behavior.
-- Match the tone of this reference passage from the SAME translator:
-  "{_STYLE_REFERENCE}"
+Repair rules:
+- Rewrite the MACHINE TRANSLATION (A) so it READS LIKE the PUBLISHED TRANSLATION (B): match its phrasing, voice, tone, rhythm, and emotional weight as closely as possible, while preserving (A)'s meaning.
+- FIX machine-translation errors only: broken syntax, mistranslations, duplicated/truncated fragments, bracketed thought markers, and site watermarks (e.g. "Ranovel dot com"). Repair into natural prose — never just delete.
+- PRESERVE (B)'s published style; do not flatten or generalize it.
+- Do NOT invent events, details, or narration the source lacks.
+- Output ONLY the repaired chapter text. No "Here is the repaired text", headers, or code fences.
 
-OUTPUT FORMAT: Return ONLY the repaired chapter text. Do NOT repeat these instructions, do NOT include the "CHAPTER TO REWRITE:" label, and do NOT add any meta-commentary such as "Here is the repaired text:".
+=== (A) MACHINE TRANSLATION TO REPAIR ===
+{prepassed_text}
+
+=== (B) PUBLISHED TRANSLATION (reference) ===
+{reference}"""
+
+    if style_profile:
+        profile_txt = "\n".join(f"- {ex}" for ex in style_profile)
+        return f"""You are repairing a machine-translated web-novel chapter. There is NO published translation for this chapter, so preserve the translator's established voice using these excerpts from earlier chapters by the SAME translator:
+
+{profile_txt}
+
+Apply the following translator policies consistently:
+{instructions}
+
+{_FALLBACK_RULES}
+
+CHAPTER TO REWRITE:
+{prepassed_text}"""
+
+    profile_txt = "\n".join(f"- {ex}" for ex in _STYLE_REFERENCE)
+    return f"""You are rewriting a machine-translated web novel chapter into clean, natural English in the SAME translator's voice and tone.
+
+Apply the following translator policies consistently:
+{instructions}
+
+Use this translator's established voice as a guide:
+{profile_txt}
+
+{_FALLBACK_RULES}
 
 CHAPTER TO REWRITE:
 {prepassed_text}"""
@@ -128,6 +199,8 @@ def rewrite(
     base_url: Optional[str] = None,
     api_key_env: str = "LLM_API_KEY",
     do_llm: bool = False,
+    reference_text: Optional[str] = None,
+    style_profile: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Run the full v0 rewrite pipeline on one passage.
 
@@ -136,10 +209,14 @@ def rewrite(
         policies_path: Path to policies.jsonl (the mined store).
         model / base_url / api_key_env: LLM backend for the optional rewrite.
         do_llm: If True, call the LLM to rewrite the pre-passed text.
+        reference_text: Supervised mode — published translation of the SAME
+            chapter; the LLM rewrites the MTL to read like it (max fidelity).
+        style_profile: Unsupervised mode — voice excerpts from the style bank,
+            used when no original exists for this chapter.
 
     Returns:
         Dict with: prepassed_text, rewritten_text, trace, conflicts,
-        prompted_policies (triggers), deterministic_count, prompted_count.
+        prompted_policies (triggers), deterministic_count, prompted_count, mode.
     """
     # Clean MTL artifacts on the input only (gold corpus is untouched).
     text = clean_mtl_artifacts(text)
@@ -157,31 +234,60 @@ def rewrite(
         if p.applies == "prompted" and not p.llm_rejected
     ]
 
+    # Mode: supervised (reference) > unsupervised (style bank) > fallback.
+    if reference_text is not None:
+        mode = "supervised_reference"
+    elif style_profile is not None:
+        mode = "unsupervised_stylebank"
+    else:
+        mode = "fallback_faithful_repair"
+
+    # A reference or style profile only makes sense with the LLM on; force it.
+    use_llm = do_llm or (reference_text is not None) or (style_profile is not None)
+    # The LLM has something to do only if there are policies to apply, or a
+    # reference / style bank to steer voice against.
+    need_llm = bool(prompted) or (reference_text is not None) or (style_profile is not None)
+
+    # Long chapters exceed the small model's per-request token budget, so rewrite
+    # in paragraph-aligned chunks (supervised: MTL chunk + matching original chunk).
+    mtl_paras = _split_paragraphs(prepassed_text)
+    ref_paras = _split_paragraphs(reference_text) if reference_text else []
+    ranges = _para_ranges(mtl_paras)
+
     rewritten_text = prepassed_text
-    if do_llm:
+    if use_llm and need_llm:
         load_dotenv()
         api_key = os.environ.get(api_key_env, "")
         if api_key:
             from openai import OpenAI
             client = OpenAI(api_key=api_key, base_url=base_url)
-            prompt = build_prompt(prepassed_text, prompted)
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content":
-                     "You repair machine-translated web novels into fluent English, "
-                     "faithfully preserving the translator's voice and applying the "
-                     "given translator policies."},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.1,
-            )
-            rewritten_text = resp.choices[0].message.content
-            rewritten_text = _strip_echo(rewritten_text)
+            out_parts = []
+            for (s, e) in ranges:
+                mtl_chunk = "\n\n".join(mtl_paras[s:e])
+                ref_chunk = "\n\n".join(ref_paras[s:e]) if ref_paras else None
+                prompt = build_prompt(
+                    mtl_chunk, prompted,
+                    reference=ref_chunk, style_profile=style_profile,
+                )
+                resp = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content":
+                         "You are a faithful post-editor of machine-translated web novels. "
+                         "You repair broken translation into natural, fluent English while "
+                         "preserving the translator's established voice and never inventing "
+                         "content."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.1,
+                )
+                out_parts.append(_strip_echo(resp.choices[0].message.content))
+            rewritten_text = "\n\n".join(out_parts)
 
     # Re-apply the deterministic pre-pass so canonical names/honorifics survive
     # even if the LLM renamed or dropped a named entity (PLAN §8: the high-confidence
-    # path must not depend on LLM compliance).
+    # path must not depend on LLM compliance). Runs on the LLM output and on the
+    # pre-pass-only output alike.
     rewritten_text = _apply_deterministic(rewritten_text, policies)
 
     return {
@@ -192,4 +298,5 @@ def rewrite(
         "prompted_triggers": [p.trigger for p in prompted],
         "deterministic_count": len(trace),
         "prompted_count": len(prompted),
+        "mode": mode,
     }

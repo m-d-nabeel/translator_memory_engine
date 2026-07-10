@@ -16,8 +16,10 @@ Runs the M0 extraction pipeline:
 import argparse
 import json
 import os
+import re
 import sys
 from collections import Counter
+from typing import Dict, List, Optional
 
 import yaml
 
@@ -33,6 +35,36 @@ def _load_config(path: str) -> dict:
     """Load YAML config file."""
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def _chapter_num(path: str) -> Optional[int]:
+    """Extract the leading chapter number from a filename (e.g. 'chapter-001'
+    or '001-chapter-1-village...' -> 1)."""
+    m = re.search(r"(\d+)", os.path.basename(path))
+    return int(m.group(1)) if m else None
+
+
+def _read_text_chapters(directory: str) -> List[str]:
+    """Read each .txt file in a directory as one chapter (for a style bank)."""
+    chapters = []
+    for f in sorted(os.listdir(directory)):
+        if f.lower().endswith(".txt"):
+            with open(os.path.join(directory, f), "r", encoding="utf-8") as fh:
+                chapters.append(fh.read())
+    return chapters
+
+
+def _index_by_chapter(directory: str) -> Dict[int, str]:
+    """Map chapter number -> full text for every .txt file in a directory."""
+    index: Dict[int, str] = {}
+    for f in sorted(os.listdir(directory)):
+        if f.lower().endswith(".txt"):
+            num = _chapter_num(f)
+            if num is None:
+                continue
+            with open(os.path.join(directory, f), "r", encoding="utf-8") as fh:
+                index[num] = fh.read()
+    return index
 
 
 def cmd_extract(args: argparse.Namespace) -> None:
@@ -204,6 +236,27 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
     verify_cfg = config.get("extraction", {}).get("verification", {})
     os.makedirs(args.output, exist_ok=True)
 
+    # Optional published-reference dir (supervised mode). When present, chapters
+    # are matched by number; chapters without an original fall back to the style
+    # bank (unsupervised mode). D11: learn/apply/evaluate by availability.
+    reference_index: Dict[int, str] = {}
+    style_profile: Optional[List[str]] = None
+    if args.reference:
+        if not os.path.isdir(args.reference):
+            print(f"ERROR: --reference dir not found: {args.reference}")
+            sys.exit(1)
+        reference_index = _index_by_chapter(args.reference)
+        from translator_memory_engine.memory.style_bank import build_style_bank
+        raw_profile = build_style_bank(_read_text_chapters(args.reference))
+        # Keep the stats line (last) + a compact set of voice excerpts so the
+        # style bank fits the small model's per-request token budget across every
+        # chunk (the full bank is ~78 excerpts and would blow it).
+        stats_line = raw_profile[-1] if raw_profile and raw_profile[-1].startswith("Measured") else None
+        excerpts = [e for e in raw_profile if e != stats_line]
+        style_profile = excerpts[:10] + ([stats_line] if stats_line else [])
+        print(f"  Reference dir: {args.reference} "
+              f"({len(reference_index)} originals, style bank used={len(style_profile)} excerpts)")
+
     # Collect input files
     mtl_path = args.mtl_path
     if os.path.isdir(mtl_path):
@@ -220,7 +273,7 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     print(f"Rewriting {len(files)} MTL file(s) using {args.policies}")
-    print(f"  LLM rewrite: {'on' if args.llm else 'off (pre-pass only)'}")
+    print(f"  LLM rewrite: {'on' if (args.llm or args.reference or style_profile) else 'off (pre-pass only)'}")
 
     total_trace = 0
     total_conflicts = 0
@@ -228,13 +281,20 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
         with open(path, "r", encoding="utf-8") as f:
             text = f.read()
 
+        num = _chapter_num(path)
+        reference_text = reference_index.get(num) if num is not None else None
+        mode = "supervised_reference" if reference_text else ("unsupervised_stylebank" if style_profile else "fallback")
+        use_llm = args.llm or (reference_text is not None) or (style_profile is not None)
+
         result = rewrite_pass(
             text,
             policies_path=args.policies,
             model=verify_cfg.get("model", "llama-3.1-8b-instant"),
             base_url=verify_cfg.get("base_url"),
             api_key_env=verify_cfg.get("api_key_env", "LLM_API_KEY"),
-            do_llm=args.llm,
+            do_llm=use_llm,
+            reference_text=reference_text,
+            style_profile=style_profile,
         )
 
         base = os.path.splitext(os.path.basename(path))[0]
@@ -250,7 +310,7 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
 
         total_trace += result["deterministic_count"]
         total_conflicts += len(result["conflicts"])
-        print(f"  {base}: prepass_edits={result['deterministic_count']}, "
+        print(f"  {base} [{mode}]: prepass_edits={result['deterministic_count']}, "
               f"prompted={result['prompted_count']}, conflicts={len(result['conflicts'])} "
               f"-> {out_path}")
 
@@ -262,6 +322,65 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
     print(f"  Conflicts resolved:  {total_conflicts}")
     print(f"  Output:              {args.output}/")
     print(f"{'='*60}")
+
+
+def cmd_align(args: argparse.Namespace) -> None:
+    """Alignment evaluation (PLAN §13, D11). Independent of extract/rewrite LLMs."""
+    from translator_memory_engine.eval.align import align_paired, align_unpaired
+
+    generated_index = _index_by_chapter(args.generated)
+    original_index = _index_by_chapter(args.original) if args.original else {}
+    mtl_index = _index_by_chapter(args.mtl) if args.mtl else {}
+
+    # Style bank + canonical names for unpaired (Tier-2) proxy metrics.
+    style_profile: List[str] = []
+    canonical: List[str] = []
+    if args.reference:
+        from translator_memory_engine.memory.style_bank import build_style_bank
+        style_profile = build_style_bank(_read_text_chapters(args.reference))
+    if args.glossary and os.path.exists(args.glossary):
+        with open(args.glossary, "r", encoding="utf-8") as f:
+            glossary = json.load(f)
+        canonical = [e["canonical"] for e in glossary if "canonical" in e]
+
+    print(f"Aligning {len(generated_index)} generated chapters "
+          f"(paired originals: {len(original_index)}, mtl: {len(mtl_index)})")
+
+    rows = []
+    paired = 0
+    unpaired = 0
+    for num in sorted(generated_index):
+        gen = generated_index[num]
+        orig = original_index.get(num)
+        if orig is not None:
+            mtl = mtl_index.get(num, "")
+            res = align_paired(gen, orig, mtl)
+            res = {"chapter": num, "tier": 1, **res}
+            paired += 1
+        else:
+            res = align_unpaired(gen, style_profile, canonical)
+            res = {"chapter": num, "tier": 2, **res}
+            unpaired += 1
+        rows.append(res)
+        print(f"  ch{num:>3} [tier{res['tier']}] " +
+              "  ".join(f"{k}={v}" for k, v in res.items() if k not in ("chapter", "tier")))
+
+    # Summary
+    if paired:
+        avg_delta = sum(r["delta_vs_mtl"] for r in rows if r["tier"] == 1) / paired
+        wins = sum(1 for r in rows if r["tier"] == 1 and r["delta_vs_mtl"] > 0)
+        print(f"\nTier-1 (paired, n={paired}): avg delta vs MTL = {avg_delta:+.4f}, "
+              f"generated closer than MTL in {wins}/{paired}")
+    if unpaired:
+        adh = [r["name_adherence"] for r in rows if r["tier"] == 2 and r["name_adherence"] is not None]
+        avg_adh = (sum(adh) / len(adh)) if adh else None
+        print(f"Tier-2 (unpaired, n={unpaired}): avg name adherence = "
+              f"{avg_adh if avg_adh is None else round(avg_adh, 4)}")
+
+    if args.report:
+        with open(args.report, "w", encoding="utf-8") as f:
+            json.dump(rows, f, indent=2, ensure_ascii=False)
+        print(f"\nAlignment report written to: {args.report}")
 
 
 def main() -> None:
@@ -332,6 +451,48 @@ def main() -> None:
         default=False,
         help="Call the LLM to rewrite the pre-passed text (else pre-pass only)",
     )
+    rewrite_parser.add_argument(
+        "--reference", "-r",
+        default=None,
+        help="Directory of published original chapters. Chapters are matched by "
+             "number; ones without an original fall back to the learned style bank "
+             "(unsupervised mode). Forces the LLM on.",
+    )
+
+    # align command (M2 evaluation, D11-independent)
+    align_parser = subparsers.add_parser(
+        "align",
+        help="Alignment evaluation: closeness of generated text to original / style bank",
+    )
+    align_parser.add_argument(
+        "generated",
+        help="Directory of generated (repaired) chapter files (.txt)",
+    )
+    align_parser.add_argument(
+        "--original", "-g",
+        default=None,
+        help="Directory of published original chapters (Tier-1 paired eval)",
+    )
+    align_parser.add_argument(
+        "--mtl", "-m",
+        default=None,
+        help="Directory of raw MTL chapters (benchmark vs generated)",
+    )
+    align_parser.add_argument(
+        "--reference", "-r",
+        default=None,
+        help="Directory of good-translation chapters (builds the style bank for Tier-2)",
+    )
+    align_parser.add_argument(
+        "--glossary", "-p",
+        default=None,
+        help="Path to glossary.json (canonical names for Tier-2 adherence)",
+    )
+    align_parser.add_argument(
+        "--report", "-o",
+        default=None,
+        help="Write the per-chapter alignment rows as JSON to this path",
+    )
 
     args = parser.parse_args()
 
@@ -339,6 +500,8 @@ def main() -> None:
         cmd_extract(args)
     elif args.command == "rewrite":
         cmd_rewrite(args)
+    elif args.command == "align":
+        cmd_align(args)
     else:
         parser.print_help()
 
