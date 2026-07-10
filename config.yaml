@@ -9,11 +9,11 @@ storage:
 
 ingest:
   formats: [txt, epub]
-  chapter_marker: '(?i)^\s*(chapter|ch)\.?\s*\d+'
+  chapter_marker: '(?i)^#\s*(chapter|ch)\.?\s*\d+'
   strip_patterns:
-    - '(?i)translator\'?s?\s*notes?'
-    - '(?i)editor\'?s?\s*notes?'
-    - '(?i)^{\s*note\s*}'
+    - "(?i)translator'?s?\\s*notes?"
+    - "(?i)editor'?s?\\s*notes?"
+    - "(?i)^{\\s*note\\s*}"
 
 extraction:
   method: hybrid
@@ -23,11 +23,11 @@ extraction:
     base: 0.5
     per_occurrence: 0.03
     cap: 0.99
-  verification_backend: none     # none | llm | rules | human
+  verification_backend: none     # none | llm | gemini
   verification:
-    provider: cloud
-    model: gpt-4o-mini
-    api_key_env: OPENAI_API_KEY
+    provider: gemini
+    model: gemini-2.0-flash
+    api_key_env: GEMINI_API_KEY
 
 goal: balanced
 

@@ -1,0 +1,225 @@
+"""LLM-based policy verification using Gemini.
+
+Optional verification pass that filters heuristic/NER candidates using an LLM.
+Validates whether a candidate is a true named entity, classifies its type,
+and identifies false positives that pattern matching cannot catch.
+
+Usage:
+    verifier = GeminiVerifier(api_key="...", model="gemini-2.0-flash")
+    verified = verifier.verify_policies(policies, chapters)
+
+Off by default (passthrough). Enabled with --verify llm or config setting.
+"""
+
+import json
+import os
+import time
+from typing import List, Optional, Dict, Any
+
+from translator_memory_engine.policy import Policy
+
+
+class PassthroughVerifier:
+    """Default verifier that accepts all policies unchanged."""
+
+    def verify_policies(
+        self,
+        policies: List[Policy],
+        context_map: Optional[Dict[str, str]] = None,
+    ) -> List[Policy]:
+        return policies
+
+
+class GeminiVerifier:
+    """Verify policy candidates using Gemini Flash (free tier).
+
+    Sends batch verification requests to classify candidates as:
+    - KEEP: genuine named entity / term, policy is correct
+    - DROP: false positive (common noun, sentence fragment, generic word)
+    - RETYPE: entity is real but type should change
+
+    Also enriches policies with notes from the LLM.
+    """
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: str = "gemini-2.0-flash",
+        batch_size: int = 20,
+    ):
+        self.api_key = api_key or os.environ.get("GEMINI_API_KEY", "")
+        self.model = model
+        self.batch_size = batch_size
+        self._client = None
+
+    def _get_client(self):
+        if self._client is None:
+            from google import genai
+            self._client = genai.Client(api_key=self.api_key)
+        return self._client
+
+    def _build_prompt(self, batch: List[Policy]) -> str:
+        """Build a verification prompt for a batch of policy candidates."""
+        candidates = []
+        for p in batch:
+            evidence_str = f"chapters {p.evidence[:5]}" if p.evidence else "unknown"
+            aliases = [f for f in p.match if f != p.trigger]
+            alias_str = f", aliases: {aliases}" if aliases else ""
+            candidates.append(
+                f'  - id={p.id}, trigger="{p.trigger}", type={p.type}, '
+                f'confidence={p.confidence}, found_in={evidence_str}{alias_str}'
+            )
+
+        candidates_text = "\n".join(candidates)
+
+        return f"""You are verifying named entity extraction results from a translated Korean web novel.
+
+For each candidate below, classify it as:
+- KEEP: This is a genuine character name, place name, organization, item, or consistent term that a translator would standardize.
+- DROP: This is a false positive — a common English word, sentence fragment, generic noun, or role/title that is not a specific named entity.
+- RETYPE: The entity is real but the type is wrong. Specify the correct type.
+
+Valid types: entity-naming, honorific, terminology
+
+IMPORTANT: Be conservative. If uncertain, KEEP. We prefer false positives over missed entities.
+
+Candidates:
+{candidates_text}
+
+Respond with ONLY a JSON array. Each element must have:
+- "id": the policy id
+- "verdict": "KEEP" or "DROP" or "RETYPE"
+- "correct_type": (only if RETYPE) the correct type
+- "reason": brief explanation (1 sentence)
+
+Example:
+[
+  {{"id": "p_001", "verdict": "KEEP", "reason": "Dominic is the protagonist's name"}},
+  {{"id": "p_002", "verdict": "DROP", "reason": "'Chief' is a generic title, not a named entity"}},
+  {{"id": "p_003", "verdict": "RETYPE", "correct_type": "honorific", "reason": "'Sir Knight' is an honorific form of address"}}
+]"""
+
+    def _call_gemini(self, prompt: str) -> str:
+        """Call Gemini API and return the response text."""
+        client = self._get_client()
+        response = client.models.generate_content(
+            model=self.model,
+            contents=prompt,
+        )
+        return response.text
+
+    def _parse_response(self, response_text: str) -> List[Dict[str, Any]]:
+        """Parse the JSON response from Gemini."""
+        # Strip markdown code fences if present
+        text = response_text.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            # Remove first and last lines (code fences)
+            lines = [l for l in lines if not l.strip().startswith("```")]
+            text = "\n".join(lines)
+
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            # Try to find JSON array in the response
+            start = text.find("[")
+            end = text.rfind("]") + 1
+            if start >= 0 and end > start:
+                try:
+                    return json.loads(text[start:end])
+                except json.JSONDecodeError:
+                    pass
+            print(f"  WARNING: Could not parse Gemini response, keeping all policies")
+            return []
+
+    def verify_policies(
+        self,
+        policies: List[Policy],
+        context_map: Optional[Dict[str, str]] = None,
+    ) -> List[Policy]:
+        """Verify a list of policies using Gemini.
+
+        Args:
+            policies: Candidate policies to verify.
+            context_map: Optional mapping of policy trigger → example context.
+
+        Returns:
+            Filtered and potentially retyped policies.
+        """
+        if not policies:
+            return policies
+
+        if not self.api_key:
+            print("  WARNING: No GEMINI_API_KEY set, skipping LLM verification")
+            return policies
+
+        verified: List[Policy] = []
+        verdicts: Dict[str, Dict[str, Any]] = {}
+
+        # Process in batches
+        for i in range(0, len(policies), self.batch_size):
+            batch = policies[i:i + self.batch_size]
+            prompt = self._build_prompt(batch)
+
+            try:
+                response_text = self._call_gemini(prompt)
+                results = self._parse_response(response_text)
+
+                for r in results:
+                    verdicts[r["id"]] = r
+
+            except Exception as e:
+                print(f"  WARNING: Gemini verification failed for batch {i}: {e}")
+                # Keep all on failure
+                for p in batch:
+                    verdicts[p.id] = {"id": p.id, "verdict": "KEEP",
+                                      "reason": "verification failed, keeping"}
+
+            # Rate limit: be polite to the free tier
+            if i + self.batch_size < len(policies):
+                time.sleep(1)
+
+        # Apply verdicts
+        kept = 0
+        dropped = 0
+        retyped = 0
+
+        for p in policies:
+            verdict = verdicts.get(p.id, {"verdict": "KEEP", "reason": "no verdict"})
+
+            if verdict["verdict"] == "DROP":
+                dropped += 1
+                continue
+            elif verdict["verdict"] == "RETYPE":
+                p.type = verdict.get("correct_type", p.type)
+                p.note = verdict.get("reason", "")
+                retyped += 1
+            else:
+                if verdict.get("reason"):
+                    p.note = verdict["reason"]
+                kept += 1
+
+            verified.append(p)
+
+        print(f"  Verification: kept={kept}, dropped={dropped}, retyped={retyped}")
+        return verified
+
+
+def create_verifier(
+    backend: str = "none",
+    api_key: Optional[str] = None,
+    model: str = "gemini-2.0-flash",
+) -> PassthroughVerifier | GeminiVerifier:
+    """Factory function for creating a verifier.
+
+    Args:
+        backend: "none" for passthrough, "llm" or "gemini" for Gemini verification.
+        api_key: API key for Gemini. Falls back to GEMINI_API_KEY env var.
+        model: Gemini model name.
+
+    Returns:
+        A verifier instance.
+    """
+    if backend in ("llm", "gemini"):
+        return GeminiVerifier(api_key=api_key, model=model)
+    return PassthroughVerifier()
