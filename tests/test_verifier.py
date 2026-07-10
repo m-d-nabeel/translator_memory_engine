@@ -84,3 +84,63 @@ class TestVerifierVerdicts:
             recs = [json.loads(l) for l in open(path)]
             assert recs[0]["id"] == "p_001"
             assert recs[0]["verdict"] == "DROP"
+
+
+def _two_policies():
+    a = Policy(id="p_a", type="entity-naming", trigger="Carlon", match=["Carlon"],
+               action={"render_as": "Carlon"}, confidence=0.5, evidence=[1, 2],
+               needs_review=True, contexts=["Carlon spoke."])
+    b = Policy(id="p_b", type="entity-naming", trigger="Calron", match=["Calron"],
+               action={"render_as": "Calron"}, confidence=0.99, evidence=[1, 2, 3],
+               needs_review=True, contexts=["Calron spoke."])
+    return a, b
+
+
+class TestRefinedReview:
+    def test_merge_into_resolves_variant(self):
+        a, b = _two_policies()
+        v = LLMVerifier(api_key="t", model="m", base_url="x")
+        v._call_llm = lambda prompt: json.dumps([
+            {"id": "p_a", "decision": "MERGE_INTO", "target_id": "p_b",
+             "reason": "spelling variant"},
+        ])
+        out = v.review_ambiguous([a, b])
+        triggers = {p.trigger for p in out}
+        assert "Calron" in triggers
+        assert "Carlon" not in triggers  # merged away
+        assert any("Carlon" in p.match for p in out)  # alias retained
+
+    def test_mutual_merge_keeps_best_root(self):
+        a, b = _two_policies()
+        # Each says merge into the other -> cycle; must keep the higher-confidence root
+        v = LLMVerifier(api_key="t", model="m", base_url="x")
+        v._call_llm = lambda prompt: json.dumps([
+            {"id": "p_a", "decision": "MERGE_INTO", "target_id": "p_b"},
+            {"id": "p_b", "decision": "MERGE_INTO", "target_id": "p_a"},
+        ])
+        out = v.review_ambiguous([a, b])
+        triggers = {p.trigger for p in out}
+        assert "Calron" in triggers          # higher confidence survives
+        assert "Carlon" not in triggers
+        assert len(out) == 1
+
+    def test_keep_clears_needs_review(self):
+        a, b = _two_policies()
+        v = LLMVerifier(api_key="t", model="m", base_url="x")
+        v._call_llm = lambda prompt: json.dumps([
+            {"id": "p_a", "decision": "KEEP", "reason": "distinct"},
+        ])
+        out = v.review_ambiguous([a, b])
+        kept = [p for p in out if p.id == "p_a"][0]
+        assert kept.needs_review is False
+
+    def test_drop_marks_rejected(self):
+        a, b = _two_policies()
+        v = LLMVerifier(api_key="t", model="m", base_url="x")
+        v._call_llm = lambda prompt: json.dumps([
+            {"id": "p_a", "decision": "DROP", "reason": "false positive"},
+        ])
+        out = v.review_ambiguous([a, b])
+        dropped = [p for p in out if p.id == "p_a"][0]
+        assert dropped.llm_rejected is True
+

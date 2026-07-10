@@ -202,3 +202,23 @@ class TestRegressionFixes:
         chief = [p for p in policies if p.trigger == "Chief Dominic"]
         assert chief
         assert "Behind Dominic" not in chief[0].match
+
+    def test_real_name_survives_fragments(self):
+        # "Calron" is a real character name. Extractors also emit clause-start
+        # fragments like "Hearing Calron" / "Ignoring Calron". These fragments
+        # are distinct clusters (edit distance > 0.3) and get flagged/dropped,
+        # but the standalone name CALRON must still survive as its own policy.
+        # Regression guard: never drop the person just because fragments exist.
+        signals = self._signals({
+            1: ["Calron"] * 3 + ["Hearing Calron", "Ignoring Calron"],
+            2: ["Calron"] * 3 + ["Hearing Calron"],
+            3: ["Calron"] * 3 + ["Ignoring Calron"],
+            4: ["Calron"] * 3,
+            5: ["Calron"] * 3,
+        })
+        policies = mine_policies(signals, total_chapters=5, min_support=2)
+        triggers = {p.trigger for p in policies}
+        assert "Calron" in triggers, "The real character name Calron must never be lost"
+        # The bare fragments must not become canonical entities.
+        assert "Hearing Calron" not in triggers
+        assert "Ignoring Calron" not in triggers

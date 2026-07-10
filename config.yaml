@@ -23,7 +23,7 @@ extraction:
     base: 0.5
     per_occurrence: 0.03
     cap: 0.99
-  verification_backend: none     # none | llm
+  verification_backend: llm        # none | llm (default: llm)
   verification:
     provider: groq
     model: llama-3.1-8b-instant
