@@ -1,12 +1,18 @@
-"""LLM-based policy verification using Gemini.
+"""LLM-based policy verification.
 
 Optional verification pass that filters heuristic/NER candidates using an LLM.
 Validates whether a candidate is a true named entity, classifies its type,
 and identifies false positives that pattern matching cannot catch.
 
+The verifier is provider-agnostic: it talks to any OpenAI-compatible Chat
+Completions endpoint (Groq, Gemini's OpenAI-compatible route, Together,
+OpenRouter, a local Ollama server, etc.). Configure the provider via
+`provider` / `base_url` / `api_key_env` in config.yaml.
+
 Usage:
-    verifier = GeminiVerifier(api_key="...", model="gemini-2.0-flash")
-    verified = verifier.verify_policies(policies, chapters)
+    verifier = LLMVerifier(api_key="...", model="llama-3.1-8b-instant",
+                           base_url="https://api.groq.com/openai/v1")
+    verified = verifier.verify_policies(policies, context_map)
 
 Off by default (passthrough). Enabled with --verify llm or config setting.
 """
@@ -15,6 +21,8 @@ import json
 import os
 import time
 from typing import List, Optional, Dict, Any
+
+from dotenv import load_dotenv
 
 from translator_memory_engine.policy import Policy
 
@@ -30,8 +38,8 @@ class PassthroughVerifier:
         return policies
 
 
-class GeminiVerifier:
-    """Verify policy candidates using Gemini Flash (free tier).
+class LLMVerifier:
+    """Verify policy candidates using an OpenAI-compatible LLM endpoint.
 
     Sends batch verification requests to classify candidates as:
     - KEEP: genuine named entity / term, policy is correct
@@ -39,24 +47,33 @@ class GeminiVerifier:
     - RETYPE: entity is real but type should change
 
     Also enriches policies with notes from the LLM.
+
+    Any provider exposing an OpenAI-style Chat Completions API works: pass the
+    matching `base_url` and `api_key`. Examples:
+      - Groq:      base_url="https://api.groq.com/openai/v1"
+      - Gemini:    base_url="https://generativelanguage.googleapis.com/v1beta/openai"
+      - Local Ollama: base_url="http://localhost:11434/v1"
     """
 
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "gemini-2.0-flash",
+        model: str = "llama-3.1-8b-instant",
+        base_url: Optional[str] = None,
+        api_key_env: str = "LLM_API_KEY",
         batch_size: int = 20,
     ):
-        self.api_key = api_key or os.environ.get("GEMINI_API_KEY", "")
+        load_dotenv()
+        self.api_key = api_key or os.environ.get(api_key_env, "")
         self.model = model
+        self.base_url = base_url
         self.batch_size = batch_size
         self._client = None
 
     def _get_client(self):
         if self._client is None:
-            from google import genai
-
-            self._client = genai.Client(api_key=self.api_key)
+            from openai import OpenAI
+            self._client = OpenAI(api_key=self.api_key, base_url=self.base_url)
         return self._client
 
     def _build_prompt(self, batch: List[Policy]) -> str:
@@ -68,7 +85,7 @@ class GeminiVerifier:
             alias_str = f", aliases: {aliases}" if aliases else ""
             candidates.append(
                 f'  - id={p.id}, trigger="{p.trigger}", type={p.type}, '
-                f"confidence={p.confidence}, found_in={evidence_str}{alias_str}"
+                f'confidence={p.confidence}, found_in={evidence_str}{alias_str}'
             )
 
         candidates_text = "\n".join(candidates)
@@ -100,17 +117,24 @@ Example:
   {{"id": "p_003", "verdict": "RETYPE", "correct_type": "honorific", "reason": "'Sir Knight' is an honorific form of address"}}
 ]"""
 
-    def _call_gemini(self, prompt: str) -> str:
-        """Call Gemini API and return the response text."""
+    def _call_llm(self, prompt: str) -> str:
+        """Call the LLM endpoint and return the response text."""
         client = self._get_client()
-        response = client.models.generate_content(
+        response = client.chat.completions.create(
             model=self.model,
-            contents=prompt,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a strict classifier of named entities in translated web novels. Respond with valid JSON only.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.0,
         )
-        return response.text
+        return response.choices[0].message.content
 
     def _parse_response(self, response_text: str) -> List[Dict[str, Any]]:
-        """Parse the JSON response from Gemini."""
+        """Parse the JSON response from the LLM."""
         # Strip markdown code fences if present
         text = response_text.strip()
         if text.startswith("```"):
@@ -130,7 +154,7 @@ Example:
                     return json.loads(text[start:end])
                 except json.JSONDecodeError:
                     pass
-            print(f"  WARNING: Could not parse Gemini response, keeping all policies")
+            print(f"  WARNING: Could not parse LLM response, keeping all policies")
             return []
 
     def verify_policies(
@@ -138,7 +162,7 @@ Example:
         policies: List[Policy],
         context_map: Optional[Dict[str, str]] = None,
     ) -> List[Policy]:
-        """Verify a list of policies using Gemini.
+        """Verify a list of policies using the LLM.
 
         Args:
             policies: Candidate policies to verify.
@@ -151,7 +175,7 @@ Example:
             return policies
 
         if not self.api_key:
-            print("  WARNING: No GEMINI_API_KEY set, skipping LLM verification")
+            print(f"  WARNING: No API key set for verifier, skipping LLM verification")
             return policies
 
         verified: List[Policy] = []
@@ -159,25 +183,22 @@ Example:
 
         # Process in batches
         for i in range(0, len(policies), self.batch_size):
-            batch = policies[i : i + self.batch_size]
+            batch = policies[i:i + self.batch_size]
             prompt = self._build_prompt(batch)
 
             try:
-                response_text = self._call_gemini(prompt)
+                response_text = self._call_llm(prompt)
                 results = self._parse_response(response_text)
 
                 for r in results:
                     verdicts[r["id"]] = r
 
             except Exception as e:
-                print(f"  WARNING: Gemini verification failed for batch {i}: {e}")
+                print(f"  WARNING: LLM verification failed for batch {i}: {e}")
                 # Keep all on failure
                 for p in batch:
-                    verdicts[p.id] = {
-                        "id": p.id,
-                        "verdict": "KEEP",
-                        "reason": "verification failed, keeping",
-                    }
+                    verdicts[p.id] = {"id": p.id, "verdict": "KEEP",
+                                      "reason": "verification failed, keeping"}
 
             # Rate limit: be polite to the free tier
             if i + self.batch_size < len(policies):
@@ -212,18 +233,30 @@ Example:
 def create_verifier(
     backend: str = "none",
     api_key: Optional[str] = None,
-    model: str = "gemini-2.0-flash",
-) -> PassthroughVerifier | GeminiVerifier:
+    model: str = "llama-3.1-8b-instant",
+    base_url: Optional[str] = None,
+    api_key_env: str = "LLM_API_KEY",
+    batch_size: int = 20,
+) -> PassthroughVerifier | LLMVerifier:
     """Factory function for creating a verifier.
 
     Args:
-        backend: "none" for passthrough, "llm" or "gemini" for Gemini verification.
-        api_key: API key for Gemini. Falls back to GEMINI_API_KEY env var.
-        model: Gemini model name.
+        backend: "none" for passthrough, "llm" for LLM-based verification.
+        api_key: API key. Falls back to the env var named by `api_key_env`.
+        model: Model name on the provider.
+        base_url: OpenAI-compatible endpoint URL for the provider.
+        api_key_env: Environment variable holding the API key.
+        batch_size: Policies per verification request.
 
     Returns:
         A verifier instance.
     """
-    if backend in ("llm", "gemini"):
-        return GeminiVerifier(api_key=api_key, model=model)
+    if backend == "llm":
+        return LLMVerifier(
+            api_key=api_key,
+            model=model,
+            base_url=base_url,
+            api_key_env=api_key_env,
+            batch_size=batch_size,
+        )
     return PassthroughVerifier()

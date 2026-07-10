@@ -104,10 +104,13 @@ def cmd_extract(args: argparse.Namespace) -> None:
     # --- Step 3b: Verify policies (optional) ---
     verify_backend = args.verify or extract_cfg.get("verification_backend", "none")
     if verify_backend != "none":
+        verify_cfg = extract_cfg.get("verification", {})
         print(f"\nVerifying policies (backend={verify_backend})...")
         verifier = create_verifier(
             backend=verify_backend,
-            model=extract_cfg.get("verification", {}).get("model", "gemini-2.0-flash"),
+            model=verify_cfg.get("model", "llama-3.1-8b-instant"),
+            base_url=verify_cfg.get("base_url"),
+            api_key_env=verify_cfg.get("api_key_env", "LLM_API_KEY"),
         )
         policies = verifier.verify_policies(policies)
         print(f"  Policies after verification: {len(policies)}")
@@ -186,9 +189,9 @@ def main() -> None:
     )
     extract_parser.add_argument(
         "--verify",
-        choices=["none", "llm", "gemini"],
+        choices=["none", "llm"],
         default="none",
-        help="Verification backend: none (default), llm/gemini (Gemini Flash)",
+        help="Verification backend: none (default), llm (OpenAI-compatible provider)",
     )
     extract_parser.add_argument(
         "--no-ner",
