@@ -125,12 +125,30 @@ def cmd_extract(args: argparse.Namespace) -> None:
             context_map=context_map,
             audit_path=os.path.join(output_dir, "verification.jsonl"),
         )
-        print(f"  Policies after verification: {len(policies)}")
+        # Refined LLM review of the still-ambiguous policies: give the LLM the
+        # example sentences AND related/overlapping policies so it can resolve
+        # them (MERGE/KEEP/DROP/RETYPE) without a human in the loop.
+        if verify_backend == "llm":
+            needs_review_before = sum(
+                1 for p in policies if getattr(p, "needs_review", False)
+            )
+            policies = verifier.review_ambiguous(
+                policies,
+                context_map=context_map,
+                audit_path=os.path.join(output_dir, "review.jsonl"),
+            )
+            resolved = needs_review_before - sum(
+                1 for p in policies if getattr(p, "needs_review", False)
+            )
+            print(f"  Refined review resolved: {resolved} ambiguous policies")
 
     # Count by type and applies mode
     policy_type_counts = Counter(p.type for p in policies)
     applies_counts = Counter(p.applies for p in policies)
-    review_count = sum(1 for p in policies if getattr(p, "needs_review", False))
+    review_count = sum(
+        1 for p in policies
+        if getattr(p, "needs_review", False) and not getattr(p, "llm_rejected", False)
+    )
     rejected_count = sum(1 for p in policies if getattr(p, "llm_rejected", False))
 
     for t, c in sorted(policy_type_counts.items()):

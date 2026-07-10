@@ -25,12 +25,21 @@ from typing import List, Optional, Dict, Any
 from dotenv import load_dotenv
 
 from translator_memory_engine.policy import Policy
+from translator_memory_engine.policy.miner import _normalized_edit_distance
 
 
 class PassthroughVerifier:
     """Default verifier that accepts all policies unchanged."""
 
     def verify_policies(
+        self,
+        policies: List[Policy],
+        context_map: Optional[Dict[str, str]] = None,
+        audit_path: Optional[str] = None,
+    ) -> List[Policy]:
+        return policies
+
+    def review_ambiguous(
         self,
         policies: List[Policy],
         context_map: Optional[Dict[str, str]] = None,
@@ -287,6 +296,216 @@ Example:
 
         print(f"  Verification: kept={kept}, dropped={dropped}, retyped={retyped}")
         return verified
+
+    def review_ambiguous(
+        self,
+        policies: List[Policy],
+        context_map: Optional[Dict[str, str]] = None,
+        audit_path: Optional[str] = None,
+    ) -> List[Policy]:
+        """Refined LLM review of ambiguous (needs_review) policies.
+
+        Unlike the first pass (which judges each candidate in isolation), this
+        pass gives the LLM (a) the candidate's example sentences and (b) its
+        RELATED policies, so it can resolve overlaps by deciding MERGE_INTO /
+        KEEP / DROP / RETYPE on its own — no human in the loop (per the user's
+        request; PLAN.md §7 / D7 LLM-assisted extraction).
+
+        Args:
+            policies: Policies after the first verification pass.
+            context_map: trigger -> example sentences.
+            audit_path: if given, refined decisions are appended as JSON lines.
+
+        Returns:
+            Policies list with ambiguous candidates merged / dropped / retyped.
+        """
+        candidates = [p for p in policies if p.needs_review and not p.llm_rejected]
+        if not candidates:
+            return policies
+        if not self.api_key:
+            print("  WARNING: No API key, skipping refined review")
+            return policies
+
+        context_map = context_map or {}
+        by_id = {p.id: p for p in policies}
+
+        related_cache: Dict[str, List[Dict[str, Any]]] = {}
+        for c in candidates:
+            rel = []
+            for p in policies:
+                if p is c:
+                    continue
+                if _policies_related(c, p):
+                    rel.append({
+                        "id": p.id, "trigger": p.trigger,
+                        "type": p.type, "confidence": round(p.confidence, 3),
+                    })
+            related_cache[c.id] = rel
+
+        decisions: Dict[str, Dict[str, Any]] = {}
+        audit: List[Dict[str, Any]] = []
+        for i in range(0, len(candidates), self.batch_size):
+            batch = candidates[i:i + self.batch_size]
+            prompt = self._build_review_prompt(batch, related_cache, context_map)
+            try:
+                resp = self._call_llm(prompt)
+                results = self._parse_response(resp)
+                for r in results:
+                    decisions[r.get("id")] = r
+                    audit.append({
+                        "stage": "review", "id": r.get("id"),
+                        "decision": r.get("decision"),
+                        "target_id": r.get("target_id"),
+                        "type": r.get("type"),
+                        "reason": r.get("reason", ""),
+                    })
+            except Exception as e:
+                print(f"  WARNING: refined review failed for batch {i}: {e}")
+                for p in batch:
+                    decisions[p.id] = {"id": p.id, "decision": "KEEP",
+                                        "reason": "review failed, keeping"}
+            if i + self.batch_size < len(candidates):
+                time.sleep(1)
+
+        # Build raw merge edges, then resolve cycles / transitive chains so a
+        # mutual or chained MERGE_INTO keeps the best root policy (not deleting
+        # both ends of a cycle).
+        merge_of: Dict[str, str] = {}
+        for c in candidates:
+            d = decisions.get(c.id)
+            if not d:
+                continue
+            if (d.get("decision") or "").upper() == "MERGE_INTO":
+                tgt = d.get("target_id")
+                if tgt and tgt != c.id and tgt in by_id:
+                    merge_of[c.id] = tgt
+
+        def _resolve_root(cid: str) -> str:
+            seen: set = set()
+            cur = cid
+            while cur in merge_of and cur not in seen:
+                seen.add(cur)
+                nxt = merge_of[cur]
+                if nxt == cur:
+                    break
+                if nxt in seen:
+                    # Cycle: pick the root by highest confidence, then longest trigger
+                    cycle = [k for k in seen
+                             if merge_of.get(k) == nxt or k == nxt]
+                    best = max(cycle, key=lambda k: (by_id[k].confidence,
+                                                      len(by_id[k].trigger)))
+                    return best
+                cur = nxt
+            return cur
+
+        roots = {cid: _resolve_root(cid) for cid in merge_of}
+
+        # Apply merges into the resolved root
+        for cid, root_id in roots.items():
+            c = by_id[cid]
+            root = by_id[root_id]
+            if root is c:
+                continue  # self-root, nothing to merge away
+            root.match = sorted(set(root.match) | set(c.match) | {c.trigger})
+            root.evidence = sorted(set(root.evidence) | set(c.evidence))
+            root.contexts = list(dict.fromkeys(root.contexts + c.contexts))
+            root.note = (root.note + f"; merged '{c.trigger}' "
+                         f"({decisions[cid].get('reason', '')})").strip("; ")
+            c.llm_rejected = True
+            c.note = f"merged into {root.id}: {decisions[cid].get('reason', '')}"
+        # Roots are resolved (no longer ambiguous)
+        for root_id in set(roots.values()):
+            by_id[root_id].needs_review = False
+
+        # Apply non-merge decisions for candidates not involved in a merge
+        for c in candidates:
+            if c.id in merge_of:
+                continue
+            d = decisions.get(c.id)
+            if not d:
+                c.needs_review = False
+                continue
+            dec = (d.get("decision") or "KEEP").upper()
+            reason = d.get("reason", "")
+            if dec == "DROP":
+                c.llm_rejected = True
+                c.note = reason or "rejected in refined review"
+                c.applies = "prompted"
+            elif dec == "RETYPE":
+                c.type = d.get("type", c.type)
+                c.note = reason
+                c.needs_review = False
+            else:  # KEEP
+                c.needs_review = False
+                if reason:
+                    c.note = reason
+
+        if audit_path and audit:
+            with open(audit_path, "w", encoding="utf-8") as f:
+                for rec in audit:
+                    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            print(f"  Refined review audit written to: {audit_path}")
+
+        # Drop only the non-root merge sources (the surviving root stays)
+        merged_ids = {cid for cid, root in roots.items() if root != cid}
+        return [p for p in policies if p.id not in merged_ids]
+
+    def _build_review_prompt(
+        self,
+        batch: List[Policy],
+        related_cache: Dict[str, List[Dict[str, Any]]],
+        context_map: Optional[Dict[str, str]] = None,
+    ) -> str:
+        items = []
+        for p in batch:
+            ctx = context_map.get(p.trigger, "") if context_map else ""
+            ctx_str = f'\n    example_usage: "{ctx}"' if ctx else ""
+            rel = related_cache.get(p.id, [])
+            rel_str = ""
+            if rel:
+                rel_lines = "\n".join(
+                    f'      - {r["id"]} {r["trigger"]} ({r["type"]}, conf={r["confidence"]})'
+                    for r in rel
+                )
+                rel_str = f"\n    related_policies:\n{rel_lines}"
+            items.append(
+                f'  - id={p.id}, trigger="{p.trigger}", type={p.type}, '
+                f'confidence={p.confidence}{ctx_str}{rel_str}'
+            )
+        items_text = "\n".join(items)
+        return f"""You are resolving AMBIGUOUS candidate policies from a translated novel. Each was flagged because it is low-confidence or overlaps another policy.
+
+For each candidate you are given its example sentences (real usage) and its RELATED policies (others that may be the SAME entity or a different one).
+
+Decide for each candidate:
+- MERGE_INTO: <target_id>  -> the candidate is the SAME entity/person as the related policy (a spelling variant, word-order variant, or a bare surname that belongs to that name). Merge it.
+- KEEP: it is a genuinely distinct entity/term; keep it separate.
+- DROP: it is a false positive (common noun, sentence fragment, not a real named entity).
+- RETYPE: <type> -> it is real but the type is wrong (one of: entity-naming, honorific, terminology).
+
+Use the example sentences to judge real usage. If a candidate is just a fragment or variant of a related policy, prefer MERGE_INTO.
+
+Candidates:
+{items_text}
+
+Respond ONLY with a JSON array, each element:
+{{"id": "...", "decision": "MERGE_INTO|KEEP|DROP|RETYPE", "target_id": "<id if MERGE_INTO>", "type": "<type if RETYPE>", "reason": "..."}}"""
+
+
+def _policies_related(a: Policy, b: Policy) -> bool:
+    """Heuristic: are two policies plausibly the same entity (worth the LLM
+    considering a merge)? True when one trigger is a token-subset of the other,
+    edit distance is small, or they share a substantive token."""
+    ta = {t.lower() for t in a.trigger.split()}
+    tb = {t.lower() for t in b.trigger.split()}
+    if ta and tb and (ta <= tb or tb <= ta):
+        return True
+    if _normalized_edit_distance(a.trigger, b.trigger) < 0.35:
+        return True
+    shared = ta & tb
+    if shared and any(len(t) >= 4 for t in shared):
+        return True
+    return False
 
 
 def create_verifier(
