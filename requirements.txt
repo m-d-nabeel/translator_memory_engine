@@ -1,3 +1,4 @@
 PyYAML>=6.0
 spacy>=3.7
 google-genai>=1.0
+python-dotenv>=1.0

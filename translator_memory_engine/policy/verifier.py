@@ -55,6 +55,7 @@ class GeminiVerifier:
     def _get_client(self):
         if self._client is None:
             from google import genai
+
             self._client = genai.Client(api_key=self.api_key)
         return self._client
 
@@ -67,7 +68,7 @@ class GeminiVerifier:
             alias_str = f", aliases: {aliases}" if aliases else ""
             candidates.append(
                 f'  - id={p.id}, trigger="{p.trigger}", type={p.type}, '
-                f'confidence={p.confidence}, found_in={evidence_str}{alias_str}'
+                f"confidence={p.confidence}, found_in={evidence_str}{alias_str}"
             )
 
         candidates_text = "\n".join(candidates)
@@ -158,7 +159,7 @@ Example:
 
         # Process in batches
         for i in range(0, len(policies), self.batch_size):
-            batch = policies[i:i + self.batch_size]
+            batch = policies[i : i + self.batch_size]
             prompt = self._build_prompt(batch)
 
             try:
@@ -172,8 +173,11 @@ Example:
                 print(f"  WARNING: Gemini verification failed for batch {i}: {e}")
                 # Keep all on failure
                 for p in batch:
-                    verdicts[p.id] = {"id": p.id, "verdict": "KEEP",
-                                      "reason": "verification failed, keeping"}
+                    verdicts[p.id] = {
+                        "id": p.id,
+                        "verdict": "KEEP",
+                        "reason": "verification failed, keeping",
+                    }
 
             # Rate limit: be polite to the free tier
             if i + self.batch_size < len(policies):
