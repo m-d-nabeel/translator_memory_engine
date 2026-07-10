@@ -30,6 +30,13 @@ class Policy:
             another policy. Per PLAN.md §3 and D10, ambiguous cases are flagged for
             human review, not silently applied or overwritten. Such policies are
             never used in the deterministic pre-pass.
+        llm_rejected: True when the LLM verification backend returned DROP. The policy
+            is retained (with `note` = the rejection reason) for human review rather
+            than silently deleted, and is excluded from the usable glossary / applied
+            views. Per the user: DROP must be reviewable, not destructive.
+        contexts: Example sentences where this trigger was observed (the Evidence
+            layer). Fed to the LLM verification backend so it can judge the candidate
+            from real usage rather than the bare string (PLAN.md §7 / §3).
     """
     id: str
     type: str
@@ -43,6 +50,8 @@ class Policy:
     category: str = ""
     note: str = ""
     needs_review: bool = False
+    llm_rejected: bool = False
+    contexts: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

@@ -34,6 +34,7 @@ class PassthroughVerifier:
         self,
         policies: List[Policy],
         context_map: Optional[Dict[str, str]] = None,
+        audit_path: Optional[str] = None,
     ) -> List[Policy]:
         return policies
 
@@ -76,16 +77,32 @@ class LLMVerifier:
             self._client = OpenAI(api_key=self.api_key, base_url=self.base_url)
         return self._client
 
-    def _build_prompt(self, batch: List[Policy]) -> str:
-        """Build a verification prompt for a batch of policy candidates."""
+    def _build_prompt(self, batch: List[Policy], context_map: Optional[Dict[str, str]] = None) -> str:
+        """Build a verification prompt for a batch of policy candidates.
+
+        When ``context_map`` provides example sentences for a trigger, they are
+        included so the LLM judges the candidate from real usage, not the bare
+        string (PLAN.md §7 verification / §3 monolingual ambiguity).
+        """
+        context_map = context_map or {}
         candidates = []
         for p in batch:
             evidence_str = f"chapters {p.evidence[:5]}" if p.evidence else "unknown"
             aliases = [f for f in p.match if f != p.trigger]
             alias_str = f", aliases: {aliases}" if aliases else ""
+            ctx = context_map.get(p.trigger, "")
+            # Only attach example sentences for candidates flagged for review
+            # (ambiguous / low-confidence). Obvious, high-confidence entities are
+            # judged from the trigger/aliases alone — sending their contexts too
+            # would bloat the prompt with sentences we already mined (PLAN.md §3).
+            ctx_str = (
+                f'\n    example_usage: "{ctx}"'
+                if (ctx and p.needs_review)
+                else ""
+            )
             candidates.append(
                 f'  - id={p.id}, trigger="{p.trigger}", type={p.type}, '
-                f'confidence={p.confidence}, found_in={evidence_str}{alias_str}'
+                f'confidence={p.confidence}, found_in={evidence_str}{alias_str}{ctx_str}'
             )
 
         candidates_text = "\n".join(candidates)
@@ -166,12 +183,18 @@ Example:
         self,
         policies: List[Policy],
         context_map: Optional[Dict[str, str]] = None,
+        audit_path: Optional[str] = None,
     ) -> List[Policy]:
         """Verify a list of policies using the LLM.
 
         Args:
             policies: Candidate policies to verify.
-            context_map: Optional mapping of policy trigger → example context.
+            context_map: Optional mapping of policy trigger → example context
+                (e.g. joined example sentences). Fed to the LLM so it judges
+                candidates from real usage.
+            audit_path: If given, every LLM verdict (KEEP/DROP/RETYPE, including
+                dropped candidates) is appended as JSON lines to this file — a
+                permanent record for the M0 review gate (PLAN.md §12).
 
         Returns:
             Filtered and potentially retyped policies.
@@ -183,20 +206,40 @@ Example:
             print(f"  WARNING: No API key set for verifier, skipping LLM verification")
             return policies
 
+        # Build a per-trigger context lookup from the policies' own example sentences
+        # (plus any explicitly provided context_map).
+        built_context: Dict[str, str] = {}
+        for p in policies:
+            if p.contexts:
+                built_context.setdefault(p.trigger, " | ".join(p.contexts[:3]))
+        if context_map:
+            for k, v in context_map.items():
+                built_context.setdefault(k, v)
+
         verified: List[Policy] = []
         verdicts: Dict[str, Dict[str, Any]] = {}
+        audit_records: List[Dict[str, Any]] = []
 
         # Process in batches
         for i in range(0, len(policies), self.batch_size):
             batch = policies[i:i + self.batch_size]
-            prompt = self._build_prompt(batch)
+            prompt = self._build_prompt(batch, context_map=built_context)
 
             try:
                 response_text = self._call_llm(prompt)
                 results = self._parse_response(response_text)
 
+                id_to_trigger = {p.id: p.trigger for p in batch}
                 for r in results:
-                    verdicts[r["id"]] = r
+                    r_id = r.get("id")
+                    verdicts[r_id] = r
+                    audit_records.append({
+                        "id": r_id,
+                        "trigger": id_to_trigger.get(r_id, ""),
+                        "verdict": r.get("verdict"),
+                        "correct_type": r.get("correct_type"),
+                        "reason": r.get("reason", ""),
+                    })
 
             except Exception as e:
                 print(f"  WARNING: LLM verification failed for batch {i}: {e}")
@@ -209,6 +252,13 @@ Example:
             if i + self.batch_size < len(policies):
                 time.sleep(1)
 
+        # Write the audit log (one JSON object per line) if requested
+        if audit_path and audit_records:
+            with open(audit_path, "w", encoding="utf-8") as f:
+                for rec in audit_records:
+                    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            print(f"  Verification audit written to: {audit_path}")
+
         # Apply verdicts
         kept = 0
         dropped = 0
@@ -218,8 +268,12 @@ Example:
             verdict = verdicts.get(p.id, {"verdict": "KEEP", "reason": "no verdict"})
 
             if verdict["verdict"] == "DROP":
+                # Retain the policy but mark it rejected (with reason) for human
+                # review, instead of silently deleting it. Excluded from the glossary.
                 dropped += 1
-                continue
+                p.llm_rejected = True
+                p.note = verdict.get("reason", "rejected by LLM verification")
+                p.applies = "prompted"  # never applied by the deterministic pre-pass
             elif verdict["verdict"] == "RETYPE":
                 p.type = verdict.get("correct_type", p.type)
                 p.note = verdict.get("reason", "")

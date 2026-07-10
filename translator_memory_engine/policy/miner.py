@@ -338,6 +338,15 @@ def mine_policies(
         total_occurrences = sum(form_counts.values())
         canonical_count = form_counts[canonical]
 
+        # Collect a few example sentences (Evidence layer) for LLM review context
+        example_contexts: List[str] = []
+        for s in group_signals:
+            ctx = (s.context or "").strip()
+            if ctx and ctx not in example_contexts:
+                example_contexts.append(ctx)
+            if len(example_contexts) >= 3:
+                break
+
         # Compute scores
         freq = score_frequency(len(chapters_present), total_chapters)
         consistency = score_consistency(canonical_count, total_occurrences)
@@ -379,6 +388,7 @@ def mine_policies(
             confidence=round(confidence, 3),
             scores=scores,
             evidence=sorted(chapters_present),
+            contexts=example_contexts,
         ))
 
     # Sort by confidence descending

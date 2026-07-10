@@ -73,6 +73,10 @@ class PolicyStore:
         """
         glossary = []
         for p in self.all():
+            # Rejected policies are retained for review but excluded from the
+            # usable glossary (they must not be applied downstream).
+            if p.llm_rejected:
+                continue
             aliases = [f for f in p.match if f != p.trigger]
             glossary.append({
                 "canonical": p.trigger,

@@ -1,0 +1,86 @@
+"""Tests for the LLM verification backend (PLAN.md §7 / §12).
+
+The LLM call is mocked so the verdict-application logic is tested deterministically.
+"""
+
+import json
+
+from translator_memory_engine.policy import Policy
+from translator_memory_engine.policy.verifier import LLMVerifier
+
+
+def _make_policy(trigger, pid="p_001", confidence=0.9):
+    return Policy(
+        id=pid,
+        type="entity-naming",
+        trigger=trigger,
+        match=[trigger],
+        action={"render_as": trigger},
+        confidence=confidence,
+        evidence=[1, 2],
+        contexts=["Example sentence with " + trigger + "."],
+    )
+
+
+def _mock_verifier(response_json):
+    """LLMVerifier whose _call_llm returns a fixed JSON array."""
+    v = LLMVerifier(api_key="test", model="m", base_url="http://x")
+    v._call_llm = lambda prompt: response_json
+    return v
+
+
+class TestVerifierVerdicts:
+    def test_keep_writes_note(self):
+        p = _make_policy("Anton")
+        v = _mock_verifier(json.dumps([{"id": "p_001", "verdict": "KEEP",
+                                        "reason": "character name"}]))
+        out = v.verify_policies([p])
+        assert out[0].note == "character name"
+        assert out[0].llm_rejected is False
+
+    def test_retype_changes_type(self):
+        p = _make_policy("Sir Knight")
+        v = _mock_verifier(json.dumps([{"id": "p_001", "verdict": "RETYPE",
+                                        "correct_type": "honorific",
+                                        "reason": "honorific form"}]))
+        out = v.verify_policies([p])
+        assert out[0].type == "honorific"
+        assert out[0].llm_rejected is False
+
+    def test_drop_is_retained_not_deleted(self):
+        # DROP must NOT delete the policy; it is flagged llm_rejected and kept
+        # (for human review), and forced out of deterministic application.
+        p = _make_policy("Centipede")
+        v = _mock_verifier(json.dumps([{"id": "p_001", "verdict": "DROP",
+                                        "reason": "generic insect term"}]))
+        out = v.verify_policies([p])
+        assert len(out) == 1
+        assert out[0].llm_rejected is True
+        assert out[0].note == "generic insect term"
+        assert out[0].applies == "prompted"
+
+    def test_drop_excluded_from_glossary(self):
+        from translator_memory_engine.memory.store import PolicyStore
+        p = _make_policy("Centipede")
+        v = _mock_verifier(json.dumps([{"id": "p_001", "verdict": "DROP",
+                                        "reason": "generic insect term"}]))
+        out = v.verify_policies([p])
+        store = PolicyStore()
+        for pol in out:
+            store.add(pol)
+        glossary = store.export_glossary()
+        assert all(not g.get("canonical") == "Centipede" for g in glossary)
+
+    def test_audit_log_written(self):
+        import os
+        import tempfile
+        p = _make_policy("Anton")
+        v = _mock_verifier(json.dumps([{"id": "p_001", "verdict": "DROP",
+                                        "reason": "x"}]))
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "verification.jsonl")
+            v.verify_policies([p], audit_path=path)
+            assert os.path.exists(path)
+            recs = [json.loads(l) for l in open(path)]
+            assert recs[0]["id"] == "p_001"
+            assert recs[0]["verdict"] == "DROP"

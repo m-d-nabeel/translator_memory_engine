@@ -112,13 +112,25 @@ def cmd_extract(args: argparse.Namespace) -> None:
             base_url=verify_cfg.get("base_url"),
             api_key_env=verify_cfg.get("api_key_env", "LLM_API_KEY"),
         )
-        policies = verifier.verify_policies(policies)
+        # Build a context map (trigger -> example sentences) for the verification
+        # backend, but ONLY for policies flagged for review (ambiguous / low
+        # confidence). Obvious entities don't need their sentences sent (PLAN.md §3).
+        context_map = {
+            p.trigger: " | ".join(p.contexts[:3])
+            for p in policies if p.contexts and p.needs_review
+        }
+        policies = verifier.verify_policies(
+            policies,
+            context_map=context_map,
+            audit_path=os.path.join(output_dir, "verification.jsonl"),
+        )
         print(f"  Policies after verification: {len(policies)}")
 
     # Count by type and applies mode
     policy_type_counts = Counter(p.type for p in policies)
     applies_counts = Counter(p.applies for p in policies)
     review_count = sum(1 for p in policies if getattr(p, "needs_review", False))
+    rejected_count = sum(1 for p in policies if getattr(p, "llm_rejected", False))
 
     for t, c in sorted(policy_type_counts.items()):
         print(f"    {t}: {c}")
@@ -131,6 +143,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
         print(f"  Avg confidence: {avg_conf:.3f}")
         print(f"  Low confidence (<0.6): {low_conf}")
         print(f"  Flagged for review:   {review_count}")
+        print(f"  LLM-rejected (DROP):  {rejected_count}  (retained for review, excluded from glossary)")
 
     # --- Step 4: Store ---
     store = PolicyStore()
@@ -158,6 +171,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
     print(f"    deterministic:    {applies_counts.get('deterministic', 0)}")
     print(f"    prompted:         {applies_counts.get('prompted', 0)}")
     print(f"    flagged_review:   {review_count}")
+    print(f"    llm_rejected:     {rejected_count}")
     if policies:
         print(f"  Avg confidence:     {avg_conf:.3f}")
         print(f"  Low confidence:     {low_conf}")
