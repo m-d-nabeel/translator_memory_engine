@@ -507,6 +507,20 @@ Run the full evaluation protocol. Add a lightweight glossary adherence check (au
 does the output contain only canonical forms from the policy store?). Collect human reader
 judgments.
 
+**Evaluation independence is a hard constraint (see D11).** LLM circularity is a documented
+failure mode: the same model that extracts style, rewrites using it, and evaluates will
+report inflated success. Therefore the evaluation stack must keep the three roles apart:
+- **Deterministic glossary adherence** — primary, always on, no LLM signal.
+- **Human reader judgments** — the gold standard.
+- **spaCy-derived stylometry** — independent, structural/lexical comparison (sentence
+  shape, dialogue density, punctuation, type-token ratio); does not depend on the rewrite LLM.
+- **Optional LLM judge** — only from a *different model family* than the rewriter; never the
+  same model that produced the text.
+BLEU/lexical overlap alone is inadequate for literary style (use MQM/SQM/BWS where possible).
+On chapters with no original (no gold), report **proxy metrics only**, explicitly labeled
+"no gold": style-consistency vs the style bank, policy/name adherence, cross-chapter
+consistency.
+
 **Gate:** statistically meaningful preference for the policy pipeline over baseline RAG. If
 not, diagnose: is it extraction quality? Retrieval? LLM compliance? The layered evaluation
 isolates the failure.
@@ -515,6 +529,49 @@ isolates the failure.
 
 Do not build Story Memory, Language Memory, modular validators, pattern mining, vector
 retrieval, or versioning until M2 confirms the policy abstraction works.
+
+---
+
+### Data scenarios & coverage (how the pipeline behaves under every data-availability case)
+
+The system is defined by a **learn / apply / evaluate** split, not by chapter pairs. Per
+chapter, the data can be in one of three states: **(orig, MTL)** both exist, **(orig only)**
+no MTL to rewrite, **(MTL only)** no original to compare against. Each state maps to a role:
+
+| Chapter state | Role | What happens |
+| --- | --- | --- |
+| orig + MTL | **Validate** | Supervised reference post-edit; real alignment `sim(gen, orig)` measured. Also the subset that *certifies* the method. |
+| orig only | **Learn** | Nothing to rewrite (no MTL input), but feeds policy + style-bank extraction. |
+| MTL only | **Apply** | Rewrite using learned policies + style bank. No gold → proxy metrics only. |
+
+This separation is what makes the project work when the two corpora don't line up. Concrete
+scenarios:
+
+- **S1 — our actual dataset.** Originals 1–39; MTL for 1–5 and 039 (paired → validate); MTL
+  for 40–41 (no original → apply). Learn from 1–39, validate on 1–5/039 (generated≈original),
+  apply to 40–41 with the style bank and proxy eval. **This dataset already exercises every
+  role**, so it is sufficient to demonstrate the full loop end-to-end.
+- **S2 — pure separation (user hypothetical): originals 1–50, no MTL; MTL 51+, no original.**
+  There is **no paired (MTL, original) data anywhere**, so the method can never be directly
+  trained or scored on it. Handling: learn policies + style bank from 1–50 (no MTL needed);
+  apply to 51+ with policies + style bank (no per-chapter reference possible). Evaluation has
+  *no gold* → proxy metrics (style-consistency, name adherence, cross-chapter) + human review.
+  **Escape hatch:** synthesize degraded MTL by MT round-tripping the originals
+  (original → foreign → MT English) to create (synthetic-MTL, original) pairs, recovering a
+  real alignment number even with zero real MTL.
+- **S3 — full overlap (ideal):** every chapter has both. Fully supervised; maximum fidelity
+  and full real-alignment evaluation. The reference path is used everywhere.
+- **S4 — MTL only, zero originals (cold start):** cannot learn policies or style → the engine
+  degrades to a generic MTL cleaner. Requires at least a seed corpus of good translations
+  (any size) before it adds value. This is the one case the architecture cannot recover from
+  on its own; it is an input requirement, not a code path.
+
+**Key invariants the design must preserve:**
+1. Learning needs originals; applying needs MTL + learned artifacts; real evaluation needs
+   overlap *somewhere* — proxy metrics + the style bank cover the rest.
+2. The per-chapter original is a **bonus for validation/fidelity only**; the style bank is the
+   universal style signal (S2 proves it must carry chapters 51+ alone).
+3. Evaluation must never let the same LLM produce *and* judge (D11).
 
 ---
 
@@ -551,6 +608,27 @@ Extract stylistic patterns: dialogue voice, narration style, combat pacing, emot
 tone. Store as example banks retrieved by scene type. Requires contrastive or
 LLM-based analysis that goes beyond v0 heuristics.
 
+A candidate Language Pattern is a structured record, not a latent vector — far more useful
+than a style-embedding "similarity 0.78" (D11):
+```json
+{
+  "type": "dialogue-style",
+  "observation": "Informal dialogue consistently uses contractions.",
+  "evidence": [
+    {"chapter": 3, "excerpt": "I don't think he'll come."},
+    {"chapter": 8, "excerpt": "You can't leave now."}
+  ],
+  "counterexamples": [
+    {"chapter": 11, "excerpt": "I will not tolerate this.", "context": "formal speech"}
+  ],
+  "confidence": 0.84
+}
+```
+The **LLM is the primary style-pattern extractor** (it reasons over voice, tone, rhythm
+together); **spaCy supplies the measurable evidence** (excerpts + statistics: sentence
+length, dialogue density, punctuation patterns, type-token ratio). Patterns require evidence
+*and* counterexamples, not just a score.
+
 **Three-store split:**
 When Story and Language extraction exist, split the single PolicyStore into three physical
 stores with different update cadences, confidence models, and retrieval paths.
@@ -581,11 +659,14 @@ Language Memory population.
 Validator findings and human review feed policy refinement — low-confidence or contradicted
 policies are re-weighted, split, or deprecated. Makes the system self-correcting.
 
-**Alternative NER backend (gliner-spacy):** Deferred. Evaluated as a drop-in replacement for
-spaCy NER to improve fiction-domain recall, but it requires `transformers>=5.x`, which
-conflicts with the pinned `tensorflow`/embedding stack in the current environment. Not needed:
-off-the-shelf spaCy NER is weak on fiction anyway, and the LLM verification gate is the real
-precision filter. Revisit only if extraction recall becomes the bottleneck.
+**Alternative NER backend (gliner-spacy):** **Out (decision D11), not merely deferred.**
+GLiNER answers "which spans look like entities of these labels?" — an NER-fit question. Our
+real question is "which recurring editorial decisions in this corpus should be remembered and
+reapplied?" An LLM reasons over terminology, aliases, honorifics, canonical forms, and
+contextual significance together; GLiNER mostly yields candidate spans. The spaCy + LLM hybrid
+already covers this. Originally also blocked by a `transformers>=5.x` conflict with the pinned
+`tensorflow`/embedding stack. Do **not** reintroduce unless later benchmarked against the
+current pipeline with a *measurable* extraction benefit.
 
 ---
 

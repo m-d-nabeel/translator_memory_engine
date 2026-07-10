@@ -231,3 +231,77 @@ Codebase alignment:
 - First deliverable: Policy Miner + JSON store → `policies.jsonl`.
 - Gate: human review of 100+ extracted policies from a sample corpus.
 - If extraction quality is good → build Retriever + Rewriter → run ablation → evaluate.
+
+---
+
+## D11 — Architecture confirmation: spaCy+LLM hybrid; GLiNER out; evaluation independence
+
+Triggered by web research on style-preserving translation, LLM-evaluation circularity, and
+spaCy+LLM hybrid pipelines, building on the earlier abandonment of the gliner-spacy backend
+(environment conflict). See `PLAN.md` §13 (Evaluation independence), §15 (Language Memory
+schema, GLiNER out) and the new "Data scenarios & coverage" section.
+
+**1. GLiNER stays out (confirmed, not merely deferred).** GLiNER answers "which spans look
+like entities of these labels?" — an NER-fit question. Our real question is "which recurring
+editorial decisions in this corpus should be remembered and reapplied?" Those are not the same
+task. An LLM can reason about terminology, aliases, honorifics, canonical forms, and
+contextual significance together; GLiNER mostly yields candidate spans. spaCy + LLM already
+covers this. Do not reintroduce unless later benchmarked with a measurable extraction benefit.
+
+**2. Component positioning (Evidence → Inference → Policy preserved):**
+- **spaCy:** cheap, deterministic signal generation + structural analysis (POS/dependency,
+  sentence structure, boundaries, measurable style statistics).
+- **LLM:** primary semantic extractor AND verifier.
+- **Policy Miner:** deterministic aggregation, evidence tracking, scoring, dedup, policy
+  construction.
+- The LLM must NOT become the Miner; keep the deterministic layer around it. Example flow:
+  spaCy emits `"Azure Dragon Palace" PROPN PROPN PROPN @ ch 2,5,9,14`; LLM emits
+  `type=organization, canonical=Azure Dragon Palace, variants=[Azure Dragon Hall]`; Miner
+  emits `support=12, cross-chapter=4, confidence=0.91, policy=entity-naming`.
+
+**3. Style needs no separate extraction model yet.** The LLM is the primary style-pattern
+extractor (later, for Language Memory) while spaCy supplies the measurable evidence (excerpts
++ statistics). A candidate Language Pattern is `{type, observation, evidence[], counterexamples[],
+confidence}` — far more useful than a latent style vector ("similarity 0.78"). It requires
+evidence AND counterexamples, not just a score.
+
+**4. Evaluation independence is a hard constraint (LLM circularity).** Research shows same-
+model produce+judge inflates results: Dietz et al. 2025 (Tropes #1 Circularity, #2 LLM-
+Evaluator-as-Ranker — self-reinforcing, inflated scores); Panickssery et al. 2024 (LLMs self-
+recognize — GPT-4 at 73.5% — and that drives self-preference); DBG / consensus-deviation
+metrics exist to quantify and debias. Therefore:
+- Extraction-LLM, rewrite-LLM, and evaluator must be **independent**.
+- Evaluation stack = (a) deterministic glossary adherence [primary, always]; (b) human reader
+  judgments [gold]; (c) spaCy-derived stylometry [independent, structural]; (d) optional LLM
+  judge from a **different model family** than the rewriter.
+- BLEU/lexical overlap alone is inadequate for literary style (DITING 2025, Border Town 2026);
+  use MQM/SQM/BWS + human where possible.
+
+**5. Style preservation is a known-hard, example-validated problem.** LLMs produce fluent-but-
+generic output (SAMAS 2026). In-context example banks improve style-matching **2–4× with no
+quality loss** (Steering LLMs for MT Personalization, EACL 2026) — this validates the style-
+bank / example-bank approach for Language Memory and the max-fidelity reference path for
+chapters that have an original.
+
+**Implications for current work:**
+- Keep M0/extraction as-is (spaCy POS + LLM verify).
+- Style bank (example excerpts + spaCy stats) is the core style signal for chapters without an
+  original (40+); the per-chapter original reference is a fidelity/validation bonus only.
+- All evaluation avoids same-model produce+judge; no-original chapters use proxy metrics
+  labeled "no gold."
+
+---
+
+## Current state (post-D11)
+
+- Architecture confirmed: spaCy (deterministic signals) + LLM (extract/verify) + deterministic
+  Policy Miner. GLiNER explicitly out (D11).
+- Evaluation independence codified: extraction / rewrite / judge must be separate models; eval
+  stack = glossary adherence + human + spaCy stylometry + optional different-family LLM judge.
+- Style handled by a style bank (example excerpts + spaCy stats); Language Memory pattern schema
+  is `{type, observation, evidence, counterexamples, confidence}`.
+- Data-handling framed as learn / apply / evaluate across three per-chapter states; "Data
+  scenarios & coverage" section added to PLAN.md (S1 actual dataset, S2 pure-separation
+  hypothesis, S3 full overlap, S4 cold-start).
+- Next implementation: style bank + two-mode rewrite (supervised reference / unsupervised
+  style-bank) + alignment eval (tier-1 real, tier-2 proxy).
