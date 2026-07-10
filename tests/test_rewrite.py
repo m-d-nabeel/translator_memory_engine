@@ -101,3 +101,56 @@ class TestStripEcho:
 
     def test_passthrough_clean_text(self):
         assert _strip_echo("The village was quiet.") == "The village was quiet."
+
+
+class TestPromptModes:
+    def test_reference_mode_marks_published_translation(self):
+        p = _policy("Dominic", ["Dominic"], applies="prompted")
+        prompt = build_prompt("MTL text", [p], reference="ORIGINAL TEXT")
+        assert "PUBLISHED TRANSLATION" in prompt
+        assert "MACHINE TRANSLATION TO REPAIR" in prompt
+        assert "ORIGINAL TEXT" in prompt
+
+    def test_style_profile_mode_includes_excerpts(self):
+        p = _policy("Dominic", ["Dominic"], applies="prompted")
+        profile = ["Calron frowned.", "The elder laughed."]
+        prompt = build_prompt("MTL text", [p], style_profile=profile)
+        assert "NO published translation" in prompt
+        assert "Calron frowned." in prompt
+        assert "PUBLISHED TRANSLATION" not in prompt
+
+    def test_fallback_mode_uses_style_anchor(self):
+        p = _policy("Dominic", ["Dominic"], applies="prompted")
+        prompt = build_prompt("MTL text", [p])
+        assert "voice" in prompt.lower()
+        assert "PUBLISHED TRANSLATION" not in prompt
+
+
+class TestRewriteModeSelection:
+    def test_reference_forces_mode_even_without_llm_flag(self, tmp_path):
+        from translator_memory_engine.rewrite.rewriter import rewrite
+        policies = tmp_path / "policies.jsonl"
+        policies.write_text("", encoding="utf-8")
+        # No API key set -> LLM path is a no-op, but mode must still be recorded.
+        res = rewrite(
+            "Calron left.", str(policies),
+            do_llm=False, reference_text="Calron departed.",
+        )
+        assert res["mode"] == "supervised_reference"
+
+    def test_style_profile_mode(self, tmp_path):
+        from translator_memory_engine.rewrite.rewriter import rewrite
+        policies = tmp_path / "policies.jsonl"
+        policies.write_text("", encoding="utf-8")
+        res = rewrite(
+            "Calron left.", str(policies),
+            do_llm=False, style_profile=["Calron frowned."],
+        )
+        assert res["mode"] == "unsupervised_stylebank"
+
+    def test_fallback_mode(self, tmp_path):
+        from translator_memory_engine.rewrite.rewriter import rewrite
+        policies = tmp_path / "policies.jsonl"
+        policies.write_text("", encoding="utf-8")
+        res = rewrite("Calron left.", str(policies), do_llm=False)
+        assert res["mode"] == "fallback_faithful_repair"
