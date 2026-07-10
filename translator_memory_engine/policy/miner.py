@@ -27,36 +27,61 @@ from translator_memory_engine.policy.scorer import (
 )
 
 
-# Generic nouns / titles that are NOT named entities. A candidate whose canonical
-# form is entirely composed of these is a clear false positive (e.g. spaCy NER
-# mislabels "Earth", "Rice", "Magic", "Cook", "Village", "Count", "Wizard" as
-# entities). Per PLAN.md §7 / D7 this is handled by the deterministic rules
-# backend: such candidates are dropped before verification, not hoarded.
-_GENERIC_NOUNS: Set[str] = {
-    # titles used standalone (not as "Title Name")
+# --- Generic noun categories for false-positive filtering ---
+#
+# DESIGN DECISION: We split "generic" into two categories:
+#
+# 1. _GENERIC_STANDALONE: words that are NEVER entity names when alone.
+#    Single-word candidates matching these are dropped unconditionally.
+#    Multi-word candidates are dropped only if ALL words are in this set.
+#    Example: "Count" alone → DROP. "Count Sinclair" → KEEP.
+#
+# 2. NOT in this set: place suffixes like "Castle", "Village", "Dynasty",
+#    "Kingdom". These ARE generic when standalone (handled by entity.py stop words)
+#    but form legitimate place names when combined: "Count's Castle", "Ming Dynasty".
+#    The old code killed "Count's Castle" because both words were in _GENERIC_NOUNS.
+#
+_GENERIC_STANDALONE: Set[str] = {
+    # titles / roles used standalone (not as "Title Name")
     "Count", "Countess", "Lord", "Lady", "Sir", "Duke", "Duchess", "Prince",
     "Princess", "King", "Queen", "Emperor", "Empress", "Viscount", "Baron",
     "Marquis", "Master", "Chief", "Elder", "Knight", "Knights", "Soldier",
-    "Soldiers", "Warrior", "Warriors",
-    # common nouns that get capitalized / mislabeled
-    "Monster", "Monsters", "God", "Goddess", "Gods", "Hand", "Hands", "Care",
-    "Disease", "Sea", "Mercenary", "Wizard", "Wizards", "Earth", "Rice",
-    "Magic", "Cook", "Village", "Mrs", "Postpartum",
+    "Soldiers", "Warrior", "Warriors", "Mrs",
+    # common nouns that NER over-labels
+    "Monster", "Monsters", "God", "Goddess", "Gods", "Hand", "Hands",
+    "Disease", "Mercenary", "Wizard", "Wizards", "Earth", "Rice",
+    "Magic", "Cook", "Postpartum", "Sea", "Care",
+    # verbs / adjectives that NER mislabels
+    "Perfect", "Speak", "Money",
 }
 
 # Leading articles to strip when cleaning surface forms
 _ARTICLES = {"the", "a", "an"}
 
-# Sentence-initial verbs that produce fragment candidates (e.g. "Hearing Calron,").
+# Sentence-initial verbs / gerunds that produce fragment candidates.
 # A multi-word phrase led by one of these is a clause fragment, not a name.
 _FRAGMENT_LEADS = {
+    # Common gerunds in fiction narration
     "Hearing", "Seeing", "Watching", "Following", "Regarding", "Thinking",
     "Knowing", "Feeling", "Wondering", "Asking", "Saying", "Looking",
     "Turning", "Walking", "Standing", "Making", "Taking", "Using", "Going",
     "Coming", "Being", "Having", "Doing", "Getting", "Keeping", "Leaving",
     "Bringing", "Calling", "Finding", "Giving", "Putting", "Showing",
     "Telling", "Trying", "Wanting", "Wishing", "Hoping", "Noticing",
-    "Realizing", "Remembering", "Deciding", "Feeling", "Observing",
+    "Realizing", "Remembering", "Deciding", "Observing",
+    # Additional gerunds that produce fragments
+    "Ignoring", "Approaching", "Arriving", "Avoiding", "Becoming",
+    "Believing", "Catching", "Checking", "Closing", "Considering",
+    "Continuing", "Covering", "Creating", "Crossing", "Entering",
+    "Examining", "Expecting", "Facing", "Finishing", "Grabbing",
+    "Holding", "Imagining", "Including", "Judging", "Letting",
+    "Lifting", "Living", "Missing", "Moving", "Opening",
+    "Passing", "Picking", "Pointing", "Pulling", "Pushing",
+    "Raising", "Reaching", "Reading", "Receiving", "Recognizing",
+    "Removing", "Returning", "Running", "Sensing", "Setting",
+    "Sitting", "Speaking", "Starting", "Stopping", "Studying",
+    "Suggesting", "Supporting", "Swinging", "Thanking", "Throwing",
+    "Touching", "Understanding", "Waiting", "Wearing", "Working",
 }
 
 # Confidence below which a policy is flagged for human review (PLAN.md §3 / D10)
@@ -240,19 +265,22 @@ def _clean_match_forms(canonical: str, aliases: List[str]) -> Tuple[str, List[st
 
 
 def _is_generic(canonical: str) -> bool:
-    """True if the canonical form is entirely composed of generic nouns/titles.
+    """True if the canonical form is a clear false positive.
 
-    Such candidates are clear false positives (mostly from NER) and should be
-    dropped by the rules backend rather than kept or flagged.
+    Rules:
+    - Single-word canonical in _GENERIC_STANDALONE → generic (DROP)
+    - Multi-word canonical where ALL words are in _GENERIC_STANDALONE → generic (DROP)
+    - Multi-word canonical where at least one word is NOT generic → NOT generic (KEEP)
+      This preserves "Count's Castle", "Ming Dynasty", "Devil's Hand" etc.
     """
     tokens = [t for t in canonical.split() if t]
     if not tokens:
         return True
-    if len(tokens) == 1 and tokens[0] in _GENERIC_NOUNS:
-        return True
-    if all(t in _GENERIC_NOUNS for t in tokens):
-        return True
-    return False
+    # Single word: check against standalone generics
+    if len(tokens) == 1:
+        return tokens[0] in _GENERIC_STANDALONE
+    # Multi-word: only generic if ALL words are standalone generics
+    return all(t in _GENERIC_STANDALONE for t in tokens)
 
 
 # ----------------------------------------------------------------------- #

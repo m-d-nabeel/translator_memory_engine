@@ -128,7 +128,7 @@ Valid types: entity-naming, honorific, terminology
 IMPORTANT classification rules:
 - DROP clear common nouns and generic terms that are NOT specific named entities. Examples to DROP: "Earth", "Rice", "Magic", "Cook", "Village", "Wizard", "Spiders", "Mrs", "Postpartum", "God", "Monster". A capitalized common noun is NOT an entity just because it is capitalized.
 - DROP a BARE title used alone as if it were a name (e.g. "Count" by itself, "Lord" by itself). BUT KEEP established honorific address forms — these ARE the policy: "My Lord", "My Lady", "Sir Knight", "Senior Brother", "Young Master", etc.
-- DROP sentence fragments or role/title phrases that are not a specific named entity.
+- DROP sentence fragments or role/title phrases that are not a specific named entity (e.g. "Ignoring Calron", "Hearing Dominic" — these are clause starts, not names). NOTE: a fragment that contains a real name (like "Ignoring Calron") must be DROPPED as a fragment, but the inner name (Calron) is extracted as its OWN separate entity, so dropping the fragment does NOT lose the person. Never DROP a standalone proper name just because it also appears inside a fragment elsewhere.
 - KEEP only genuine character names, place names, organizations, items, honorific address forms, or consistent specific terms.
 - If genuinely uncertain between KEEP and DROP, KEEP (prefer false positives over missed entities), but only when the candidate could plausibly be a real named entity.
 
