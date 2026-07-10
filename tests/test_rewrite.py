@@ -4,7 +4,7 @@ from translator_memory_engine.policy import Policy
 from translator_memory_engine.retrieve.retriever import PolicyRetriever
 from translator_memory_engine.rewrite.conflict import resolve
 from translator_memory_engine.rewrite.prepass import apply_prepass
-from translator_memory_engine.rewrite.rewriter import build_prompt
+from translator_memory_engine.rewrite.rewriter import build_prompt, _strip_echo
 
 
 def _policy(trigger, match, applies="deterministic", conf=0.9, pid="p_1"):
@@ -85,3 +85,19 @@ class TestMtlCleaner:
         )
         assert out == "go away! I fed him and put him to sleep, what? money?"
         assert "[" not in out
+
+
+class TestStripEcho:
+    def test_strips_repaired_text_preface(self):
+        assert _strip_echo("Here is the repaired text:\n\nThe pony left.") == "The pony left."
+
+    def test_strips_chapter_to_rewrite_label(self):
+        out = _strip_echo("Some intro\nCHAPTER TO REWRITE:\nThe bell rang.")
+        assert out == "The bell rang."
+        assert "CHAPTER TO REWRITE" not in out
+
+    def test_strips_code_fence(self):
+        assert _strip_echo("```\nThe cart moved.\n```") == "The cart moved."
+
+    def test_passthrough_clean_text(self):
+        assert _strip_echo("The village was quiet.") == "The village was quiet."
