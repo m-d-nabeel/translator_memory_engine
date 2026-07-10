@@ -22,6 +22,7 @@ Profile, World Knowledge, Translation Memory → indexes → Retriever → LLM R
 Consistency Checker.
 
 Key sub-decisions:
+
 - Style should be captured by **exemplars + contrastive few-shot**, not numeric statistics
   (avg sentence length etc. don't steer LLMs and can produce unnatural prose). Stats kept
   only as diagnostics.
@@ -64,6 +65,7 @@ test). Flagged **variant clustering** as the top technical risk.
 ## D4 — Freeze the design
 
 Stopped iterating architecture. Added:
+
 - **Research hypothesis** (falsifiable): explicit rule retrieval beats document retrieval
   for consistency at lower context.
 - **Evidence → Inference → Rule** layering (debuggability).
@@ -84,6 +86,7 @@ goal **Balanced**, rewrite **Cloud**, corpus **30–40 to 100s**. RAG baseline d
 ## D6 — Deep-review corrections (before any code)
 
 Found and fixed:
+
 - **No application model** → added deterministic pre-pass for high-confidence
   naming/term/honorific rules; LLM only for style. (This also defuses much of the
   applicability risk.)
@@ -123,7 +126,8 @@ Found and fixed:
 
 Created `translator-memory-engine/` (correct system name) with package
 `translator_memory_engine/{ingest, extract, memory}` and `docs/`. v0 contains **only** these three packages
-+ config — no retriever, rewriter, validators, or UI yet. The immediate goal: prove the
+
+- config — no retriever, rewriter, validators, or UI yet. The immediate goal: prove the
 **Policy Miner** can produce a high-quality `memory/policies.jsonl` from ~30 chapters.
 
 **Package-naming rationale (D8→D10):** the engine package is named `translator_memory_engine`,
@@ -169,3 +173,61 @@ Critical discipline: the full tree is the **target shape** recorded in `PLAN.md`
 only v0-needed packages are instantiated as code (`ingest` done, `extract`, `policy`,
 `memory/storage`). Remaining packages are created when their stage is built — not scaffolded
 empty up front (avoids rot and "architecture-exercise" drift).
+
+---
+
+## D10 — Plan refinement (dual critical review)
+
+Two independent critical reviews (external domain reviewer + internal engineering review)
+identified overlapping concerns. The plan was restructured to address all of them. Previous
+version archived to `docs/PLAN-v1.md`.
+
+Key changes:
+
+- **Separated hypothesis-testing core from full system vision.** v0 has 5 components
+  (Extractor → Policies → Retriever → Pre-pass → LLM). Everything else (Story Memory,
+  Language Memory, 7 validators, pattern mining, vector retrieval, versioning) is now
+  explicitly labeled future work in §15.
+- **Added four-condition ablation study** (§12). Without it, the deterministic pre-pass
+  could capture all gains and the hypothesis ("policy *retrieval* helps") would be
+  unattributable. Conditions: (A) baseline RAG, (B) pre-pass only, (C) retrieval only,
+  (D) full pipeline.
+- **Simplified v0 Policy schema.** Removed `valid_from`, `valid_until`, `superseded_by` —
+  YAGNI until policy evolution is actually observed. Removed `store` field (single store
+  in v0).
+- **Specified conflict resolution mechanism.** Replaced feature list ("confidence,
+  specificity, recency") with actual algorithm: highest-confidence wins → evidence count
+  tiebreak → specificity tiebreak → human review.
+- **Added concrete extraction strategy** (§7). Three layers of editorial decisions (lexical,
+  phrasal, stylistic) with honest assessment: v0 heuristics cover Layers 1–2 only. Layer 3
+  (voice, phrasing) requires contrastive/LLM analysis beyond v0 scope.
+- **Softened "static" assumption.** Translator Memory is now "assumed stable within a
+  single corpus," not "effectively static."
+- **Acknowledged monolingual ambiguity** (§3). Without source text, singleton occurrences
+  are ambiguous. Confidence model accounts for this; ambiguous cases flagged, not
+  overwritten.
+- **Added evaluation resource estimates.** Gold-labeling: ~4–6 hours. Reader evaluation:
+  3–5 evaluators, ~1 hour each.
+- **Removed file-level implementation layout** (former §19 directory tree). Architecture
+  stays conceptual; developer docs are separate.
+- **Pulled glossary check into M2** (was M3). Lightweight automated validation available
+  earlier.
+- **Flattened three-store hierarchy for v0.** Single `PolicyStore` with `type` field.
+  Three-store split deferred until Story/Language extraction exists.
+
+Codebase alignment:
+
+- `Policy` class moved from `models.py` to `policy/schema.py` (resolving the
+  single-source-of-truth contradiction).
+- Versioning fields removed from dataclass.
+- `Chapter` kept in `models.py` (shared across packages).
+
+---
+
+## Current state (post-D10)
+
+- Architecture: refined and scoped. v0 = 5 components + ablation study.
+- Plan archived: previous version in `docs/PLAN-v1.md`.
+- First deliverable: Policy Miner + JSON store → `policies.jsonl`.
+- Gate: human review of 100+ extracted policies from a sample corpus.
+- If extraction quality is good → build Retriever + Rewriter → run ablation → evaluate.

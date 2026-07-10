@@ -3,3 +3,7 @@ __pycache__/
 outputs/
 *.jsonl.tmp
 .DS_Store
+test-dataset/
+test-input/
+test-output/
+tmp/
