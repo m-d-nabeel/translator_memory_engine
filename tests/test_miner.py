@@ -129,3 +129,76 @@ class TestMiner:
         policies = mine_policies(signals, total_chapters=10, min_support=1)
         dominic = [p for p in policies if p.trigger == "Dominic"][0]
         assert set(dominic.evidence) == {1, 2, 3, 4, 5}
+
+
+class TestRegressionFixes:
+    """Permanent tests for bugs found during M0 extraction (PLAN.md §12)."""
+
+    def _signals(self, texts_by_chapter):
+        signals = []
+        for ch, texts in texts_by_chapter.items():
+            for t in texts:
+                signals.append(Signal(
+                    text=t, chapter=ch, type="entity",
+                    context=f"{t} appeared.", extractor="ner.spacy",
+                ))
+        return signals
+
+    def test_ner_generic_nouns_dropped(self):
+        # spaCy NER mislabels common nouns as entities; the rules backend must drop them.
+        signals = self._signals({
+            1: ["Earth", "Rice", "Magic"],
+            2: ["Earth", "Cook", "Village"],
+            3: ["Wizard", "Rice"],
+        })
+        policies = mine_policies(signals, total_chapters=5, min_support=2)
+        triggers = {p.trigger for p in policies}
+        assert not (triggers & {"Earth", "Rice", "Magic", "Cook", "Village", "Wizard"})
+
+    def test_word_order_variants_merged(self):
+        # "Sinclair Count" and "Count Sinclair" are the same entity in different word order.
+        signals = self._signals({
+            1: ["Count Sinclair", "Sinclair Count"],
+            2: ["Count Sinclair"],
+            3: ["Count Sinclair", "Sinclair Count"],
+        })
+        policies = mine_policies(signals, total_chapters=5, min_support=2)
+        triggers = {p.trigger for p in policies}
+        assert "Sinclair Count" not in triggers
+        assert "Count Sinclair" in triggers
+
+    def test_title_prefix_not_penalized_as_canonical(self):
+        # "Count Sinclair" must beat the word-order variant "Sinclair Count" as canonical,
+        # even though "Count" is in the stop-word list (it is a legitimate title prefix).
+        signals = self._signals({
+            1: ["Count Sinclair"] * 5 + ["Sinclair Count"],
+            2: ["Count Sinclair"] * 5,
+        })
+        policies = mine_policies(signals, total_chapters=5, min_support=2)
+        sinclair = [p for p in policies if p.trigger == "Count Sinclair"]
+        assert sinclair, "Count Sinclair should be the canonical form"
+        assert "Sinclair Count" in sinclair[0].match  # kept as an alias
+
+    def test_bare_surname_flagged_for_review(self):
+        # "Sinclair" alone is a redundant subset of "Count Sinclair" -> flag, don't drop blindly.
+        signals = self._signals({
+            1: ["Count Sinclair", "Sinclair"],
+            2: ["Count Sinclair", "Sinclair"],
+            3: ["Count Sinclair"],
+        })
+        policies = mine_policies(signals, total_chapters=5, min_support=2)
+        sinclair_bare = [p for p in policies if p.trigger == "Sinclair"]
+        assert sinclair_bare
+        assert sinclair_bare[0].needs_review is True
+        assert sinclair_bare[0].applies == "prompted"
+
+    def test_fragment_alias_dropped(self):
+        # "Behind Dominic" is a sentence fragment, not a name variant of "Chief Dominic".
+        signals = self._signals({
+            1: ["Chief Dominic", "Behind Dominic"],
+            2: ["Chief Dominic"],
+        })
+        policies = mine_policies(signals, total_chapters=5, min_support=2)
+        chief = [p for p in policies if p.trigger == "Chief Dominic"]
+        assert chief
+        assert "Behind Dominic" not in chief[0].match

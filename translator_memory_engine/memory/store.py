@@ -80,6 +80,7 @@ class PolicyStore:
                 "type": p.type,
                 "confidence": p.confidence,
                 "chapters": p.evidence,
+                "needs_review": p.needs_review,
             })
         return glossary
 

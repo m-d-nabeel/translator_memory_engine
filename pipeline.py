@@ -118,6 +118,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
     # Count by type and applies mode
     policy_type_counts = Counter(p.type for p in policies)
     applies_counts = Counter(p.applies for p in policies)
+    review_count = sum(1 for p in policies if getattr(p, "needs_review", False))
 
     for t, c in sorted(policy_type_counts.items()):
         print(f"    {t}: {c}")
@@ -129,6 +130,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
         low_conf = sum(1 for p in policies if p.confidence < 0.6)
         print(f"  Avg confidence: {avg_conf:.3f}")
         print(f"  Low confidence (<0.6): {low_conf}")
+        print(f"  Flagged for review:   {review_count}")
 
     # --- Step 4: Store ---
     store = PolicyStore()
@@ -155,6 +157,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
     print(f"  Policies:           {len(policies)}")
     print(f"    deterministic:    {applies_counts.get('deterministic', 0)}")
     print(f"    prompted:         {applies_counts.get('prompted', 0)}")
+    print(f"    flagged_review:   {review_count}")
     if policies:
         print(f"  Avg confidence:     {avg_conf:.3f}")
         print(f"  Low confidence:     {low_conf}")

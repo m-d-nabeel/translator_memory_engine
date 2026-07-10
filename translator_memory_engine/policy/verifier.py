@@ -99,7 +99,12 @@ For each candidate below, classify it as:
 
 Valid types: entity-naming, honorific, terminology
 
-IMPORTANT: Be conservative. If uncertain, KEEP. We prefer false positives over missed entities.
+IMPORTANT classification rules:
+- DROP clear common nouns and generic terms that are NOT specific named entities. Examples to DROP: "Earth", "Rice", "Magic", "Cook", "Village", "Wizard", "Spiders", "Mrs", "Postpartum", "God", "Monster". A capitalized common noun is NOT an entity just because it is capitalized.
+- DROP a BARE title used alone as if it were a name (e.g. "Count" by itself, "Lord" by itself). BUT KEEP established honorific address forms — these ARE the policy: "My Lord", "My Lady", "Sir Knight", "Senior Brother", "Young Master", etc.
+- DROP sentence fragments or role/title phrases that are not a specific named entity.
+- KEEP only genuine character names, place names, organizations, items, honorific address forms, or consistent specific terms.
+- If genuinely uncertain between KEEP and DROP, KEEP (prefer false positives over missed entities), but only when the candidate could plausibly be a real named entity.
 
 Candidates:
 {candidates_text}

@@ -14,12 +14,53 @@ from collections import defaultdict
 from typing import List, Dict, Set, Tuple
 
 from translator_memory_engine.extract.signals import Signal
+from translator_memory_engine.extract.entity import (
+    _STOP_WORDS,
+    _STOP_PREFIXES,
+    _TITLE_PREFIXES,
+)
 from translator_memory_engine.policy import Policy
 from translator_memory_engine.policy.scorer import (
     score_frequency,
     score_consistency,
     compute_confidence,
 )
+
+
+# Generic nouns / titles that are NOT named entities. A candidate whose canonical
+# form is entirely composed of these is a clear false positive (e.g. spaCy NER
+# mislabels "Earth", "Rice", "Magic", "Cook", "Village", "Count", "Wizard" as
+# entities). Per PLAN.md §7 / D7 this is handled by the deterministic rules
+# backend: such candidates are dropped before verification, not hoarded.
+_GENERIC_NOUNS: Set[str] = {
+    # titles used standalone (not as "Title Name")
+    "Count", "Countess", "Lord", "Lady", "Sir", "Duke", "Duchess", "Prince",
+    "Princess", "King", "Queen", "Emperor", "Empress", "Viscount", "Baron",
+    "Marquis", "Master", "Chief", "Elder", "Knight", "Knights", "Soldier",
+    "Soldiers", "Warrior", "Warriors",
+    # common nouns that get capitalized / mislabeled
+    "Monster", "Monsters", "God", "Goddess", "Gods", "Hand", "Hands", "Care",
+    "Disease", "Sea", "Mercenary", "Wizard", "Wizards", "Earth", "Rice",
+    "Magic", "Cook", "Village", "Mrs", "Postpartum",
+}
+
+# Leading articles to strip when cleaning surface forms
+_ARTICLES = {"the", "a", "an"}
+
+# Sentence-initial verbs that produce fragment candidates (e.g. "Hearing Calron,").
+# A multi-word phrase led by one of these is a clause fragment, not a name.
+_FRAGMENT_LEADS = {
+    "Hearing", "Seeing", "Watching", "Following", "Regarding", "Thinking",
+    "Knowing", "Feeling", "Wondering", "Asking", "Saying", "Looking",
+    "Turning", "Walking", "Standing", "Making", "Taking", "Using", "Going",
+    "Coming", "Being", "Having", "Doing", "Getting", "Keeping", "Leaving",
+    "Bringing", "Calling", "Finding", "Giving", "Putting", "Showing",
+    "Telling", "Trying", "Wanting", "Wishing", "Hoping", "Noticing",
+    "Realizing", "Remembering", "Deciding", "Feeling", "Observing",
+}
+
+# Confidence below which a policy is flagged for human review (PLAN.md §3 / D10)
+_REVIEW_CONFIDENCE_THRESHOLD = 0.6
 
 
 def _normalize(text: str) -> str:
@@ -86,8 +127,14 @@ def _cluster_variants(
 ) -> Dict[str, List[Signal]]:
     """Merge groups whose normalized keys are near-duplicates.
 
-    Uses normalized edit distance. If two keys are within threshold,
-    the group with more signals absorbs the other.
+    Two merges happen here:
+    1. Word-order duplicates: groups with the same token multiset
+       (e.g. "Sinclair Count" and "Count Sinclair") are merged — these are
+       the same entity written in different word order.
+    2. Edit-distance near-duplicates within `similarity_threshold`
+       (e.g. "Carlon" ~ "Calron" when the threshold is tuned).
+
+    The group with more signals absorbs the other.
 
     Args:
         groups: Output of _aggregate_signals.
@@ -96,6 +143,9 @@ def _cluster_variants(
     Returns:
         Merged groups.
     """
+    def _tokens(key: str) -> Tuple[str, ...]:
+        return tuple(sorted(_normalize(key).split()))
+
     keys = sorted(groups.keys())
     merged: Dict[str, List[Signal]] = {}
     absorbed: Set[str] = set()
@@ -104,10 +154,17 @@ def _cluster_variants(
         if k1 in absorbed:
             continue
         cluster = list(groups[k1])
+        t1 = _tokens(k1)
         for j in range(i + 1, len(keys)):
             k2 = keys[j]
             if k2 in absorbed:
                 continue
+            # (1) word-order duplicate: identical token multiset
+            if _tokens(k2) == t1:
+                cluster.extend(groups[k2])
+                absorbed.add(k2)
+                continue
+            # (2) edit-distance near-duplicate
             if _normalized_edit_distance(k1, k2) <= similarity_threshold:
                 cluster.extend(groups[k2])
                 absorbed.add(k2)
@@ -119,19 +176,83 @@ def _cluster_variants(
 def _pick_canonical(signals: List[Signal]) -> Tuple[str, List[str]]:
     """Pick the canonical form (most frequent variant) and collect aliases.
 
+    Prefers a surface form that does not begin with a stop word / stop prefix
+    (e.g. "Behind Dominic" is rejected in favour of "Chief Dominic").
+
     Returns:
         (canonical_form, list_of_aliases)
     """
-    # Count each exact surface form
+    # Count each exact surface form (light cleanup of stray quotes)
     form_counts: Dict[str, int] = defaultdict(int)
     for s in signals:
-        form_counts[s.text] += 1
+        form_counts[s.text.strip().strip("'`\"")] += 1
 
-    # Most frequent = canonical
-    canonical = max(form_counts, key=form_counts.get)  # type: ignore
+    # Prefer a form whose first token is NOT a generic/common-noun stop word or a
+    # fragment lead. Title prefixes ("Count", "Lord", ...) are legitimate name
+    # leaders and must NOT be penalized — otherwise "Count Sinclair" loses to the
+    # word-order variant "Sinclair Count".
+    _PENALTY_WORDS = (_STOP_WORDS - set(_TITLE_PREFIXES)) | _FRAGMENT_LEADS
+
+    def _canonical_key(form: str) -> Tuple[int, int]:
+        first = form.split()[0] if form.split() else ""
+        penalty = 1 if first in _PENALTY_WORDS else 0
+        return (penalty, -form_counts[form])
+
+    canonical = min(form_counts, key=_canonical_key)  # type: ignore
     aliases = [form for form in form_counts if form != canonical]
 
     return canonical, aliases
+
+
+def _clean_match_forms(canonical: str, aliases: List[str]) -> Tuple[str, List[str]]:
+    """Clean canonical + alias surface forms.
+
+    - Strips surrounding quotes / punctuation / stray whitespace.
+    - Drops leading articles ("the", "a", "an").
+    - Drops alias forms that begin with a stop word / stop prefix
+      (e.g. "Behind Dominic" is a sentence fragment, not a name).
+
+    Returns:
+        (cleaned_canonical, cleaned_alias_list)
+    """
+    def _clean(form: str) -> str:
+        f = form.strip().strip("'`\".,;:!?()[]{}")
+        # Strip a single leading article
+        parts = f.split()
+        if parts and parts[0].lower() in _ARTICLES:
+            parts = parts[1:]
+        return " ".join(parts).strip()
+
+    canonical = _clean(canonical)
+    seen: Set[str] = set()
+    cleaned: List[str] = []
+    for a in aliases:
+        ca = _clean(a)
+        if not ca or ca == canonical:
+            continue
+        first = ca.split()[0] if ca.split() else ""
+        if first in _STOP_WORDS or first in _STOP_PREFIXES:
+            continue  # sentence fragment, not a name variant
+        if ca not in seen:
+            seen.add(ca)
+            cleaned.append(ca)
+    return canonical, cleaned
+
+
+def _is_generic(canonical: str) -> bool:
+    """True if the canonical form is entirely composed of generic nouns/titles.
+
+    Such candidates are clear false positives (mostly from NER) and should be
+    dropped by the rules backend rather than kept or flagged.
+    """
+    tokens = [t for t in canonical.split() if t]
+    if not tokens:
+        return True
+    if len(tokens) == 1 and tokens[0] in _GENERIC_NOUNS:
+        return True
+    if all(t in _GENERIC_NOUNS for t in tokens):
+        return True
+    return False
 
 
 # ----------------------------------------------------------------------- #
@@ -196,6 +317,20 @@ def mine_policies(
         # Pick canonical form and aliases
         canonical, aliases = _pick_canonical(group_signals)
 
+        # Clean surface forms (strip quotes/articles, drop fragment aliases)
+        canonical, aliases = _clean_match_forms(canonical, aliases)
+        if not canonical:
+            continue
+
+        # Rules backend: drop clear false positives (generic nouns / standalone titles)
+        if _is_generic(canonical):
+            continue
+
+        # Drop clause-fragment candidates led by a sentence-initial verb
+        # (e.g. "Hearing Calron," is the start of a sentence, not a name).
+        if canonical.split()[0] in _FRAGMENT_LEADS:
+            continue
+
         # Count occurrences
         form_counts: Dict[str, int] = defaultdict(int)
         for s in group_signals:
@@ -249,7 +384,36 @@ def mine_policies(
     # Sort by confidence descending
     policies.sort(key=lambda p: p.confidence, reverse=True)
 
-    # Re-number IDs after sorting
+    # Flag ambiguous policies for human review (PLAN.md §3 / D10):
+    # a single-token canonical that is a proper subset of another same-type
+    # policy is redundant/ambiguous (e.g. "Sinclair" inside "Count Sinclair").
+    for p in policies:
+        if p.needs_review:
+            continue
+        toks_p = set(p.trigger.split())
+        if len(toks_p) != 1:
+            continue
+        for q in policies:
+            if q is p or q.type != p.type or q.needs_review:
+                continue
+            if toks_p < set(q.trigger.split()):
+                p.needs_review = True
+                p.note = (p.note + f"; ambiguous subset of {q.id}").strip("; ")
+                break
+
+    # Low-confidence policies are flagged and forced into prompted mode
+    # (never applied by the deterministic pre-pass).
+    for p in policies:
+        if p.confidence < _REVIEW_CONFIDENCE_THRESHOLD:
+            p.needs_review = True
+            p.applies = "prompted"
+            if "low confidence" not in p.note.lower():
+                p.note = (p.note + "; low confidence, needs review").strip("; ")
+        # Any flagged policy must not be deterministic
+        if p.needs_review and p.applies == "deterministic":
+            p.applies = "prompted"
+
+    # Re-number IDs after sorting / flagging
     for i, p in enumerate(policies, start=1):
         p.id = f"p_{i:03d}"
 

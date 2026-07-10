@@ -26,6 +26,10 @@ class Policy:
         evidence: Chapter numbers where this policy was observed.
         category: Optional sub-category for grouping.
         note: Optional human-readable note.
+        needs_review: True when the policy is ambiguous / low-confidence / overlaps
+            another policy. Per PLAN.md §3 and D10, ambiguous cases are flagged for
+            human review, not silently applied or overwritten. Such policies are
+            never used in the deterministic pre-pass.
     """
     id: str
     type: str
@@ -38,6 +42,7 @@ class Policy:
     scores: Dict[str, float] = field(default_factory=dict)
     category: str = ""
     note: str = ""
+    needs_review: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
