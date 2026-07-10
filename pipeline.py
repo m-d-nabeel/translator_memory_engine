@@ -26,6 +26,7 @@ from translator_memory_engine.extract import extract_signals
 from translator_memory_engine.policy.miner import mine_policies
 from translator_memory_engine.policy.verifier import create_verifier
 from translator_memory_engine.memory.store import PolicyStore
+from translator_memory_engine.rewrite.rewriter import rewrite as rewrite_pass
 
 
 def _load_config(path: str) -> dict:
@@ -179,6 +180,72 @@ def cmd_extract(args: argparse.Namespace) -> None:
     print(f"{'='*60}")
 
 
+def cmd_rewrite(args: argparse.Namespace) -> None:
+    """Run the M1 rewrite pipeline on one MTL chapter or a directory of them."""
+    config = _load_config(args.config)
+    verify_cfg = config.get("extraction", {}).get("verification", {})
+    os.makedirs(args.output, exist_ok=True)
+
+    # Collect input files
+    mtl_path = args.mtl_path
+    if os.path.isdir(mtl_path):
+        files = sorted(
+            os.path.join(mtl_path, f)
+            for f in os.listdir(mtl_path)
+            if f.lower().endswith((".txt", ".md"))
+        )
+    else:
+        files = [mtl_path]
+
+    if not files:
+        print(f"ERROR: No MTL files found at {mtl_path}")
+        sys.exit(1)
+
+    print(f"Rewriting {len(files)} MTL file(s) using {args.policies}")
+    print(f"  LLM rewrite: {'on' if args.llm else 'off (pre-pass only)'}")
+
+    total_trace = 0
+    total_conflicts = 0
+    for path in files:
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+
+        result = rewrite_pass(
+            text,
+            policies_path=args.policies,
+            model=verify_cfg.get("model", "llama-3.1-8b-instant"),
+            base_url=verify_cfg.get("base_url"),
+            api_key_env=verify_cfg.get("api_key_env", "LLM_API_KEY"),
+            do_llm=args.llm,
+        )
+
+        base = os.path.splitext(os.path.basename(path))[0]
+        out_text = result["rewritten_text"]
+        out_path = os.path.join(args.output, f"rewritten_{base}.txt")
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(out_text)
+
+        # Change trace sidecar (PLAN.md §11)
+        trace_path = os.path.join(args.output, f"trace_{base}.json")
+        with open(trace_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
+
+        total_trace += result["deterministic_count"]
+        total_conflicts += len(result["conflicts"])
+        print(f"  {base}: prepass_edits={result['deterministic_count']}, "
+              f"prompted={result['prompted_count']}, conflicts={len(result['conflicts'])} "
+              f"-> {out_path}")
+
+    print(f"\n{'='*60}")
+    print(f"M1 Rewrite Summary")
+    print(f"{'='*60}")
+    print(f"  Files rewritten:     {len(files)}")
+    print(f"  Deterministic edits: {total_trace}")
+    print(f"  Conflicts resolved:  {total_conflicts}")
+    print(f"  Output:              {args.output}/")
+    print(f"{'='*60}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Translator Memory Engine — pipeline CLI",
@@ -217,10 +284,43 @@ def main() -> None:
         help="Disable spaCy NER extraction (use heuristics only)",
     )
 
+    # rewrite command (M1)
+    rewrite_parser = subparsers.add_parser(
+        "rewrite",
+        help="Rewrite an MTL chapter using mined policies (Retriever + Pre-pass + LLM)",
+    )
+    rewrite_parser.add_argument(
+        "mtl_path",
+        help="MTL chapter file or directory of chapter files (txt)",
+    )
+    rewrite_parser.add_argument(
+        "--policies", "-p",
+        default="outputs/policies.jsonl",
+        help="Path to mined policies.jsonl (default: outputs/policies.jsonl)",
+    )
+    rewrite_parser.add_argument(
+        "--config", "-c",
+        default="config.yaml",
+        help="Path to config file (default: config.yaml)",
+    )
+    rewrite_parser.add_argument(
+        "--output", "-o",
+        default="outputs",
+        help="Output directory (default: outputs/)",
+    )
+    rewrite_parser.add_argument(
+        "--llm",
+        action="store_true",
+        default=False,
+        help="Call the LLM to rewrite the pre-passed text (else pre-pass only)",
+    )
+
     args = parser.parse_args()
 
     if args.command == "extract":
         cmd_extract(args)
+    elif args.command == "rewrite":
+        cmd_rewrite(args)
     else:
         parser.print_help()
 
