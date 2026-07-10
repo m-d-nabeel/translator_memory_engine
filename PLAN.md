@@ -581,6 +581,12 @@ Language Memory population.
 Validator findings and human review feed policy refinement — low-confidence or contradicted
 policies are re-weighted, split, or deprecated. Makes the system self-correcting.
 
+**Alternative NER backend (gliner-spacy):** Deferred. Evaluated as a drop-in replacement for
+spaCy NER to improve fiction-domain recall, but it requires `transformers>=5.x`, which
+conflicts with the pinned `tensorflow`/embedding stack in the current environment. Not needed:
+off-the-shelf spaCy NER is weak on fiction anyway, and the LLM verification gate is the real
+precision filter. Revisit only if extraction recall becomes the bottleneck.
+
 ---
 
 ## 16. Scope discipline
