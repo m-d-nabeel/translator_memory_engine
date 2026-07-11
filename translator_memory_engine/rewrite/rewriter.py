@@ -62,10 +62,7 @@ class GroqRotatingClient:
                 return self._clients[self._idx].chat.completions.create(**kwargs)
             except RateLimitError as e:
                 last_err = e
-                logger.warning(
-                    f"Rate limit on key #{self._idx + 1}, "
-                    f"rotating to next key..."
-                )
+                logger.warning(f"Rate limit on key #{self._idx + 1}, rotating to next key...")
                 self._idx = (self._idx + 1) % self._num_keys
                 time.sleep(5)
         raise last_err
@@ -81,8 +78,9 @@ def _get_groq_keys(api_key_env: str = "LLM_API_KEY") -> List[str]:
     load_dotenv()
     primary = os.environ.get(api_key_env, "")
     if primary:
-        extras = [v for k, v in os.environ.items()
-                  if k.startswith("GROQ_API_KEY") and v and v != primary]
+        extras = [
+            v for k, v in os.environ.items() if k.startswith("GROQ_API_KEY") and v and v != primary
+        ]
         return [primary] + extras
     return []
 
@@ -122,7 +120,9 @@ def scan_known_errors(text: str, known_errors: Optional[List[Dict]] = None) -> L
         phrase = error.get("mtl_phrase", "")
         if phrase and re.search(re.escape(phrase), text, re.IGNORECASE):
             matches.append(error)
-            logger.debug(f"Known error detected: '{phrase}' → '{error.get('correct_translation', '?')}'")
+            logger.debug(
+                f"Known error detected: '{phrase}' → '{error.get('correct_translation', '?')}'"
+            )
     if matches:
         logger.info(f"Detected {len(matches)} known MTL errors for correction")
     return matches
@@ -630,7 +630,7 @@ def rewrite(
             logger.info(f"LLM client initialized (model={model}, keys={len(keys)})")
             out_parts = []
             for k, mtl_chunk in enumerate(mtl_chunks):
-                logger.debug(f"Processing chunk {k+1}/{len(mtl_chunks)}...")
+                logger.debug(f"Processing chunk {k + 1}/{len(mtl_chunks)}...")
                 ref_chunk = ref_chunks[k] if k < len(ref_chunks) else None
                 prompt = build_prompt(
                     mtl_chunk,

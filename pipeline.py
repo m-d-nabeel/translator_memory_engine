@@ -598,7 +598,8 @@ def main() -> None:
         description="Translator Memory Engine — pipeline CLI",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         default=False,
         help="Enable verbose/debug logging (shows full pipeline flow)",
