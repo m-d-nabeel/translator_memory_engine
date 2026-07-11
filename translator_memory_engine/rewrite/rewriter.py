@@ -33,13 +33,16 @@ from translator_memory_engine.rewrite.shield import restore_entities, shield_ent
 # Known MTL error corrections (outputs/known_errors.json)
 # ---------------------------------------------------------------------------
 
-_KNOWN_ERRORS_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "known_errors.json")
+_KNOWN_ERRORS_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "data", "known_errors.json"
+)
 
 
 def _load_known_errors() -> List[Dict]:
     """Load known MTL error corrections from JSON."""
     try:
         import json
+
         with open(_KNOWN_ERRORS_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
@@ -74,10 +77,7 @@ def format_known_errors_for_prompt(matches: List[Dict]) -> str:
         correct = m.get("correct_translation", "")
         korean = m.get("korean_source", "")
         context = m.get("context", "")
-        lines.append(
-            f'  - "{phrase}" → "{correct}" '
-            f'(Korean: {korean}) — {context}'
-        )
+        lines.append(f'  - "{phrase}" → "{correct}" (Korean: {korean}) — {context}')
     return "\n".join(lines)
 
 
@@ -114,6 +114,7 @@ def _align_mtl_entities(
 
     # Extract capitalized multi-word phrases from MTL (simple heuristic)
     import spacy
+
     try:
         _spacy_nlp = spacy.load("en_core_web_sm")
     except Exception:
@@ -124,7 +125,13 @@ def _align_mtl_entities(
         if ent.label_ in ("PERSON", "ORG", "GPE", "LOC"):
             text = ent.text.strip()
             if len(text) > 1 and text.lower() not in (
-                "i", "he", "she", "it", "we", "they", "you",
+                "i",
+                "he",
+                "she",
+                "it",
+                "we",
+                "they",
+                "you",
             ):
                 mtl_entities.add(text)
     if not mtl_entities:
@@ -137,8 +144,8 @@ def _align_mtl_entities(
         "Map these MTL (machine-translated) entity names to known canonical names.\n"
         "If an MTL name corresponds to a canonical entity, return the mapping.\n"
         "If an MTL name is NEW (not in the glossary), map it to null.\n\n"
-        "Return ONLY a JSON object like: {\"MTL Name\": \"Canonical Name\"} or "
-        "{\"MTL Name\": null}. No other text.\n\n"
+        'Return ONLY a JSON object like: {"MTL Name": "Canonical Name"} or '
+        '{"MTL Name": null}. No other text.\n\n'
         f"=== KNOWN CANONICAL ENTITIES ===\n{glossary_table}\n\n"
         f"=== MTL ENTITIES TO MAP ===\n{entity_list}"
     )
@@ -161,13 +168,10 @@ def _align_mtl_entities(
         raw = re.sub(r"^```[a-zA-Z]*\s*", "", raw)
         raw = re.sub(r"```\s*$", "", raw)
         import json
+
         mapping = json.loads(raw)
         # Only return valid mappings (non-null, non-identical)
-        return {
-            k: v
-            for k, v in mapping.items()
-            if v and k != v
-        }
+        return {k: v for k, v in mapping.items() if v and k != v}
     except Exception:
         return {}
 
@@ -298,9 +302,7 @@ def _canonical_set(glossary: Optional[List[Dict]] = None) -> set:
     return names
 
 
-def _novel_entities(
-    gen: str, src: str, whitelist: Optional[set] = None
-) -> set:
+def _novel_entities(gen: str, src: str, whitelist: Optional[set] = None) -> set:
     """PERSON/ORG/GPE/LOC spans in `gen` whose text is absent from `src`.
 
     If ``whitelist`` is provided, entities matching a whitelisted name are
@@ -497,16 +499,16 @@ def rewrite(
         api_key = os.environ.get(api_key_env, "")
         if api_key:
             from openai import OpenAI
+
             _client = OpenAI(api_key=api_key, base_url=base_url)
             alias_map = _align_mtl_entities(text, glossary, _client, model)
             if alias_map:
                 # Inject discovered aliases into policy match lists in memory
                 for p in policies:
                     for mtl_form, canonical in alias_map.items():
-                        if (
-                            p.trigger.lower() == canonical.lower()
-                            or canonical.lower() in [a.lower() for a in p.match]
-                        ):
+                        if p.trigger.lower() == canonical.lower() or canonical.lower() in [
+                            a.lower() for a in p.match
+                        ]:
                             if mtl_form not in p.match:
                                 p.match.append(mtl_form)
 

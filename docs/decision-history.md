@@ -305,3 +305,46 @@ chapters that have an original.
   hypothesis, S3 full overlap, S4 cold-start).
 - Next implementation: style bank + two-mode rewrite (supervised reference / unsupervised
   style-bank) + alignment eval (tier-1 real, tier-2 proxy).
+
+---
+
+## D12 — System message conflict + known error dictionary
+
+Two key findings from the Korean MTL error repair experiment:
+
+**1. System message was the bottleneck.** The system message "preserving the original meaning"
+caused the model to over-prioritize preservation over repair. The model interpreted this as
+"don't change the English text" because it thinks the English text IS the original. Removing
+the system message and merging all instructions into the user message improved MTL error fixing
+from 4/7 to 5/7 on ch040.
+
+**2. Known error dictionary solved the remaining errors.** The 2 errors that prompt engineering
+alone couldn't fix ("corpse minus the stamina", "Hee!") were solved by adding a curated
+dictionary mapping MTL errors to Korean source + correct English translation. The model applies
+these corrections when it detects the error phrases.
+
+**Key insight:** Some MTL errors are "information-theoretic" — without Korean source text, the
+model cannot distinguish correct English from MTL errors that happen to be valid English words.
+The known error dictionary provides the missing context.
+
+**Implementation:**
+- `data/known_errors.json` — curated dictionary of MTL errors → Korean source → correct English
+- `scan_known_errors()` — detects known errors in MTL text
+- `format_known_errors_for_prompt()` — formats corrections for LLM prompt
+- Integrated into `build_prompt()` — corrections injected automatically when errors detected
+
+**Results:**
+- ch040: 7/7 errors fixed (was 5/7 with system message removal only)
+- ch041: watermark fixed, Hmm cleaned
+
+---
+
+## Current state (post-D12)
+
+- Architecture confirmed: spaCy + LLM + deterministic Policy Miner + known error dictionary.
+- System message removed from LLM call; all instructions in user message.
+- Known error dictionary (`data/known_errors.json`) provides corrections for errors that
+  prompt engineering alone cannot fix.
+- Discourse Coherence prompt (language-agnostic) replaces Korean-specific rules.
+- All 115 tests passing.
+- Next: merge PR #5 to master, continue with QOL fixes.

@@ -25,7 +25,12 @@ uv run python -m spacy download en_core_web_sm
 
 ### Environment Variables
 
-Create `translator_memory_engine/.env`:
+```bash
+# Copy the example and fill in your keys
+cp .env.example translator_memory_engine/.env
+```
+
+Or create `translator_memory_engine/.env` manually:
 
 ```
 GROQ_API_KEY=your_groq_api_key
@@ -64,18 +69,18 @@ uv run python pipeline.py rewrite \
 
 **What happens internally:**
 1. **Style bank built** from 39 reference chapters (in-memory, ~78 voice excerpts)
-2. **Exemplar index built** with fastembed embeddings (bge-base-en-v1.5, ~385 exemplars)
+2. **Exemplar index built** with fastembed embeddings (bge-base-en-v1.5, ~451 exemplars)
 3. **Per-chapter retrieval** — top 8 excerpts selected by cosine similarity to ch040
-4. **Entity shielding** — glossary names replaced with `__ENT_N__` placeholders before LLM
-5. **Deterministic pre-pass** — high-confidence substitutions applied
-6. **LLM rewrite** — repairs MTL using style bank + policies as guidance
-7. **Faithfulness guard** — detects/invents characters not in source, re-prompts to strip
-8. **Entity restore** — placeholders replaced with canonical names
-9. **Deterministic post-pass** — ensures canonical forms survive
+4. **Known error correction** — scans for known MTL errors and injects corrections
+5. **Entity shielding** — glossary names replaced with `__ENT_N__` placeholders before LLM
+6. **Deterministic pre-pass** — high-confidence substitutions applied
+7. **LLM rewrite** — repairs MTL using style bank + policies as guidance
+8. **Faithfulness guard** — detects/invents characters not in source, re-prompts to strip
+9. **Entity restore** — placeholders replaced with canonical names
+10. **Deterministic post-pass** — ensures canonical forms survive
 
 **Produces:**
 - `outputs/rewritten_chapter-040.txt` — repaired chapter
-- `outputs/trace_chapter-040.json` — change trace (what was edited and why)
 
 ### Step 3: Evaluate
 
@@ -106,6 +111,7 @@ The style bank and exemplar index are built in-memory from `--reference` during 
 | Entity shielding | `--glossary <file>` | Protects names during LLM rewrite |
 | Cross-chapter context | process dir (not single file) | Passes previous chapter's tail for continuity |
 | Faithfulness guard | (always on) | Strips invented characters post-rewrite |
+| Known error correction | (automatic) | Applies corrections from `data/known_errors.json` |
 
 ### Examples
 
@@ -172,9 +178,9 @@ Per-chapter rewrite:
                  ──→ Exemplar Index (fastembed embeddings)
                  ──→ Per-chapter retrieval (cosine similarity)
 
-  MTL chapter ──→ Shield entities ──→ Pre-pass ──→ LLM rewrite ──→ Restore entities ──→ Post-pass
-                      │                              │
-                      └─ glossary → placeholders      └─ style bank + exemplars + policies
+  MTL chapter ──→ Known error scan ──→ Shield entities ──→ Pre-pass ──→ LLM rewrite ──→ Restore entities ──→ Post-pass
+                      │                      │                              │
+                      └─ known_errors.json    └─ glossary → placeholders      └─ style bank + exemplars + policies
 ```
 
 ### Key Concepts
@@ -184,8 +190,22 @@ Per-chapter rewrite:
 - **Learn/apply/evaluate by availability**: Supervised when originals exist, unsupervised from style bank otherwise
 - **Entity shielding**: Glossary entries replaced with placeholders during LLM rewrite to prevent name mangling
 - **Cross-chapter context**: Previous chapter's tail passed to LLM for pronoun/scene continuity
+- **Known error correction**: Dictionary of MTL errors mapped to Korean source + correct English translation
 
 ## Data Layout
+
+### Default template structure
+
+```
+data/
+  originals/          # Place original translations here (.txt or .epub)
+  mtl/                # Place MTL chapters to rewrite here
+  output/             # Rewritten chapters will be saved here
+  policies/           # Extracted policies will be saved here
+  known_errors.json   # MTL error corrections (Korean → English)
+```
+
+### Test dataset
 
 ```
 test-dataset/
@@ -208,6 +228,8 @@ translator_memory_engine/
   ingest/             # Corpus loading (txt, epub)
 pipeline.py           # CLI entry point
 scripts/              # Experiment scripts
+data/                 # Known errors, template directories
+outputs/              # Generated outputs (gitignored)
 ```
 
 ## Development
@@ -218,5 +240,36 @@ uv run pytest tests/ -v
 
 # Lint
 uv run ruff check .
+
+# Format
 uv run ruff format .
 ```
+
+## Known Error Dictionary
+
+The `data/known_errors.json` file maps MTL errors to their Korean source and correct English translation. When rewriting, the engine scans for these errors and injects corrections into the LLM prompt.
+
+**Example entry:**
+```json
+{
+  "id": "corpse-minus-stamina",
+  "mtl_phrase": "corpse minus the stamina",
+  "korean_source": "시체 빼고 다 OK",
+  "correct_translation": "It's a piece of cake",
+  "category": "literal_translation",
+  "context": "reassuring that something is easy/fine"
+}
+```
+
+**To add a new error:**
+1. Add an entry to `data/known_errors.json`
+2. The engine will automatically detect and correct it in future rewrites
+
+**Current errors covered:**
+- `corpse minus the stamina` → "It's a piece of cake"
+- `Hee!` → "Heh!" (Korean squeal)
+- `Profit!` → "Tch!" (teeth-gritting)
+- `Growl-` → "Ugh-" (groan)
+- `cried and ate mustard` → "gritting their teeth"
+- `suck honey` → "flattering"
+- `head case` → "idiot"
