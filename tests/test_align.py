@@ -4,6 +4,7 @@ from translator_memory_engine.eval.align import (
     align_paired,
     align_unpaired,
     cosine,
+    cosine_excluding,
 )
 
 GEN = "Calron ate the porridge and scowled at the village elder."
@@ -43,3 +44,21 @@ def test_align_unpaired_adherence():
 def test_align_unpaired_no_canonical():
     res = align_unpaired(GEN, ["some prose"], [])
     assert res["name_adherence"] is None
+
+
+def test_cosine_excluding_removes_name_influence():
+    # The real confound: a canonical name present in BOTH gen and orig inflates
+    # their similarity. Excluding it should drop gen~orig back toward the mtl~orig
+    # baseline (which never had the name).
+    orig = "Calron ate the porridge."
+    gen = "Calron ate the porridge and smiled."
+    mtl = "The boy ate the porridge and smiled."
+    raw_gen = cosine(gen, orig)
+    raw_mtl = cosine(mtl, orig)
+    assert raw_gen > raw_mtl  # shared name creates the confound
+
+    excl_gen = cosine_excluding(gen, orig, ["Calron"])
+    excl_mtl = cosine_excluding(mtl, orig, ["Calron"])
+    assert excl_gen <= raw_gen  # excluding the shared name cannot raise similarity
+    # After removing the shared name, gen and mtl are similarly related to orig.
+    assert abs(excl_gen - excl_mtl) < 0.05

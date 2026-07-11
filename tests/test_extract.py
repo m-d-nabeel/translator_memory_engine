@@ -1,10 +1,10 @@
 """Tests for signal extractors."""
 
-from translator_memory_engine.models import Chapter
-from translator_memory_engine.extract.entity import extract_entities
-from translator_memory_engine.extract.terminology import extract_terminology
-from translator_memory_engine.extract.honorific import extract_honorifics
 from translator_memory_engine.extract import extract_signals
+from translator_memory_engine.extract.entity import extract_entities
+from translator_memory_engine.extract.honorific import extract_honorifics
+from translator_memory_engine.extract.terminology import extract_terminology
+from translator_memory_engine.models import Chapter
 
 
 def _make_chapters():

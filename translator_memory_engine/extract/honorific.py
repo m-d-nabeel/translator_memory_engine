@@ -8,9 +8,8 @@ and Korean source material.
 import re
 from typing import List
 
-from translator_memory_engine.models import Chapter
 from translator_memory_engine.extract.signals import Signal
-
+from translator_memory_engine.models import Chapter
 
 # --- Source-specific honorific/title patterns ---
 

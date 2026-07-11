@@ -20,16 +20,23 @@ class PolicyRetriever:
 
     def __init__(self, policies: List[Policy]):
         self.policies = policies
-        # Pre-compile, longest match form first for stable scanning
-        self._forms: List[Tuple[str, Policy]] = []
+        # Pre-compile, longest match form first for stable scanning. Matching uses
+        # word boundaries (not naive substring) so a form like "Ian" does NOT match
+        # inside "brilliant" / "Julian" — that false positive once invented a whole
+        # subplot (ch040). See faithfulness-guard work.
+        self._forms: List[Tuple[re.Pattern, Policy, int]] = []
         for p in policies:
             for form in p.match:
-                self._forms.append((form.lower(), p))
-        # Sort by length desc so longer forms are preferred when overlaps occur
-        self._forms.sort(key=lambda x: len(x[0]), reverse=True)
+                if not form:
+                    continue
+                fl = form.lower()
+                rx = re.compile(r"(?<![a-z0-9])" + re.escape(fl) + r"(?![a-z0-9])")
+                self._forms.append((rx, p, len(fl)))
+        # Sort by form length desc so longer forms are preferred on overlaps
+        self._forms.sort(key=lambda x: x[2], reverse=True)
 
     def retrieve(self, text: str, k: int | None = None) -> List[Policy]:
-        """Return policies whose any match form appears in `text`.
+        """Return policies whose any match form appears in `text` as a whole word.
 
         Args:
             text: The MTL passage to match against.
@@ -40,10 +47,8 @@ class PolicyRetriever:
         """
         lowered = text.lower()
         matched: Dict[str, Policy] = {}
-        for form_lower, policy in self._forms:
-            if not form_lower:
-                continue
-            if form_lower in lowered:
+        for rx, policy, _ in self._forms:
+            if rx.search(lowered):
                 matched[policy.id] = policy
         result = list(matched.values())
         if k is not None:

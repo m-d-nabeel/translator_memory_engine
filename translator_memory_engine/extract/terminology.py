@@ -8,8 +8,8 @@ standardized terminology (technique names, item names, concepts).
 import re
 from typing import List
 
-from translator_memory_engine.models import Chapter
 from translator_memory_engine.extract.signals import Signal
+from translator_memory_engine.models import Chapter
 
 # Patterns for bracketed or specially formatted terms
 _BRACKET_PATTERN = re.compile(r'\[([^\]]{2,50})\]')

@@ -1,9 +1,9 @@
 """Tests for the style bank (Language Memory, lite)."""
 
 from translator_memory_engine.memory.style_bank import (
-    build_style_bank,
     _pick_excerpts,
     _stats,
+    build_style_bank,
 )
 
 CH1 = (

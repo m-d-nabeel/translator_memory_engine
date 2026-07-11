@@ -4,8 +4,8 @@ Every other package (memory, retrieve, validate, rewrite) imports this.
 None of them redefine it.
 """
 
-from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Any
+from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, List
 
 
 @dataclass

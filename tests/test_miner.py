@@ -1,8 +1,16 @@
 """Tests for Policy Miner."""
 
 from translator_memory_engine.extract.signals import Signal
-from translator_memory_engine.policy.miner import mine_policies, _normalize, _normalized_edit_distance
-from translator_memory_engine.policy.scorer import score_frequency, score_consistency, compute_confidence
+from translator_memory_engine.policy.miner import (
+    _normalize,
+    _normalized_edit_distance,
+    mine_policies,
+)
+from translator_memory_engine.policy.scorer import (
+    compute_confidence,
+    score_consistency,
+    score_frequency,
+)
 
 
 class TestNormalization:

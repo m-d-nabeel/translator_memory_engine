@@ -14,7 +14,7 @@ Backend: JSON lines for prototype. SQLite for production (future).
 
 import json
 import os
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from translator_memory_engine.policy import Policy
 

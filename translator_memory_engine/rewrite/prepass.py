@@ -10,9 +10,8 @@ any conflict are skipped (resolved by the Conflict Resolver). A change trace
 is returned for every edit (PLAN.md §11 explainability).
 """
 
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
-from translator_memory_engine.policy import Policy
 from translator_memory_engine.rewrite.conflict import Resolution, SpanMatch
 
 

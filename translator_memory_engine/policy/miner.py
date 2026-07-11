@@ -11,21 +11,20 @@ This is the heart of the system (PLAN.md §7).
 import re
 import unicodedata
 from collections import defaultdict
-from typing import List, Dict, Set, Tuple
+from typing import Dict, List, Set, Tuple
 
-from translator_memory_engine.extract.signals import Signal
 from translator_memory_engine.extract.entity import (
-    _STOP_WORDS,
     _STOP_PREFIXES,
+    _STOP_WORDS,
     _TITLE_PREFIXES,
 )
+from translator_memory_engine.extract.signals import Signal
 from translator_memory_engine.policy import Policy
 from translator_memory_engine.policy.scorer import (
-    score_frequency,
-    score_consistency,
     compute_confidence,
+    score_consistency,
+    score_frequency,
 )
-
 
 # --- Generic noun categories for false-positive filtering ---
 #

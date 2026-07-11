@@ -17,8 +17,8 @@ v2.1 checkpoints. When upstream fixes land, swap _get_spacy_nlp() for GLiNER.
 
 from typing import List, Optional, Set
 
-from translator_memory_engine.models import Chapter
 from translator_memory_engine.extract.signals import Signal
+from translator_memory_engine.models import Chapter
 
 # Lazy-loaded spaCy model
 _nlp = None

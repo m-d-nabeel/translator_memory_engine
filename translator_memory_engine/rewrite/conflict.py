@@ -13,7 +13,7 @@ losing policies (so the pre-pass can avoid applying contradictory edits).
 """
 
 import re
-from typing import Dict, List, NamedTuple, Set
+from typing import List, NamedTuple, Set
 
 from translator_memory_engine.policy import Policy
 

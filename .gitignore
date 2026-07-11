@@ -8,3 +8,7 @@ test-input/
 test-output/
 tmp/
 .env
+.venv/
+uv.lock
+# Added by code-review-graph
+.code-review-graph/

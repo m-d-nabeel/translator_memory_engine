@@ -20,7 +20,7 @@ Off by default (passthrough). Enabled with --verify llm or config setting.
 import json
 import os
 import time
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 
@@ -185,7 +185,7 @@ Example:
                     return json.loads(text[start:end])
                 except json.JSONDecodeError:
                     pass
-            print(f"  WARNING: Could not parse LLM response, keeping all policies")
+            print("  WARNING: Could not parse LLM response, keeping all policies")
             return []
 
     def verify_policies(
@@ -212,7 +212,7 @@ Example:
             return policies
 
         if not self.api_key:
-            print(f"  WARNING: No API key set for verifier, skipping LLM verification")
+            print("  WARNING: No API key set for verifier, skipping LLM verification")
             return policies
 
         # Build a per-trigger context lookup from the policies' own example sentences

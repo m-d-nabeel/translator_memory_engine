@@ -18,7 +18,29 @@ import re
 # multi-line aside unintendedly.
 _BRACKET = re.compile(r"\[([^\]\n]*)\]")
 
+# Site watermarks that MTL dumps inject (e.g. "* * * Ranovel dot com * * *").
+# These are NOT meaning the rewriter must preserve, and relying on the LLM to
+# drop them is unreliable (one leaked into ch002). Strip them deterministically
+# up front so they can never reach the output.
+_WATERMARK = re.compile(
+    r"ranovel|novelplanet|wuxiaworld|boxnovel|readwn|lightnovel|wordexcerpt"
+    r"|novelfull|translateop|mtlnovel",
+    re.I,
+)
+
 
 def clean_mtl_artifacts(text: str) -> str:
-    """Remove MTL square-bracket wrappers around thought/monologue blocks."""
-    return _BRACKET.sub(r"\1", text)
+    """Remove MTL square-bracket wrappers and site watermarks.
+
+    Runs ONLY on the MTL input to the rewriter, never on the good-translation
+    corpus used for extraction — the gold text must stay pristine.
+    """
+    # Drop whole lines that are just a watermark marker.
+    lines = [
+        ln for ln in text.split("\n")
+        if not _WATERMARK.search(ln)
+    ]
+    cleaned = "\n".join(lines)
+    # Also catch any inline watermark fragment that survived (e.g. mid-line).
+    cleaned = _WATERMARK.sub("", cleaned)
+    return _BRACKET.sub(r"\1", cleaned)

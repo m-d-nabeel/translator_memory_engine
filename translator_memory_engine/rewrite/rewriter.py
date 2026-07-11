@@ -14,16 +14,20 @@ The LLM call reuses the OpenAI-compatible client (same backend as verification).
 
 import os
 import re
-from typing import List, Optional, Dict, Any
+import time
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
+from openai import RateLimitError
 
-from translator_memory_engine.policy import Policy
+from translator_memory_engine.eval.faith import _entities, _novel
 from translator_memory_engine.memory.store import PolicyStore
+from translator_memory_engine.policy import Policy
 from translator_memory_engine.retrieve.retriever import PolicyRetriever
+from translator_memory_engine.rewrite.clean import clean_mtl_artifacts
 from translator_memory_engine.rewrite.conflict import resolve
 from translator_memory_engine.rewrite.prepass import apply_prepass
-from translator_memory_engine.rewrite.clean import clean_mtl_artifacts
+from translator_memory_engine.rewrite.shield import restore_entities, shield_entities
 
 
 def _load_policies(path: str) -> List[Policy]:
@@ -32,28 +36,64 @@ def _load_policies(path: str) -> List[Policy]:
     return store.all()
 
 
+def _llm_complete(client, retries: int = 5, backoff: float = 15.0, **kwargs):
+    """Call the chat completion with retry/backoff for TPM rate limits.
+
+    The free Groq tier caps ~6000 tokens/min, and the chunked rewrite plus the
+    faithfulness re-prompt can burst past it. Backing off keeps the run green
+    instead of aborting mid-chapter.
+    """
+    last = None
+    for attempt in range(retries):
+        try:
+            return client.chat.completions.create(**kwargs)
+        except RateLimitError as e:
+            last = e
+            if attempt == retries - 1:
+                break
+            time.sleep(backoff * (attempt + 1))
+    raise last
+
+
 def _split_paragraphs(text: str) -> List[str]:
     return [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
 
 
-def _para_ranges(paras: List[str], max_chars: int = 1800) -> List[tuple]:
-    """Group paragraph indices into windows capped at ``max_chars``.
+_SENT_RE = re.compile(r"(?<=[.!?])\s+")
 
-    Used so long chapters fit the small model's per-request token budget; the
-    same ranges are applied to the MTL and its published reference so chunks stay
-    aligned (supervised mode).
+
+def _chunk_text(text: str, max_chars: int = 1200) -> List[str]:
+    """Split text into chunks capped at ``max_chars``.
+
+    Paragraphs are grouped; any single paragraph longer than the cap is further
+    split at sentence boundaries so no chunk blows the small model's per-request
+    token budget (Groq free tier rejects >~6000-token requests). For supervised
+    mode, the SAME chunker is run on the MTL and its reference so chunk k of each
+    stays roughly aligned.
     """
-    ranges: List[tuple] = []
-    start = 0
-    cur = 0
-    for i, p in enumerate(paras):
-        if cur + len(p) > max_chars and i > start:
-            ranges.append((start, i))
-            start = i
-            cur = 0
-        cur += len(p)
-    ranges.append((start, len(paras)))
-    return ranges
+    paras = _split_paragraphs(text)
+    chunks: List[str] = []
+    cur: List[str] = []
+    cur_len = 0
+
+    def flush() -> None:
+        nonlocal cur, cur_len
+        if cur:
+            chunks.append("\n\n".join(cur))
+            cur = []
+            cur_len = 0
+
+    for p in paras:
+        pieces = _SENT_RE.split(p) if len(p) > max_chars else [p]
+        for piece in pieces:
+            if not piece.strip():
+                continue
+            if cur_len + len(piece) > max_chars and cur:
+                flush()
+            cur.append(piece)
+            cur_len += len(piece)
+    flush()
+    return chunks
 
 
 def _apply_deterministic(text: str, policies: List[Policy]) -> str:
@@ -98,6 +138,30 @@ def _strip_echo(text: str) -> str:
     return out.strip()
 
 
+# Entity labels we treat as "named-entity inventions" worth guarding against.
+_GUARD_LABELS = {"PERSON", "ORG", "GPE", "LOC"}
+
+
+def _novel_entities(gen: str, src: str) -> set:
+    """PERSON/ORG/GPE/LOC spans in `gen` whose text is absent from `src`."""
+    return _novel(_entities(gen, _GUARD_LABELS), src)
+
+
+def _faithfulness_prompt(output: str, novel: set) -> str:
+    """Prompt that asks the model to ONLY strip invented names, nothing else."""
+    names = ", ".join(sorted(novel))
+    return (
+        "Your previous output introduced the following names that do NOT appear "
+        f"anywhere in the source material: {names}.\n"
+        "That is a faithfulness violation. Edit ONLY to remove or neutralize those "
+        "names (replace with a generic noun such as 'the man' / 'the merchant', or "
+        "omit the sentence if it adds nothing). Do NOT add or change any other "
+        "content, and preserve the rest verbatim.\n\n"
+        "Return the full corrected chapter text, no scaffolding.\n\n"
+        f"{output}"
+    )
+
+
 # Few-shot style anchor from the good corpus (used only as the ultimate fallback
 # when neither a published reference nor a learned style bank is available).
 _STYLE_REFERENCE = [
@@ -115,6 +179,8 @@ _FALLBACK_RULES = """Repair rules:
 - FIX machine-translation artifacts: duplicated or truncated sentence fragments (e.g. "With my daughter, with my daughter-."), bracketed thought markers, site watermarks, filler, and awkward repetition. Repair them into natural prose — do not just delete the sentence.
 - PRESERVE the translator's voice, tone, and register. Do not flatten the prose or make it generic. Keep the original paragraph structure and meaning.
 - Only improve fluency and apply the policies above. Do NOT invent new events or change the story.
+- Do NOT invent or assign speakers, characters, places, or organizations that are not present in the SOURCE. If the source does not name who is speaking, leave the line UNATTRIBUTED — never add "he said"/"Dominic said" etc.
+- Do NOT summarize, condense, or skip scenes/beats. Reproduce ALL content of the source; keep its emotional weight and metaphors/onomatopoeia intact.
 - Output ONLY the repaired chapter text. Do not add "Here is the repaired text", headers, or markdown code fences."""
 
 
@@ -123,6 +189,7 @@ def build_prompt(
     prompted_policies: List[Policy],
     reference: Optional[str] = None,
     style_profile: Optional[List[str]] = None,
+    previous_tail: Optional[str] = None,
 ) -> str:
     """Build the LLM rewrite prompt.
 
@@ -132,6 +199,10 @@ def build_prompt(
       * style_profile  — unsupervised: no original for this chapter; preserve the
                          translator's voice using learned excerpts from the bank.
       * (neither)      — fallback faithful-repair using a fixed style anchor.
+
+    Args:
+        previous_tail: Last 1-2 paragraphs of the previous chapter, for
+            cross-chapter continuity (pronoun consistency, scene flow).
     """
     lines = []
     for p in prompted_policies:
@@ -144,9 +215,16 @@ def build_prompt(
             lines.append(f'- Render "{p.trigger}" as "{render_as}".')
     instructions = "\n".join(lines) if lines else "  (no prompted policies)"
 
+    tail_block = ""
+    if previous_tail:
+        tail_block = (
+            "\n=== PREVIOUS CHAPTER TAIL (for continuity — do NOT reproduce) ===\n"
+            f"{previous_tail}\n\n"
+        )
+
     if reference:
         return f"""You are POST-EDITING a machine-translated web-novel chapter toward a published human translation of the SAME passage.
-
+{tail_block}
 Apply the following translator policies consistently:
 {instructions}
 
@@ -154,7 +232,8 @@ Repair rules:
 - Rewrite the MACHINE TRANSLATION (A) so it READS LIKE the PUBLISHED TRANSLATION (B): match its phrasing, voice, tone, rhythm, and emotional weight as closely as possible, while preserving (A)'s meaning.
 - FIX machine-translation errors only: broken syntax, mistranslations, duplicated/truncated fragments, bracketed thought markers, and site watermarks (e.g. "Ranovel dot com"). Repair into natural prose — never just delete.
 - PRESERVE (B)'s published style; do not flatten or generalize it.
-- Do NOT invent events, details, or narration the source lacks.
+- Do NOT invent events, details, or narration the source lacks. If (A) does not name who is speaking, leave the line unattributed — do not assign a speaker not present in (A) or (B).
+- Do NOT summarize, condense, or skip content. Reproduce all of (A)'s scenes and beats.
 - Output ONLY the repaired chapter text. No "Here is the repaired text", headers, or code fences.
 
 === (A) MACHINE TRANSLATION TO REPAIR ===
@@ -166,7 +245,7 @@ Repair rules:
     if style_profile:
         profile_txt = "\n".join(f"- {ex}" for ex in style_profile)
         return f"""You are repairing a machine-translated web-novel chapter. There is NO published translation for this chapter, so preserve the translator's established voice using these excerpts from earlier chapters by the SAME translator:
-
+{tail_block}
 {profile_txt}
 
 Apply the following translator policies consistently:
@@ -179,7 +258,7 @@ CHAPTER TO REWRITE:
 
     profile_txt = "\n".join(f"- {ex}" for ex in _STYLE_REFERENCE)
     return f"""You are rewriting a machine-translated web novel chapter into clean, natural English in the SAME translator's voice and tone.
-
+{tail_block}
 Apply the following translator policies consistently:
 {instructions}
 
@@ -201,6 +280,8 @@ def rewrite(
     do_llm: bool = False,
     reference_text: Optional[str] = None,
     style_profile: Optional[List[str]] = None,
+    glossary: Optional[List[Dict]] = None,
+    previous_tail: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run the full v0 rewrite pipeline on one passage.
 
@@ -213,6 +294,10 @@ def rewrite(
             chapter; the LLM rewrites the MTL to read like it (max fidelity).
         style_profile: Unsupervised mode — voice excerpts from the style bank,
             used when no original exists for this chapter.
+        glossary: Glossary entries for entity shielding (protects names during
+            LLM rewrite by replacing with placeholders).
+        previous_tail: Last 1-2 paragraphs of the previous chapter for
+            cross-chapter continuity.
 
     Returns:
         Dict with: prepassed_text, rewritten_text, trace, conflicts,
@@ -248,13 +333,22 @@ def rewrite(
     # reference / style bank to steer voice against.
     need_llm = bool(prompted) or (reference_text is not None) or (style_profile is not None)
 
-    # Long chapters exceed the small model's per-request token budget, so rewrite
-    # in paragraph-aligned chunks (supervised: MTL chunk + matching original chunk).
-    mtl_paras = _split_paragraphs(prepassed_text)
-    ref_paras = _split_paragraphs(reference_text) if reference_text else []
-    ranges = _para_ranges(mtl_paras)
+    # Entity shielding: replace glossary entries with placeholders before LLM,
+    # restore after. This prevents the LLM from mangling entity names and makes
+    # the faithfulness guard almost unnecessary for glossary entities.
+    shielded_text = prepassed_text
+    restore_map: Dict[str, str] = {}
+    if glossary and use_llm and need_llm:
+        shielded_text, restore_map = shield_entities(prepassed_text, glossary)
 
-    rewritten_text = prepassed_text
+    # Long chapters exceed the small model's per-request token budget, so rewrite
+    # in capped chunks (supervised: MTL chunk + matching reference chunk, aligned
+    # by chunk index).
+    mtl_chunks = _chunk_text(shielded_text)
+    ref_chunks = _chunk_text(reference_text) if reference_text else []
+
+    rewritten_text = shielded_text
+    client = None
     if use_llm and need_llm:
         load_dotenv()
         api_key = os.environ.get(api_key_env, "")
@@ -262,14 +356,15 @@ def rewrite(
             from openai import OpenAI
             client = OpenAI(api_key=api_key, base_url=base_url)
             out_parts = []
-            for (s, e) in ranges:
-                mtl_chunk = "\n\n".join(mtl_paras[s:e])
-                ref_chunk = "\n\n".join(ref_paras[s:e]) if ref_paras else None
+            for k, mtl_chunk in enumerate(mtl_chunks):
+                ref_chunk = ref_chunks[k] if k < len(ref_chunks) else None
                 prompt = build_prompt(
                     mtl_chunk, prompted,
                     reference=ref_chunk, style_profile=style_profile,
+                    previous_tail=previous_tail,
                 )
-                resp = client.chat.completions.create(
+                resp = _llm_complete(
+                    client,
                     model=model,
                     messages=[
                         {"role": "system", "content":
@@ -283,6 +378,33 @@ def rewrite(
                 )
                 out_parts.append(_strip_echo(resp.choices[0].message.content))
             rewritten_text = "\n\n".join(out_parts)
+
+    # Restore shielded entities after LLM rewrite
+    if restore_map:
+        rewritten_text = restore_entities(rewritten_text, restore_map)
+
+    # Faithfulness guard: the small model can still invent speakers/characters
+    # (e.g. ch040 'Ian'). Detect PERSON/ORG/GPE absent from the TRUE source and
+    # remove them with ONE LLM re-prompt. Source = the published reference
+    # (supervised) or the MTL (unsupervised). This is rewrite-internal, so the
+    # eval stack stays independent of the produce/rewrite LLM.
+    src_for_guard = reference_text if reference_text is not None else text
+    if client is not None:
+        novel = _novel_entities(rewritten_text, src_for_guard)
+        if novel:
+            guard_prompt = _faithfulness_prompt(rewritten_text, novel)
+            resp = _llm_complete(
+                client,
+                model=model,
+                messages=[
+                    {"role": "system", "content":
+                     "You are a faithful post-editor. You ONLY remove invented names; "
+                     "you never add or alter any other content."},
+                    {"role": "user", "content": guard_prompt},
+                ],
+                temperature=0.1,
+            )
+            rewritten_text = _strip_echo(resp.choices[0].message.content)
 
     # Re-apply the deterministic pre-pass so canonical names/honorifics survive
     # even if the LLM renamed or dropped a named entity (PLAN §8: the high-confidence

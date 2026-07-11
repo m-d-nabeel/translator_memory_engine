@@ -7,8 +7,8 @@ using heuristic patterns. Produces Signal objects for the Policy Miner.
 import re
 from typing import List, Set
 
-from translator_memory_engine.models import Chapter
 from translator_memory_engine.extract.signals import Signal
+from translator_memory_engine.models import Chapter
 
 # Common English words that happen to be capitalized at sentence starts
 # or are too generic to be entity names. Kept intentionally conservative —

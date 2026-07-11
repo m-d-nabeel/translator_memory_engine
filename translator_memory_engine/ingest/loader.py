@@ -1,7 +1,6 @@
 import os
 import re
 import zipfile
-import html
 from html.parser import HTMLParser
 from typing import List, Optional
 

@@ -23,11 +23,11 @@ from typing import Dict, List, Optional
 
 import yaml
 
-from translator_memory_engine.ingest.loader import load_corpus
 from translator_memory_engine.extract import extract_signals
+from translator_memory_engine.ingest.loader import load_corpus
+from translator_memory_engine.memory.store import PolicyStore
 from translator_memory_engine.policy.miner import mine_policies
 from translator_memory_engine.policy.verifier import create_verifier
-from translator_memory_engine.memory.store import PolicyStore
 from translator_memory_engine.rewrite.rewriter import rewrite as rewrite_pass
 
 
@@ -120,7 +120,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
 
     # --- Step 3: Mine policies ---
     conf_cfg = extract_cfg.get("confidence", {})
-    print(f"\nMining policies...")
+    print("\nMining policies...")
     policies = mine_policies(
         signals,
         total_chapters=len(chapters),
@@ -185,7 +185,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
 
     for t, c in sorted(policy_type_counts.items()):
         print(f"    {t}: {c}")
-    print(f"  Application mode:")
+    print("  Application mode:")
     for mode, c in sorted(applies_counts.items()):
         print(f"    {mode}: {c}")
     if policies:
@@ -214,7 +214,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
 
     # --- Summary ---
     print(f"\n{'='*60}")
-    print(f"M0 Extraction Summary")
+    print("M0 Extraction Summary")
     print(f"{'='*60}")
     print(f"  Chapters:           {len(chapters)}")
     print(f"  Signals:            {len(signals)}")
@@ -240,22 +240,54 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
     # are matched by number; chapters without an original fall back to the style
     # bank (unsupervised mode). D11: learn/apply/evaluate by availability.
     reference_index: Dict[int, str] = {}
-    style_profile: Optional[List[str]] = None
+    bank_excerpts: List[str] = []
+    stats_line: Optional[str] = None
+    exemplar_index = None
+
     if args.reference:
         if not os.path.isdir(args.reference):
             print(f"ERROR: --reference dir not found: {args.reference}")
             sys.exit(1)
         reference_index = _index_by_chapter(args.reference)
-        from translator_memory_engine.memory.style_bank import build_style_bank
-        raw_profile = build_style_bank(_read_text_chapters(args.reference))
-        # Keep the stats line (last) + a compact set of voice excerpts so the
-        # style bank fits the small model's per-request token budget across every
-        # chunk (the full bank is ~78 excerpts and would blow it).
+        from translator_memory_engine.memory.style_bank import (
+            build_exemplar_index_from_chapters,
+            build_style_bank,
+            retrieve_style_excerpts,
+        )
+        ref_chapters = _read_text_chapters(args.reference)
+        raw_profile = build_style_bank(ref_chapters)
         stats_line = raw_profile[-1] if raw_profile and raw_profile[-1].startswith("Measured") else None
-        excerpts = [e for e in raw_profile if e != stats_line]
-        style_profile = excerpts[:10] + ([stats_line] if stats_line else [])
+        bank_excerpts = [e for e in raw_profile if e != stats_line]
+
+        # Build exemplar index for embedding-based retrieval (fastembed if available)
+        try:
+            from fastembed import TextEmbedding
+            _emb_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
+
+            def _embed_fn(text: str) -> list:
+                return list(_emb_model.embed([text]))[0].tolist()
+
+            ref_nums = sorted(reference_index.keys())
+            exemplar_index = build_exemplar_index_from_chapters(
+                [reference_index[n] for n in ref_nums if n in reference_index],
+                ref_nums,
+                embed_fn=_embed_fn,
+            )
+            print(f"  Exemplar index: {len(exemplar_index.exemplars)} exemplars "
+                  f"(embedding-based retrieval)")
+        except ImportError:
+            print("  fastembed not available, using Jaccard fallback for exemplars")
+            exemplar_index = None
+
         print(f"  Reference dir: {args.reference} "
-              f"({len(reference_index)} originals, style bank used={len(style_profile)} excerpts)")
+              f"({len(reference_index)} originals, style bank={len(bank_excerpts)} excerpts)")
+
+    # Load glossary for entity shielding
+    glossary: Optional[List[Dict]] = None
+    if args.glossary and os.path.exists(args.glossary):
+        with open(args.glossary, "r", encoding="utf-8") as f:
+            glossary = json.load(f)
+        print(f"  Glossary loaded: {len(glossary)} entries (entity shielding enabled)")
 
     # Collect input files
     mtl_path = args.mtl_path
@@ -273,18 +305,37 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     print(f"Rewriting {len(files)} MTL file(s) using {args.policies}")
-    print(f"  LLM rewrite: {'on' if (args.llm or args.reference or style_profile) else 'off (pre-pass only)'}")
+    print(f"  LLM rewrite: {'on' if (args.llm or args.reference or bank_excerpts) else 'off (pre-pass only)'}")
+
+    from translator_memory_engine.memory.style_bank import retrieve_style_excerpts
 
     total_trace = 0
     total_conflicts = 0
+    prev_tail: Optional[str] = None
+
     for path in files:
         with open(path, "r", encoding="utf-8") as f:
             text = f.read()
 
         num = _chapter_num(path)
         reference_text = reference_index.get(num) if num is not None else None
-        mode = "supervised_reference" if reference_text else ("unsupervised_stylebank" if style_profile else "fallback")
-        use_llm = args.llm or (reference_text is not None) or (style_profile is not None)
+
+        # Per-chapter style retrieval: use ExemplarIndex if available,
+        # otherwise fall back to Jaccard-based retrieval.
+        chapter_style = None
+        if reference_text is None and bank_excerpts:
+            if exemplar_index is not None:
+                chapter_style = retrieve_style_excerpts(
+                    text, bank_excerpts, k=8,
+                    exemplar_index=exemplar_index, embed_fn=_embed_fn,
+                )
+            else:
+                chapter_style = retrieve_style_excerpts(text, bank_excerpts, k=8)
+            if stats_line:
+                chapter_style = chapter_style + [stats_line]
+
+        mode = "supervised_reference" if reference_text else ("unsupervised_stylebank" if chapter_style else "fallback")
+        use_llm = args.llm or (reference_text is not None) or (chapter_style is not None)
 
         result = rewrite_pass(
             text,
@@ -294,8 +345,15 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
             api_key_env=verify_cfg.get("api_key_env", "LLM_API_KEY"),
             do_llm=use_llm,
             reference_text=reference_text,
-            style_profile=style_profile,
+            style_profile=chapter_style,
+            glossary=glossary,
+            previous_tail=prev_tail,
         )
+
+        # Update previous_tail for cross-chapter context (last 2 paragraphs)
+        rewritten = result["rewritten_text"]
+        paras = [p.strip() for p in rewritten.split("\n\n") if p.strip()]
+        prev_tail = "\n\n".join(paras[-2:]) if len(paras) >= 2 else (paras[-1] if paras else None)
 
         base = os.path.splitext(os.path.basename(path))[0]
         out_text = result["rewritten_text"]
@@ -315,7 +373,7 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
               f"-> {out_path}")
 
     print(f"\n{'='*60}")
-    print(f"M1 Rewrite Summary")
+    print("M1 Rewrite Summary")
     print(f"{'='*60}")
     print(f"  Files rewritten:     {len(files)}")
     print(f"  Deterministic edits: {total_trace}")
@@ -326,7 +384,17 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
 
 def cmd_align(args: argparse.Namespace) -> None:
     """Alignment evaluation (PLAN §13, D11). Independent of extract/rewrite LLMs."""
-    from translator_memory_engine.eval.align import align_paired, align_unpaired
+    from translator_memory_engine.eval.align import (
+        align_paired,
+        align_unpaired,
+        cosine_excluding,
+        stylometry_delta,
+        voice_richness_score,
+    )
+    from translator_memory_engine.eval.faith import (
+        faithfulness_vs_reference,
+        faithfulness_vs_source,
+    )
 
     generated_index = _index_by_chapter(args.generated)
     original_index = _index_by_chapter(args.original) if args.original else {}
@@ -355,27 +423,81 @@ def cmd_align(args: argparse.Namespace) -> None:
         if orig is not None:
             mtl = mtl_index.get(num, "")
             res = align_paired(gen, orig, mtl)
+            res["sim_gen_orig_norm"] = round(cosine_excluding(gen, orig, canonical), 4)
+            res["sim_mtl_orig_norm"] = round(cosine_excluding(mtl, orig, canonical), 4)
+            res["faith"] = faithfulness_vs_reference(gen, orig)
+            res["stylometry_delta"] = stylometry_delta(gen, orig)
+            res["voice_richness_gen"] = voice_richness_score(gen)
+            res["voice_richness_orig"] = voice_richness_score(orig)
+            res["voice_richness_mtl"] = voice_richness_score(mtl) if mtl else None
             res = {"chapter": num, "tier": 1, **res}
             paired += 1
         else:
+            mtl = mtl_index.get(num, "")
             res = align_unpaired(gen, style_profile, canonical)
+            res["faith"] = faithfulness_vs_source(gen, mtl)
+            res["voice_richness_gen"] = voice_richness_score(gen)
+            res["voice_richness_mtl"] = voice_richness_score(mtl) if mtl else None
             res = {"chapter": num, "tier": 2, **res}
             unpaired += 1
+        if args.judge:
+            src = orig if orig is not None else mtl
+            from translator_memory_engine.eval.judge import judge_chapter
+            res["judge"] = judge_chapter(gen, src)
         rows.append(res)
-        print(f"  ch{num:>3} [tier{res['tier']}] " +
-              "  ".join(f"{k}={v}" for k, v in res.items() if k not in ("chapter", "tier")))
+        faith = res.get("faith", {})
+        vr_gen = res.get("voice_richness_gen", 0)
+        vr_orig = res.get("voice_richness_orig")
+        vr_str = f"vr_gen={vr_gen:.3f}"
+        if vr_orig is not None:
+            vr_str += f" vr_orig={vr_orig:.3f}"
+        print(f"  ch{num:>3} [tier{res['tier']}] novel_persons={faith.get('novel_person_count')} "
+              f"intr={faith.get('intrusion_score')} drop={faith.get('drop_score')} "
+              f"| {vr_str}  "
+              + "  ".join(f"{k}={v}" for k, v in res.items()
+                         if k not in ("chapter", "tier", "faith", "judge",
+                                      "stylometry_delta", "voice_richness_gen",
+                                      "voice_richness_orig", "voice_richness_mtl")))
 
     # Summary
     if paired:
         avg_delta = sum(r["delta_vs_mtl"] for r in rows if r["tier"] == 1) / paired
         wins = sum(1 for r in rows if r["tier"] == 1 and r["delta_vs_mtl"] > 0)
+        avg_norm_delta = (
+            sum(r["sim_gen_orig_norm"] - r["sim_mtl_orig_norm"] for r in rows if r["tier"] == 1) / paired
+        )
+        avg_novel = sum(r["faith"]["novel_person_count"] for r in rows if r["tier"] == 1) / paired
+        avg_vr_gen = sum(r.get("voice_richness_gen", 0) for r in rows if r["tier"] == 1) / paired
+        avg_vr_orig = sum(r.get("voice_richness_orig", 0) for r in rows if r["tier"] == 1) / paired
+        avg_vr_mtl = sum(r.get("voice_richness_mtl", 0) for r in rows if r["tier"] == 1) / paired
         print(f"\nTier-1 (paired, n={paired}): avg delta vs MTL = {avg_delta:+.4f}, "
-              f"generated closer than MTL in {wins}/{paired}")
+              f"closer in {wins}/{paired}; name-norm delta = {avg_norm_delta:+.4f}; "
+              f"avg novel persons = {avg_novel:.2f}")
+        print(f"  Voice richness: gen={avg_vr_gen:.3f}, orig={avg_vr_orig:.3f}, "
+              f"mtl={avg_vr_mtl:.3f}, delta_gen_orig={avg_vr_gen - avg_vr_orig:+.3f}")
+        # Stylometry delta summary
+        all_sdelta_keys: set = set()
+        for r in rows:
+            if r["tier"] == 1 and "stylometry_delta" in r:
+                all_sdelta_keys.update(r["stylometry_delta"].keys())
+        if all_sdelta_keys:
+            parts = []
+            for k in sorted(all_sdelta_keys):
+                vals = [r["stylometry_delta"].get(k, 0) for r in rows
+                        if r["tier"] == 1 and "stylometry_delta" in r]
+                avg = sum(vals) / len(vals) if vals else 0
+                parts.append(f"{k}={avg:.3f}")
+            print(f"  Stylometry delta: {'; '.join(parts)}")
     if unpaired:
         adh = [r["name_adherence"] for r in rows if r["tier"] == 2 and r["name_adherence"] is not None]
         avg_adh = (sum(adh) / len(adh)) if adh else None
+        avg_novel = sum(r["faith"]["novel_person_count"] for r in rows if r["tier"] == 2) / unpaired
+        avg_intr = sum(r["faith"]["intrusion_score"] for r in rows if r["tier"] == 2) / unpaired
+        avg_vr_gen = sum(r.get("voice_richness_gen", 0) for r in rows if r["tier"] == 2) / unpaired
         print(f"Tier-2 (unpaired, n={unpaired}): avg name adherence = "
-              f"{avg_adh if avg_adh is None else round(avg_adh, 4)}")
+              f"{avg_adh if avg_adh is None else round(avg_adh, 4)}; "
+              f"avg novel persons = {avg_novel:.2f}; avg intrusion = {avg_intr:.2f}")
+        print(f"  Voice richness: gen={avg_vr_gen:.3f}")
 
     if args.report:
         with open(args.report, "w", encoding="utf-8") as f:
@@ -458,6 +580,12 @@ def main() -> None:
              "number; ones without an original fall back to the learned style bank "
              "(unsupervised mode). Forces the LLM on.",
     )
+    rewrite_parser.add_argument(
+        "--glossary", "-g",
+        default=None,
+        help="Path to glossary.json. When provided, glossary entries are shielded "
+             "(replaced with placeholders) during LLM rewrite to prevent name mangling.",
+    )
 
     # align command (M2 evaluation, D11-independent)
     align_parser = subparsers.add_parser(
@@ -492,6 +620,13 @@ def main() -> None:
         "--report", "-o",
         default=None,
         help="Write the per-chapter alignment rows as JSON to this path",
+    )
+    align_parser.add_argument(
+        "--judge",
+        action="store_true",
+        default=False,
+        help="Enable the independent Gemini judge (different model family) to score "
+             "faithfulness/fluency 0-5 on each chapter. Off by default (costs API calls).",
     )
 
     args = parser.parse_args()

@@ -13,6 +13,12 @@ chapter pairing):
   * Tier-2 (unpaired / proxy): no original for the chapter (e.g. 40-41, 51+).
     Compare the generated text against the learned *style bank* (voice excerpts)
     and report name-adherence against the glossary's canonical forms.
+
+Additional metrics:
+  * stylometry_delta: absolute differences in deterministic style metrics
+    (sentence length, TTR, contraction rate, etc.) between generated and original.
+  * voice_richness_score: composite score of TTR, sentence-length variance,
+    and dialog share.
 """
 
 import math
@@ -51,6 +57,22 @@ def cosine(a: str, b: str) -> float:
     return round(sum(va[t] * vb[t] for t in common), 4)
 
 
+def cosine_excluding(a: str, b: str, exclude: List[str]) -> float:
+    """Cosine similarity after stripping ``exclude`` phrases (e.g. canonical names).
+
+    Controls for the confound where our own deterministic name injection inflates
+    sim(gen, orig): by removing the canonical names from both sides we measure the
+    residual STYLE/structure similarity that the LLM actually earned.
+    """
+    for term in exclude:
+        if not term:
+            continue
+        pat = re.escape(term)
+        a = re.sub(pat, " ", a, flags=re.IGNORECASE)
+        b = re.sub(pat, " ", b, flags=re.IGNORECASE)
+    return cosine(a, b)
+
+
 def align_paired(generated: str, original: str, mtl: str) -> Dict[str, float]:
     """Tier-1: generated vs original, benchmarked against raw MTL vs original."""
     sim_gen = cosine(generated, original)
@@ -79,3 +101,25 @@ def align_unpaired(
         "names_present": len(present),
         "name_adherence": round(adherence, 4) if adherence is not None else None,
     }
+
+
+def stylometry_delta(gen: str, orig: str) -> Dict[str, float]:
+    """Absolute difference in deterministic stylometry metrics between gen and orig.
+
+    Uses spaCy to compute: avg sentence length, sentence-length variance,
+    lexical richness (TTR), contraction rate, dialog share.
+    """
+    from translator_memory_engine.style.analyzer import compute_deterministic_profile
+    gen_p = compute_deterministic_profile(gen)
+    orig_p = compute_deterministic_profile(orig)
+    all_keys = set(gen_p) | set(orig_p)
+    return {k: round(abs(gen_p.get(k, 0.0) - orig_p.get(k, 0.0)), 4) for k in sorted(all_keys)}
+
+
+def voice_richness_score(text: str) -> float:
+    """Composite voice-quality score: higher = richer voice.
+
+    Combines TTR, dialog share, and normalized sentence-length variance.
+    """
+    from translator_memory_engine.style.analyzer import voice_richness_score as _vrs
+    return _vrs(text)
