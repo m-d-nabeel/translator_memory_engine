@@ -56,6 +56,7 @@ uv run python pipeline.py extract \
 ```
 
 **Produces:**
+
 - `outputs/policies.jsonl` — 39 editorial rules (entity naming, honorifics, terminology)
 - `outputs/glossary.json` — 27 canonical name entries with surface forms
 
@@ -71,6 +72,7 @@ uv run python pipeline.py rewrite \
 ```
 
 **What happens internally:**
+
 1. **Style bank built** from 39 reference chapters (in-memory, ~78 voice excerpts)
 2. **Exemplar index built** with fastembed embeddings (bge-base-en-v1.5, ~451 exemplars)
 3. **Per-chapter retrieval** — top 8 excerpts selected by cosine similarity to ch040
@@ -83,6 +85,7 @@ uv run python pipeline.py rewrite \
 10. **Deterministic post-pass** — ensures canonical forms survive
 
 **Produces:**
+
 - `outputs/rewritten_chapter-040.txt` — repaired chapter
 
 **Tip:** Add `-v` or `--verbose` to any command for detailed debug logging (shows style bank, exemplar index, known errors, entity shielding, LLM prompts, and rate-limit rotation):
@@ -125,6 +128,7 @@ The style bank and exemplar index are built in-memory from `--reference` during 
 ### Examples
 
 **Single chapter (unsupervised, all features):**
+
 ```bash
 uv run python pipeline.py rewrite \
     test-dataset/feasting-lord-in-another-world-input/chapter-040.txt \
@@ -135,6 +139,7 @@ uv run python pipeline.py rewrite \
 ```
 
 **All chapters (with cross-chapter context):**
+
 ```bash
 uv run python pipeline.py rewrite \
     test-dataset/feasting-lord-in-another-world-input \
@@ -145,6 +150,7 @@ uv run python pipeline.py rewrite \
 ```
 
 **Pre-pass only (no LLM, fast, deterministic edits only):**
+
 ```bash
 uv run python pipeline.py rewrite \
     test-dataset/feasting-lord-in-another-world-input/chapter-040.txt \
@@ -155,6 +161,7 @@ uv run python pipeline.py rewrite \
 ### Evaluation
 
 **Paired eval (chapters with originals):**
+
 ```bash
 uv run python pipeline.py align outputs \
     --original test-dataset/feasting-lord-in-another-world \
@@ -165,6 +172,7 @@ uv run python pipeline.py align outputs \
 ```
 
 **With Gemini judge (independent scoring):**
+
 ```bash
 uv run python pipeline.py align outputs \
     --original test-dataset/feasting-lord-in-another-world \
@@ -254,6 +262,7 @@ uv run ruff format .
 The `data/known_errors.json` file maps MTL errors to their Korean source and correct English translation. When rewriting, the engine scans for these errors and injects corrections into the LLM prompt.
 
 **Example entry:**
+
 ```json
 {
   "id": "corpse-minus-stamina",
@@ -266,10 +275,12 @@ The `data/known_errors.json` file maps MTL errors to their Korean source and cor
 ```
 
 **To add a new error:**
+
 1. Add an entry to `data/known_errors.json`
 2. The engine will automatically detect and correct it in future rewrites
 
 **Current errors covered:**
+
 - `corpse minus the stamina` → "It's a piece of cake"
 - `Hee!` → "Heh!" (Korean squeal)
 - `Profit!` → "Tch!" (teeth-gritting)
