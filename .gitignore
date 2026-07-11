@@ -15,3 +15,11 @@ uv.lock
 .pytest_cache/
 .opencode.json
 .code-review-graph/
+
+# Data files (keep directory structure with .gitkeep)
+data/originals/*.txt
+data/mtl/*.txt
+data/output/*
+data/policies/*
+!data/known_errors.json
+!data/*/.gitkeep
