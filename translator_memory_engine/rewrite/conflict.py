@@ -13,21 +13,21 @@ losing policies (so the pre-pass can avoid applying contradictory edits).
 """
 
 import re
-from typing import Dict, List, NamedTuple, Set
+from typing import List, NamedTuple, Set
 
 from translator_memory_engine.policy import Policy
 
 
 class SpanMatch(NamedTuple):
     policy: Policy
-    form: str          # the exact surface form matched
+    form: str  # the exact surface form matched
     start: int
     end: int
 
 
 class Resolution(NamedTuple):
-    winners: List[SpanMatch]        # applied
-    conflicts: List[dict]           # {span, winner_id, loser_ids, losers}
+    winners: List[SpanMatch]  # applied
+    conflicts: List[dict]  # {span, winner_id, loser_ids, losers}
 
 
 def _find_spans(text: str, policy: Policy) -> List[SpanMatch]:
@@ -35,10 +35,15 @@ def _find_spans(text: str, policy: Policy) -> List[SpanMatch]:
     for form in policy.match:
         if not form:
             continue
-        pattern = re.escape(form)
-        for m in re.finditer(pattern, text, flags=re.IGNORECASE):
-            spans.append(SpanMatch(policy=policy, form=form,
-                                   start=m.start(), end=m.end()))
+        # Use word boundaries to avoid matching inside words (e.g. "Ian"
+        # inside "brilliant").  Case-insensitive so "centipede" matches
+        # "Centipede".  The lookbehind/lookahead use \w which covers
+        # letters, digits, and underscore — matches retriever.py and shield.py.
+        pattern = re.compile(
+            r"(?<!\w)" + re.escape(form) + r"(?!\w)", re.IGNORECASE
+        )
+        for m in pattern.finditer(text):
+            spans.append(SpanMatch(policy=policy, form=form, start=m.start(), end=m.end()))
     return spans
 
 
@@ -68,30 +73,28 @@ def resolve(text: str, matched: List[Policy]) -> Resolution:
     used_by_winner: List[SpanMatch] = []  # winner spans already selected
 
     # Process spans sorted by score (best first)
-    order = sorted(range(len(all_spans)), key=lambda i: _score(all_spans[i].policy),
-                   reverse=True)
+    order = sorted(range(len(all_spans)), key=lambda i: _score(all_spans[i].policy), reverse=True)
 
     for i in order:
         if i in claimed:
             continue
         sp = all_spans[i]
         # Find overlapping already-selected winner spans
-        overlapping = [
-            w for w in used_by_winner
-            if not (sp.end <= w.start or sp.start >= w.end)
-        ]
+        overlapping = [w for w in used_by_winner if not (sp.end <= w.start or sp.start >= w.end)]
         if overlapping:
             other_policy = [w for w in overlapping if w.policy.id != sp.policy.id]
             if other_policy:
                 # Genuine cross-policy conflict: this span loses to the best winner
                 best = max(other_policy, key=lambda w: _score(w.policy))
-                conflicts.append({
-                    "span": text[sp.start:sp.end],
-                    "winner_id": best.policy.id,
-                    "loser_id": sp.policy.id,
-                    "loser_trigger": sp.policy.trigger,
-                    "reason": "lower confidence/evidence/specificity",
-                })
+                conflicts.append(
+                    {
+                        "span": text[sp.start : sp.end],
+                        "winner_id": best.policy.id,
+                        "loser_id": sp.policy.id,
+                        "loser_trigger": sp.policy.trigger,
+                        "reason": "lower confidence/evidence/specificity",
+                    }
+                )
                 claimed.add(i)
                 continue
             # else: same-policy overlap -> already covered, skip silently

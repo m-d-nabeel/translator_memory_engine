@@ -20,7 +20,7 @@ Off by default (passthrough). Enabled with --verify llm or config setting.
 import json
 import os
 import time
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 
@@ -83,10 +83,13 @@ class LLMVerifier:
     def _get_client(self):
         if self._client is None:
             from openai import OpenAI
+
             self._client = OpenAI(api_key=self.api_key, base_url=self.base_url)
         return self._client
 
-    def _build_prompt(self, batch: List[Policy], context_map: Optional[Dict[str, str]] = None) -> str:
+    def _build_prompt(
+        self, batch: List[Policy], context_map: Optional[Dict[str, str]] = None
+    ) -> str:
         """Build a verification prompt for a batch of policy candidates.
 
         When ``context_map`` provides example sentences for a trigger, they are
@@ -104,14 +107,10 @@ class LLMVerifier:
             # (ambiguous / low-confidence). Obvious, high-confidence entities are
             # judged from the trigger/aliases alone — sending their contexts too
             # would bloat the prompt with sentences we already mined (PLAN.md §3).
-            ctx_str = (
-                f'\n    example_usage: "{ctx}"'
-                if (ctx and p.needs_review)
-                else ""
-            )
+            ctx_str = f'\n    example_usage: "{ctx}"' if (ctx and p.needs_review) else ""
             candidates.append(
                 f'  - id={p.id}, trigger="{p.trigger}", type={p.type}, '
-                f'confidence={p.confidence}, found_in={evidence_str}{alias_str}{ctx_str}'
+                f"confidence={p.confidence}, found_in={evidence_str}{alias_str}{ctx_str}"
             )
 
         candidates_text = "\n".join(candidates)
@@ -185,7 +184,7 @@ Example:
                     return json.loads(text[start:end])
                 except json.JSONDecodeError:
                     pass
-            print(f"  WARNING: Could not parse LLM response, keeping all policies")
+            print("  WARNING: Could not parse LLM response, keeping all policies")
             return []
 
     def verify_policies(
@@ -212,7 +211,7 @@ Example:
             return policies
 
         if not self.api_key:
-            print(f"  WARNING: No API key set for verifier, skipping LLM verification")
+            print("  WARNING: No API key set for verifier, skipping LLM verification")
             return policies
 
         # Build a per-trigger context lookup from the policies' own example sentences
@@ -231,7 +230,7 @@ Example:
 
         # Process in batches
         for i in range(0, len(policies), self.batch_size):
-            batch = policies[i:i + self.batch_size]
+            batch = policies[i : i + self.batch_size]
             prompt = self._build_prompt(batch, context_map=built_context)
 
             try:
@@ -242,20 +241,25 @@ Example:
                 for r in results:
                     r_id = r.get("id")
                     verdicts[r_id] = r
-                    audit_records.append({
-                        "id": r_id,
-                        "trigger": id_to_trigger.get(r_id, ""),
-                        "verdict": r.get("verdict"),
-                        "correct_type": r.get("correct_type"),
-                        "reason": r.get("reason", ""),
-                    })
+                    audit_records.append(
+                        {
+                            "id": r_id,
+                            "trigger": id_to_trigger.get(r_id, ""),
+                            "verdict": r.get("verdict"),
+                            "correct_type": r.get("correct_type"),
+                            "reason": r.get("reason", ""),
+                        }
+                    )
 
             except Exception as e:
                 print(f"  WARNING: LLM verification failed for batch {i}: {e}")
                 # Keep all on failure
                 for p in batch:
-                    verdicts[p.id] = {"id": p.id, "verdict": "KEEP",
-                                      "reason": "verification failed, keeping"}
+                    verdicts[p.id] = {
+                        "id": p.id,
+                        "verdict": "KEEP",
+                        "reason": "verification failed, keeping",
+                    }
 
             # Rate limit: be polite to the free tier
             if i + self.batch_size < len(policies):
@@ -336,34 +340,44 @@ Example:
                 if p is c:
                     continue
                 if _policies_related(c, p):
-                    rel.append({
-                        "id": p.id, "trigger": p.trigger,
-                        "type": p.type, "confidence": round(p.confidence, 3),
-                    })
+                    rel.append(
+                        {
+                            "id": p.id,
+                            "trigger": p.trigger,
+                            "type": p.type,
+                            "confidence": round(p.confidence, 3),
+                        }
+                    )
             related_cache[c.id] = rel
 
         decisions: Dict[str, Dict[str, Any]] = {}
         audit: List[Dict[str, Any]] = []
         for i in range(0, len(candidates), self.batch_size):
-            batch = candidates[i:i + self.batch_size]
+            batch = candidates[i : i + self.batch_size]
             prompt = self._build_review_prompt(batch, related_cache, context_map)
             try:
                 resp = self._call_llm(prompt)
                 results = self._parse_response(resp)
                 for r in results:
                     decisions[r.get("id")] = r
-                    audit.append({
-                        "stage": "review", "id": r.get("id"),
-                        "decision": r.get("decision"),
-                        "target_id": r.get("target_id"),
-                        "type": r.get("type"),
-                        "reason": r.get("reason", ""),
-                    })
+                    audit.append(
+                        {
+                            "stage": "review",
+                            "id": r.get("id"),
+                            "decision": r.get("decision"),
+                            "target_id": r.get("target_id"),
+                            "type": r.get("type"),
+                            "reason": r.get("reason", ""),
+                        }
+                    )
             except Exception as e:
                 print(f"  WARNING: refined review failed for batch {i}: {e}")
                 for p in batch:
-                    decisions[p.id] = {"id": p.id, "decision": "KEEP",
-                                        "reason": "review failed, keeping"}
+                    decisions[p.id] = {
+                        "id": p.id,
+                        "decision": "KEEP",
+                        "reason": "review failed, keeping",
+                    }
             if i + self.batch_size < len(candidates):
                 time.sleep(1)
 
@@ -390,10 +404,8 @@ Example:
                     break
                 if nxt in seen:
                     # Cycle: pick the root by highest confidence, then longest trigger
-                    cycle = [k for k in seen
-                             if merge_of.get(k) == nxt or k == nxt]
-                    best = max(cycle, key=lambda k: (by_id[k].confidence,
-                                                      len(by_id[k].trigger)))
+                    cycle = [k for k in seen if merge_of.get(k) == nxt or k == nxt]
+                    best = max(cycle, key=lambda k: (by_id[k].confidence, len(by_id[k].trigger)))
                     return best
                 cur = nxt
             return cur
@@ -409,8 +421,9 @@ Example:
             root.match = sorted(set(root.match) | set(c.match) | {c.trigger})
             root.evidence = sorted(set(root.evidence) | set(c.evidence))
             root.contexts = list(dict.fromkeys(root.contexts + c.contexts))
-            root.note = (root.note + f"; merged '{c.trigger}' "
-                         f"({decisions[cid].get('reason', '')})").strip("; ")
+            root.note = (
+                root.note + f"; merged '{c.trigger}' ({decisions[cid].get('reason', '')})"
+            ).strip("; ")
             c.llm_rejected = True
             c.note = f"merged into {root.id}: {decisions[cid].get('reason', '')}"
         # Roots are resolved (no longer ambiguous)
@@ -464,13 +477,13 @@ Example:
             rel_str = ""
             if rel:
                 rel_lines = "\n".join(
-                    f'      - {r["id"]} {r["trigger"]} ({r["type"]}, conf={r["confidence"]})'
+                    f"      - {r['id']} {r['trigger']} ({r['type']}, conf={r['confidence']})"
                     for r in rel
                 )
                 rel_str = f"\n    related_policies:\n{rel_lines}"
             items.append(
                 f'  - id={p.id}, trigger="{p.trigger}", type={p.type}, '
-                f'confidence={p.confidence}{ctx_str}{rel_str}'
+                f"confidence={p.confidence}{ctx_str}{rel_str}"
             )
         items_text = "\n".join(items)
         return f"""You are resolving AMBIGUOUS candidate policies from a translated novel. Each was flagged because it is low-confidence or overlaps another policy.

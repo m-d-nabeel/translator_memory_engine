@@ -11,21 +11,20 @@ This is the heart of the system (PLAN.md §7).
 import re
 import unicodedata
 from collections import defaultdict
-from typing import List, Dict, Set, Tuple
+from typing import Dict, List, Set, Tuple
 
-from translator_memory_engine.extract.signals import Signal
 from translator_memory_engine.extract.entity import (
-    _STOP_WORDS,
     _STOP_PREFIXES,
+    _STOP_WORDS,
     _TITLE_PREFIXES,
 )
+from translator_memory_engine.extract.signals import Signal
 from translator_memory_engine.policy import Policy
 from translator_memory_engine.policy.scorer import (
-    score_frequency,
-    score_consistency,
     compute_confidence,
+    score_consistency,
+    score_frequency,
 )
-
 
 # --- Generic noun categories for false-positive filtering ---
 #
@@ -43,16 +42,55 @@ from translator_memory_engine.policy.scorer import (
 #
 _GENERIC_STANDALONE: Set[str] = {
     # titles / roles used standalone (not as "Title Name")
-    "Count", "Countess", "Lord", "Lady", "Sir", "Duke", "Duchess", "Prince",
-    "Princess", "King", "Queen", "Emperor", "Empress", "Viscount", "Baron",
-    "Marquis", "Master", "Chief", "Elder", "Knight", "Knights", "Soldier",
-    "Soldiers", "Warrior", "Warriors", "Mrs",
+    "Count",
+    "Countess",
+    "Lord",
+    "Lady",
+    "Sir",
+    "Duke",
+    "Duchess",
+    "Prince",
+    "Princess",
+    "King",
+    "Queen",
+    "Emperor",
+    "Empress",
+    "Viscount",
+    "Baron",
+    "Marquis",
+    "Master",
+    "Chief",
+    "Elder",
+    "Knight",
+    "Knights",
+    "Soldier",
+    "Soldiers",
+    "Warrior",
+    "Warriors",
+    "Mrs",
     # common nouns that NER over-labels
-    "Monster", "Monsters", "God", "Goddess", "Gods", "Hand", "Hands",
-    "Disease", "Mercenary", "Wizard", "Wizards", "Earth", "Rice",
-    "Magic", "Cook", "Postpartum", "Sea", "Care",
+    "Monster",
+    "Monsters",
+    "God",
+    "Goddess",
+    "Gods",
+    "Hand",
+    "Hands",
+    "Disease",
+    "Mercenary",
+    "Wizard",
+    "Wizards",
+    "Earth",
+    "Rice",
+    "Magic",
+    "Cook",
+    "Postpartum",
+    "Sea",
+    "Care",
     # verbs / adjectives that NER mislabels
-    "Perfect", "Speak", "Money",
+    "Perfect",
+    "Speak",
+    "Money",
 }
 
 # Leading articles to strip when cleaning surface forms
@@ -62,26 +100,109 @@ _ARTICLES = {"the", "a", "an"}
 # A multi-word phrase led by one of these is a clause fragment, not a name.
 _FRAGMENT_LEADS = {
     # Common gerunds in fiction narration
-    "Hearing", "Seeing", "Watching", "Following", "Regarding", "Thinking",
-    "Knowing", "Feeling", "Wondering", "Asking", "Saying", "Looking",
-    "Turning", "Walking", "Standing", "Making", "Taking", "Using", "Going",
-    "Coming", "Being", "Having", "Doing", "Getting", "Keeping", "Leaving",
-    "Bringing", "Calling", "Finding", "Giving", "Putting", "Showing",
-    "Telling", "Trying", "Wanting", "Wishing", "Hoping", "Noticing",
-    "Realizing", "Remembering", "Deciding", "Observing",
+    "Hearing",
+    "Seeing",
+    "Watching",
+    "Following",
+    "Regarding",
+    "Thinking",
+    "Knowing",
+    "Feeling",
+    "Wondering",
+    "Asking",
+    "Saying",
+    "Looking",
+    "Turning",
+    "Walking",
+    "Standing",
+    "Making",
+    "Taking",
+    "Using",
+    "Going",
+    "Coming",
+    "Being",
+    "Having",
+    "Doing",
+    "Getting",
+    "Keeping",
+    "Leaving",
+    "Bringing",
+    "Calling",
+    "Finding",
+    "Giving",
+    "Putting",
+    "Showing",
+    "Telling",
+    "Trying",
+    "Wanting",
+    "Wishing",
+    "Hoping",
+    "Noticing",
+    "Realizing",
+    "Remembering",
+    "Deciding",
+    "Observing",
     # Additional gerunds that produce fragments
-    "Ignoring", "Approaching", "Arriving", "Avoiding", "Becoming",
-    "Believing", "Catching", "Checking", "Closing", "Considering",
-    "Continuing", "Covering", "Creating", "Crossing", "Entering",
-    "Examining", "Expecting", "Facing", "Finishing", "Grabbing",
-    "Holding", "Imagining", "Including", "Judging", "Letting",
-    "Lifting", "Living", "Missing", "Moving", "Opening",
-    "Passing", "Picking", "Pointing", "Pulling", "Pushing",
-    "Raising", "Reaching", "Reading", "Receiving", "Recognizing",
-    "Removing", "Returning", "Running", "Sensing", "Setting",
-    "Sitting", "Speaking", "Starting", "Stopping", "Studying",
-    "Suggesting", "Supporting", "Swinging", "Thanking", "Throwing",
-    "Touching", "Understanding", "Waiting", "Wearing", "Working",
+    "Ignoring",
+    "Approaching",
+    "Arriving",
+    "Avoiding",
+    "Becoming",
+    "Believing",
+    "Catching",
+    "Checking",
+    "Closing",
+    "Considering",
+    "Continuing",
+    "Covering",
+    "Creating",
+    "Crossing",
+    "Entering",
+    "Examining",
+    "Expecting",
+    "Facing",
+    "Finishing",
+    "Grabbing",
+    "Holding",
+    "Imagining",
+    "Including",
+    "Judging",
+    "Letting",
+    "Lifting",
+    "Living",
+    "Missing",
+    "Moving",
+    "Opening",
+    "Passing",
+    "Picking",
+    "Pointing",
+    "Pulling",
+    "Pushing",
+    "Raising",
+    "Reaching",
+    "Reading",
+    "Receiving",
+    "Recognizing",
+    "Removing",
+    "Returning",
+    "Running",
+    "Sensing",
+    "Setting",
+    "Sitting",
+    "Speaking",
+    "Starting",
+    "Stopping",
+    "Studying",
+    "Suggesting",
+    "Supporting",
+    "Swinging",
+    "Thanking",
+    "Throwing",
+    "Touching",
+    "Understanding",
+    "Waiting",
+    "Wearing",
+    "Working",
 }
 
 # Confidence below which a policy is flagged for human review (PLAN.md §3 / D10)
@@ -95,7 +216,7 @@ def _normalize(text: str) -> str:
     text = "".join(c for c in text if not unicodedata.combining(c))
     text = text.lower().strip()
     # Collapse hyphens and whitespace
-    text = re.sub(r'[-\s]+', ' ', text)
+    text = re.sub(r"[-\s]+", " ", text)
     # Remove possessive
     text = re.sub(r"'s\b", "", text)
     return text
@@ -129,6 +250,7 @@ def _normalized_edit_distance(a: str, b: str) -> float:
 # Stage 1: Aggregation
 # ----------------------------------------------------------------------- #
 
+
 def _aggregate_signals(signals: List[Signal]) -> Dict[str, List[Signal]]:
     """Group signals by normalized text.
 
@@ -145,6 +267,7 @@ def _aggregate_signals(signals: List[Signal]) -> Dict[str, List[Signal]]:
 # ----------------------------------------------------------------------- #
 # Stage 2: Variant clustering
 # ----------------------------------------------------------------------- #
+
 
 def _cluster_variants(
     groups: Dict[str, List[Signal]],
@@ -168,6 +291,7 @@ def _cluster_variants(
     Returns:
         Merged groups.
     """
+
     def _tokens(key: str) -> Tuple[str, ...]:
         return tuple(sorted(_normalize(key).split()))
 
@@ -240,6 +364,7 @@ def _clean_match_forms(canonical: str, aliases: List[str]) -> Tuple[str, List[st
     Returns:
         (cleaned_canonical, cleaned_alias_list)
     """
+
     def _clean(form: str) -> str:
         f = form.strip().strip("'`\".,;:!?()[]{}")
         # Strip a single leading article
@@ -286,6 +411,7 @@ def _is_generic(canonical: str) -> bool:
 # ----------------------------------------------------------------------- #
 # Stage 3: Scoring + Policy construction
 # ----------------------------------------------------------------------- #
+
 
 def _infer_type(signals: List[Signal]) -> str:
     """Infer the policy type from the signal extractors that produced it."""
@@ -406,18 +532,20 @@ def mine_policies(
         policy_type = _infer_type(group_signals)
 
         policy_id += 1
-        policies.append(Policy(
-            id=f"p_{policy_id:03d}",
-            type=policy_type,
-            trigger=canonical,
-            match=match_forms,
-            action={"render_as": canonical},
-            applies=applies,
-            confidence=round(confidence, 3),
-            scores=scores,
-            evidence=sorted(chapters_present),
-            contexts=example_contexts,
-        ))
+        policies.append(
+            Policy(
+                id=f"p_{policy_id:03d}",
+                type=policy_type,
+                trigger=canonical,
+                match=match_forms,
+                action={"render_as": canonical},
+                applies=applies,
+                confidence=round(confidence, 3),
+                scores=scores,
+                evidence=sorted(chapters_present),
+                contexts=example_contexts,
+            )
+        )
 
     # Sort by confidence descending
     policies.sort(key=lambda p: p.confidence, reverse=True)

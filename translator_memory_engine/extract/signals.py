@@ -18,6 +18,7 @@ class Signal:
         context: The surrounding sentence, for debugging/review.
         extractor: Which extractor produced this signal.
     """
+
     text: str
     chapter: int
     type: str

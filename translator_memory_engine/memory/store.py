@@ -14,7 +14,7 @@ Backend: JSON lines for prototype. SQLite for production (future).
 
 import json
 import os
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from translator_memory_engine.policy import Policy
 
@@ -78,14 +78,16 @@ class PolicyStore:
             if p.llm_rejected:
                 continue
             aliases = [f for f in p.match if f != p.trigger]
-            glossary.append({
-                "canonical": p.trigger,
-                "aliases": aliases,
-                "type": p.type,
-                "confidence": p.confidence,
-                "chapters": p.evidence,
-                "needs_review": p.needs_review,
-            })
+            glossary.append(
+                {
+                    "canonical": p.trigger,
+                    "aliases": aliases,
+                    "type": p.type,
+                    "confidence": p.confidence,
+                    "chapters": p.evidence,
+                    "needs_review": p.needs_review,
+                }
+            )
         return glossary
 
     def save(self, path: str) -> None:

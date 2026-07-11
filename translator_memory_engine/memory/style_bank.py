@@ -11,14 +11,22 @@ chapter pairing (D11: chapters 40-41 and 51+ must still be servable from the ban
 
 The statistics here are intentionally cheap (string heuristics) — the heavy
 stylometry lives in the evaluation stack (spaCy, separate from extract/rewrite).
+
+The ExemplarIndex provides embedding-based retrieval for better semantic matching
+when fastembed is available, falling back to Jaccard when it's not.
 """
 
 import re
-from typing import List
+from typing import Callable, List, Optional
+
+from translator_memory_engine.style.exemplars import (
+    ExemplarIndex,
+    build_exemplar_index,
+)
 
 # Dialogue spans: double quotes and curly quotes. (Single quotes are excluded to
 # avoid matching apostrophes inside words.)
-_DIALOGUE_RE = re.compile(r'"[^"]+"|“[^”]+”')
+_DIALOGUE_RE = re.compile(r'"[^"]+"|\u201c[^\u201d]+\u201d')
 
 
 def _paragraphs(text: str) -> List[str]:
@@ -42,7 +50,7 @@ def _pick_excerpts(text: str, per_chapter: int = 2, max_chars: int = 350) -> Lis
         if len(p) <= max_chars:
             excerpts.append(p)
         else:
-            excerpts.append(p[:max_chars].rsplit(" ", 1)[0] + "…")
+            excerpts.append(p[:max_chars].rsplit(" ", 1)[0] + "\u2026")
     return excerpts
 
 
@@ -65,8 +73,8 @@ def _stats(chapters: List[str]) -> str:
     dlg = 100 * dialogue / sentences
     return (
         f"Measured style across {len(chapters)} good-translation chapters: "
-        f"avg sentence length ≈ {avg:.0f} words; "
-        f"≈ {dlg:.0f}% of sentences carry dialogue; "
+        f"avg sentence length \u2248 {avg:.0f} words; "
+        f"\u2248 {dlg:.0f}% of sentences carry dialogue; "
         f"translator favours close-third-person narration with snappy, "
         f"colloquial dialogue."
     )
@@ -93,3 +101,73 @@ def build_style_bank(
         if s:
             profile.append(s)
     return profile
+
+
+def build_exemplar_index_from_chapters(
+    chapters: List[str],
+    chapter_nums: List[int],
+    embed_fn: Optional[Callable[[str], List[float]]] = None,
+    per_chapter: int = 3,
+) -> ExemplarIndex:
+    """Build an ExemplarIndex from good-translation chapters.
+
+    This is the preferred way to build the style bank when fastembed is available.
+    Falls back to keyword-based retrieval when embed_fn is None.
+    """
+    return build_exemplar_index(chapters, chapter_nums, embed_fn, per_chapter)
+
+
+# --- Per-chapter style retrieval (the "weight" in voice alignment) ---------
+_STOP = set(
+    "the a an and or but of to in on for with as at by from is are was were be "
+    "been being it its this that these those he she they we you i my your his "
+    "her their our not no so if then than them what which who whom whose can "
+    "will would could should may might into out up down over under again".split()
+)
+
+_ONOM = re.compile(
+    r"\b(pak|thud|crash|bang|boom|splat|whack|smack|gasp|huff|snarl|growl|clang|"
+    r"screech|squelch|thwack|whoosh|ugh|argh|grr|hmm|pfft|clack|creak)\b",
+    re.I,
+)
+
+
+def _tok(s: str) -> set:
+    return {t for t in re.findall(r"[a-z']+", s.lower()) if t not in _STOP and len(t) > 2}
+
+
+def _jaccard(excerpt: str, toks: set) -> float:
+    et = _tok(excerpt)
+    if not et or not toks:
+        return 0.0
+    return len(et & toks) / len(et | toks)
+
+
+def retrieve_style_excerpts(
+    chapter_text: str,
+    excerpts: List[str],
+    k: int = 8,
+    exemplar_index: Optional[ExemplarIndex] = None,
+    embed_fn: Optional[Callable[[str], List[float]]] = None,
+) -> List[str]:
+    """Return the ``k`` style-bank excerpts most similar to ``chapter_text``.
+
+    If an ExemplarIndex is provided and embeddings are available, uses cosine
+    similarity for better semantic matching. Otherwise falls back to Jaccard.
+    """
+    # Try embedding-based retrieval first
+    if exemplar_index is not None:
+        exemplars = exemplar_index.retrieve_all(chapter_text, embed_fn=embed_fn, top_k=k)
+        if exemplars:
+            return [ex.text for ex in exemplars]
+
+    # Fallback: Jaccard similarity
+    toks = _tok(chapter_text)
+    scored = []
+    for ex in excerpts:
+        s = _jaccard(ex, toks)
+        if _ONOM.search(ex):
+            s += 0.15  # prefer onomatopoeia / vivid voice samples
+        scored.append((s, ex))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [ex for _, ex in scored[:k]]

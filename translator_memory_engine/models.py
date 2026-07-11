@@ -8,6 +8,7 @@ class Chapter:
 
     Shared across packages (ingest, extract, policy).
     """
+
     chapter: int
     title: str
     text: str

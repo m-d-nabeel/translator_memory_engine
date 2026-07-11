@@ -17,8 +17,8 @@ v2.1 checkpoints. When upstream fixes land, swap _get_spacy_nlp() for GLiNER.
 
 from typing import List, Optional, Set
 
-from translator_memory_engine.models import Chapter
 from translator_memory_engine.extract.signals import Signal
+from translator_memory_engine.models import Chapter
 
 # Lazy-loaded spaCy model
 _nlp = None
@@ -29,13 +29,52 @@ _nlp = None
 
 # Common onomatopoeia / sound effects that NER misclassifies as entities
 _ONOMATOPOEIA: Set[str] = {
-    "haha", "hahaha", "hahahaha", "hehe", "hehehe", "hoho", "hohoho",
-    "kyaha", "kyahaha", "kya", "pfft", "hmm", "hmmm", "hmph",
-    "tsk", "tch", "ugh", "argh", "ahem", "phew", "gulp", "eek",
-    "thud", "thump", "bang", "crash", "creak", "screech", "swoosh",
-    "whoosh", "shoosh", "huff", "puff", "ding", "dong", "buzz",
-    "click", "clack", "splash", "plop", "sizzle", "rumble",
-    "wow", "whoa", "ooh", "aah",
+    "haha",
+    "hahaha",
+    "hahahaha",
+    "hehe",
+    "hehehe",
+    "hoho",
+    "hohoho",
+    "kyaha",
+    "kyahaha",
+    "kya",
+    "pfft",
+    "hmm",
+    "hmmm",
+    "hmph",
+    "tsk",
+    "tch",
+    "ugh",
+    "argh",
+    "ahem",
+    "phew",
+    "gulp",
+    "eek",
+    "thud",
+    "thump",
+    "bang",
+    "crash",
+    "creak",
+    "screech",
+    "swoosh",
+    "whoosh",
+    "shoosh",
+    "huff",
+    "puff",
+    "ding",
+    "dong",
+    "buzz",
+    "click",
+    "clack",
+    "splash",
+    "plop",
+    "sizzle",
+    "rumble",
+    "wow",
+    "whoa",
+    "ooh",
+    "aah",
 }
 
 # Gerund/participle POS tags that indicate sentence fragments, not entity names
@@ -43,14 +82,14 @@ _FRAGMENT_POS = {"VBG", "VBN", "VBD", "VB", "VBP", "VBZ"}
 
 # spaCy entity labels we care about for translation consistency
 _RELEVANT_LABELS = {
-    "PERSON",       # character names
-    "ORG",          # organizations, factions, companies
-    "GPE",          # geopolitical entities (kingdoms, cities, countries)
-    "FAC",          # buildings, landmarks (castles, palaces)
-    "PRODUCT",      # items, weapons, artifacts
-    "NORP",         # nationalities, religious/political groups
-    "LOC",          # natural locations (mountains, rivers, forests)
-    "EVENT",        # named events, battles
+    "PERSON",  # character names
+    "ORG",  # organizations, factions, companies
+    "GPE",  # geopolitical entities (kingdoms, cities, countries)
+    "FAC",  # buildings, landmarks (castles, palaces)
+    "PRODUCT",  # items, weapons, artifacts
+    "NORP",  # nationalities, religious/political groups
+    "LOC",  # natural locations (mountains, rivers, forests)
+    "EVENT",  # named events, battles
     "WORK_OF_ART",  # named works (techniques, arts, formations)
 }
 
@@ -65,8 +104,8 @@ def _has_heavy_repetition(text: str) -> bool:
         if len(text) < window * 2:
             continue
         for i in range(len(text) - window * 2 + 1):
-            pattern = text[i:i + window]
-            if pattern == text[i + window:i + window * 2]:
+            pattern = text[i : i + window]
+            if pattern == text[i + window : i + window * 2]:
                 return True
     return False
 
@@ -90,6 +129,7 @@ def _get_nlp():
     global _nlp
     if _nlp is None:
         import spacy
+
         _nlp = spacy.load("en_core_web_sm")
     return _nlp
 
@@ -117,6 +157,7 @@ def extract_ner_entities(
     """
     if model_name:
         import spacy
+
         nlp = spacy.load(model_name)
     else:
         nlp = _get_nlp()
@@ -150,12 +191,14 @@ def extract_ner_entities(
             # Get sentence context
             context = ent.sent.text.strip()[:200] if ent.sent else ""
 
-            signals.append(Signal(
-                text=text,
-                chapter=ch.chapter,
-                type="entity",
-                context=context,
-                extractor=f"ner.spacy.{ent.label_}",
-            ))
+            signals.append(
+                Signal(
+                    text=text,
+                    chapter=ch.chapter,
+                    type="entity",
+                    context=context,
+                    extractor=f"ner.spacy.{ent.label_}",
+                )
+            )
 
     return signals

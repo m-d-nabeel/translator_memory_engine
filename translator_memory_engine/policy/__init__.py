@@ -4,8 +4,8 @@ Every other package (memory, retrieve, validate, rewrite) imports this.
 None of them redefine it.
 """
 
-from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Any
+from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, List
 
 
 @dataclass
@@ -38,6 +38,7 @@ class Policy:
             layer). Fed to the LLM verification backend so it can judge the candidate
             from real usage rather than the bare string (PLAN.md §7 / §3).
     """
+
     id: str
     type: str
     trigger: str

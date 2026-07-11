@@ -6,11 +6,11 @@ Supports both heuristic extractors and ML-based extractors (spaCy NER).
 
 from typing import List, Optional
 
-from translator_memory_engine.models import Chapter
-from translator_memory_engine.extract.signals import Signal
 from translator_memory_engine.extract.entity import extract_entities
-from translator_memory_engine.extract.terminology import extract_terminology
 from translator_memory_engine.extract.honorific import extract_honorifics
+from translator_memory_engine.extract.signals import Signal
+from translator_memory_engine.extract.terminology import extract_terminology
+from translator_memory_engine.models import Chapter
 
 
 def extract_signals(
@@ -41,6 +41,7 @@ def extract_signals(
     if use_ner:
         try:
             from translator_memory_engine.extract.ner import extract_ner_entities
+
             signals.extend(extract_ner_entities(chapters))
         except ImportError:
             pass  # spaCy not installed, skip NER

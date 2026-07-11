@@ -4,24 +4,43 @@ from translator_memory_engine.policy import Policy
 from translator_memory_engine.retrieve.retriever import PolicyRetriever
 from translator_memory_engine.rewrite.conflict import resolve
 from translator_memory_engine.rewrite.prepass import apply_prepass
-from translator_memory_engine.rewrite.rewriter import build_prompt, _strip_echo
+from translator_memory_engine.rewrite.rewriter import _strip_echo, build_prompt
 
 
 def _policy(trigger, match, applies="deterministic", conf=0.9, pid="p_1"):
     return Policy(
-        id=pid, type="entity-naming", trigger=trigger, match=match,
-        action={"render_as": trigger}, confidence=conf, evidence=[1, 2, 3],
+        id=pid,
+        type="entity-naming",
+        trigger=trigger,
+        match=match,
+        action={"render_as": trigger},
+        confidence=conf,
+        evidence=[1, 2, 3],
     )
 
 
 class TestRetriever:
     def test_matches_variant(self):
-        p = _policy("Rondo Merchant Group",
-                    ["Rondo Merchant Group", "Anton Merchant Group"])
+        p = _policy("Rondo Merchant Group", ["Rondo Merchant Group", "Anton Merchant Group"])
         r = PolicyRetriever([p])
         matched = r.retrieve("The Anton Merchant Group arrived.")
         assert len(matched) == 1
         assert matched[0].trigger == "Rondo Merchant Group"
+
+    def test_word_boundary_avoids_substring_false_positive(self):
+        # Regression: "Ian" must NOT match inside "brilliant" (caused a ch040
+        # invented-subplot bug when the retriever falsely prompted the Ian policy).
+        p = _policy("Ian", ["Ian", "Ian Hanover"])
+        r = PolicyRetriever([p])
+        assert r.retrieve("He had a brilliant idea.") == []
+        assert r.retrieve("Julian laughed.") == []
+
+    def test_whole_word_matches(self):
+        p = _policy("Ian", ["Ian"])
+        r = PolicyRetriever([p])
+        matched = r.retrieve("Ian nodded in agreement.")
+        assert len(matched) == 1
+        assert matched[0].trigger == "Ian"
 
 
 class TestConflictResolver:
@@ -44,8 +63,7 @@ class TestConflictResolver:
 
 class TestPrepass:
     def test_substitutes_variant(self):
-        p = _policy("Rondo Merchant Group",
-                    ["Rondo Merchant Group", "Anton Merchant Group"])
+        p = _policy("Rondo Merchant Group", ["Rondo Merchant Group", "Anton Merchant Group"])
         text = "The Anton Merchant Group arrived."
         res = resolve(text, [p])
         out, trace = apply_prepass(text, res)
@@ -80,11 +98,20 @@ class TestPromptBuilder:
 class TestMtlCleaner:
     def test_unwraps_bracketed_thoughts(self):
         from translator_memory_engine.rewrite.clean import clean_mtl_artifacts
-        out = clean_mtl_artifacts(
-            "[go away! I fed him and put him to sleep, what? money?]"
-        )
+
+        out = clean_mtl_artifacts("[go away! I fed him and put him to sleep, what? money?]")
         assert out == "go away! I fed him and put him to sleep, what? money?"
         assert "[" not in out
+
+    def test_strips_site_watermark_line(self):
+        from translator_memory_engine.rewrite.clean import clean_mtl_artifacts
+
+        out = clean_mtl_artifacts(
+            "He left the hall.\n\n* * * Ranovel dot com * * *\n\nThe night was cold."
+        )
+        assert "ranovel" not in out.lower()
+        assert "He left the hall." in out
+        assert "The night was cold." in out
 
 
 class TestStripEcho:
@@ -129,27 +156,34 @@ class TestPromptModes:
 class TestRewriteModeSelection:
     def test_reference_forces_mode_even_without_llm_flag(self, tmp_path):
         from translator_memory_engine.rewrite.rewriter import rewrite
+
         policies = tmp_path / "policies.jsonl"
         policies.write_text("", encoding="utf-8")
         # No API key set -> LLM path is a no-op, but mode must still be recorded.
         res = rewrite(
-            "Calron left.", str(policies),
-            do_llm=False, reference_text="Calron departed.",
+            "Calron left.",
+            str(policies),
+            do_llm=False,
+            reference_text="Calron departed.",
         )
         assert res["mode"] == "supervised_reference"
 
     def test_style_profile_mode(self, tmp_path):
         from translator_memory_engine.rewrite.rewriter import rewrite
+
         policies = tmp_path / "policies.jsonl"
         policies.write_text("", encoding="utf-8")
         res = rewrite(
-            "Calron left.", str(policies),
-            do_llm=False, style_profile=["Calron frowned."],
+            "Calron left.",
+            str(policies),
+            do_llm=False,
+            style_profile=["Calron frowned."],
         )
         assert res["mode"] == "unsupervised_stylebank"
 
     def test_fallback_mode(self, tmp_path):
         from translator_memory_engine.rewrite.rewriter import rewrite
+
         policies = tmp_path / "policies.jsonl"
         policies.write_text("", encoding="utf-8")
         res = rewrite("Calron left.", str(policies), do_llm=False)
