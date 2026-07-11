@@ -184,16 +184,20 @@ export function NovelView() {
 
     const entries = grouped[chNum];
     const mtl = entries.find((e) => e.source_type === "mtl");
-    
+
     // If we are filtering by a specific status, but this chapter doesn't have an MTL version, hide it.
     if (!mtl) return false;
 
     if (statusFilter === "completed" && mtl.status !== "completed")
       return false;
-    if (statusFilter === "processing" && mtl.status !== "processing" && mtl.status !== "pending")
+    if (
+      statusFilter === "processing" &&
+      mtl.status !== "processing" &&
+      mtl.status !== "pending"
+    )
       return false;
     if (statusFilter === "failed" && mtl.status !== "failed") return false;
-    
+
     return true;
   });
 

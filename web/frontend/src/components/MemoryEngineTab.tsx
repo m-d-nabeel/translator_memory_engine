@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Cpu,
   Sparkles,
@@ -9,6 +9,10 @@ import {
   Database,
   ExternalLink,
   RefreshCw,
+  Plus,
+  Edit2,
+  Trash2,
+  X,
 } from "lucide-react";
 import { api } from "../api/client";
 import {
@@ -33,6 +37,49 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
     queryFn: api.listNovels,
   });
 
+  const queryClient = useQueryClient();
+  const [ruleModal, setRuleModal] = useState<{
+    isOpen: boolean;
+    mode: "add" | "edit";
+    policyId?: number;
+    trigger: string;
+    replacement: string;
+    note: string;
+  }>({ isOpen: false, mode: "add", trigger: "", replacement: "", note: "" });
+
+  const createMutation = useMutation({
+    mutationFn: (data: {
+      trigger: string;
+      replacement: string;
+      note?: string;
+    }) => api.createPolicy(targetNovelId as number, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["policies", targetNovelId] });
+      setRuleModal((prev) => ({ ...prev, isOpen: false }));
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({
+      policyId,
+      data,
+    }: {
+      policyId: number;
+      data: { trigger: string; replacement: string; note?: string };
+    }) => api.updatePolicy(targetNovelId as number, policyId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["policies", targetNovelId] });
+      setRuleModal((prev) => ({ ...prev, isOpen: false }));
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (policyId: number) =>
+      api.deletePolicy(targetNovelId as number, policyId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["policies", targetNovelId] });
+    },
+  });
   const targetNovelId =
     selectedNovelId === "all"
       ? novels && novels.length > 0
@@ -334,6 +381,27 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
         <div className="flex gap-2">
           {selectedNovelId !== "all" && (
             <button
+              onClick={() =>
+                setRuleModal({
+                  isOpen: true,
+                  mode: "add",
+                  trigger: "",
+                  replacement: "",
+                  note: "",
+                })
+              }
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs md:text-sm font-semibold border transition-all hover:bg-white/5 cursor-pointer"
+              style={{
+                borderColor: "var(--color-border)",
+                color: "var(--color-text)",
+              }}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Rule
+            </button>
+          )}
+          {selectedNovelId !== "all" && (
+            <button
               onClick={() => extractMutation.mutate(selectedNovelId)}
               disabled={extractMutation.isPending}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs md:text-sm font-semibold border transition-all hover:bg-white/5 disabled:opacity-50 cursor-pointer"
@@ -406,7 +474,7 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
             {filteredPolicies.map((p) => (
               <div
                 key={p.id}
-                className="p-4 rounded-2xl border transition-all hover:border-[var(--color-ai)] flex flex-col justify-between gap-3"
+                className="group p-4 rounded-2xl border transition-all hover:border-[var(--color-ai)] flex flex-col justify-between gap-3"
                 style={{
                   backgroundColor: "var(--color-surface)",
                   borderColor: "var(--color-border)",
@@ -432,6 +500,33 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
                     >
                       Confidence: {Math.round(p.confidence * 100)}%
                     </span>
+
+                    <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() =>
+                          setRuleModal({
+                            isOpen: true,
+                            mode: "edit",
+                            policyId: p.id,
+                            trigger: p.trigger,
+                            replacement: JSON.parse(p.action).target || "",
+                            note: p.note || "",
+                          })
+                        }
+                        className="p-1 rounded hover:bg-black/20 text-[var(--color-text-muted)] hover:text-white"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (window.confirm("Delete this rule?"))
+                            deleteMutation.mutate(p.id);
+                        }}
+                        className="p-1 rounded hover:bg-red-500/20 text-[var(--color-text-muted)] hover:text-red-400"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <h4
@@ -561,6 +656,134 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Rule Modal */}
+      {ruleModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div
+            className="w-full max-w-md p-6 rounded-2xl border shadow-2xl relative"
+            style={{
+              backgroundColor: "var(--color-surface)",
+              borderColor: "var(--color-border)",
+            }}
+          >
+            <button
+              onClick={() =>
+                setRuleModal((prev) => ({ ...prev, isOpen: false }))
+              }
+              className="absolute top-4 right-4 p-1 rounded-lg opacity-60 hover:opacity-100 hover:bg-white/10"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h2
+              className="text-xl font-bold mb-4"
+              style={{ color: "var(--color-text)" }}
+            >
+              {ruleModal.mode === "add" ? "Add Custom Rule" : "Edit Rule"}
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label
+                  className="block text-xs font-semibold opacity-70 mb-1"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
+                  Target Word / Phrase (MTL)
+                </label>
+                <input
+                  type="text"
+                  value={ruleModal.trigger}
+                  onChange={(e) =>
+                    setRuleModal((p) => ({ ...p, trigger: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl text-sm border focus:outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: "var(--color-bg)",
+                    borderColor: "var(--color-border)",
+                    color: "var(--color-text)",
+                  }}
+                  placeholder="e.g. Noh Young-joo"
+                />
+              </div>
+              <div>
+                <label
+                  className="block text-xs font-semibold opacity-70 mb-1"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
+                  Correct Translation
+                </label>
+                <input
+                  type="text"
+                  value={ruleModal.replacement}
+                  onChange={(e) =>
+                    setRuleModal((p) => ({ ...p, replacement: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl text-sm border focus:outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: "var(--color-bg)",
+                    borderColor: "var(--color-border)",
+                    color: "var(--color-text)",
+                  }}
+                  placeholder="e.g. Lord Noh"
+                />
+              </div>
+              <div>
+                <label
+                  className="block text-xs font-semibold opacity-70 mb-1"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
+                  Note (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={ruleModal.note}
+                  onChange={(e) =>
+                    setRuleModal((p) => ({ ...p, note: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl text-sm border focus:outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: "var(--color-bg)",
+                    borderColor: "var(--color-border)",
+                    color: "var(--color-text)",
+                  }}
+                  placeholder="e.g. Title, not a first name"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  if (ruleModal.mode === "add") {
+                    createMutation.mutate({
+                      trigger: ruleModal.trigger,
+                      replacement: ruleModal.replacement,
+                      note: ruleModal.note,
+                    });
+                  } else {
+                    updateMutation.mutate({
+                      policyId: ruleModal.policyId!,
+                      data: {
+                        trigger: ruleModal.trigger,
+                        replacement: ruleModal.replacement,
+                        note: ruleModal.note,
+                      },
+                    });
+                  }
+                }}
+                disabled={
+                  !ruleModal.trigger ||
+                  !ruleModal.replacement ||
+                  createMutation.isPending ||
+                  updateMutation.isPending
+                }
+                className="w-full py-2.5 rounded-xl font-bold transition-all hover:opacity-90 disabled:opacity-50 mt-2"
+                style={{ backgroundColor: "var(--color-ai)", color: "black" }}
+              >
+                {createMutation.isPending || updateMutation.isPending
+                  ? "Saving..."
+                  : "Save Rule"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
