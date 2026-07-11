@@ -1,11 +1,10 @@
 project: Translator Memory Engine
 code_name: translator_memory_engine
-version: 0.1.0
+version: 0.2.0
 
 storage:
-  mode: prototype          # prototype = json, production = sqlite
-  policies_path: memory/policies.jsonl
-  glossary_path: memory/glossary.json
+  db_path: data/translator_memory.db    # SQLite single source of truth
+  output_dir: data/policies             # JSONL export/backup directory
 
 ingest:
   formats: [txt, epub]
