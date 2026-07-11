@@ -1,7 +1,7 @@
 # Decision History — Translator Memory Engine (package: translator_memory_engine)
 
 This document records how the project's design evolved across review rounds, so the
-*why* behind each decision survives. The current, frozen design lives in `PLAN.md`.
+_why_ behind each decision survives. The current, frozen design lives in `PLAN.md`.
 
 ---
 
@@ -9,9 +9,9 @@ This document records how the project's design evolved across review rounds, so 
 
 The first idea was naive: chunk a novel → embed → retrieve similar passages → ask an LLM
 to rewrite MTL. Identified weakness: novels are not FAQ-style repeats; pure vector
-retrieval misses *structured* consistency information (names, terms, honorifics, ranks).
+retrieval misses _structured_ consistency information (names, terms, honorifics, ranks).
 
-**Decision:** the problem is not generation, it is *consistency / retrieval / verification*.
+**Decision:** the problem is not generation, it is _consistency / retrieval / verification_.
 
 ---
 
@@ -39,8 +39,8 @@ Key sub-decisions:
 
 Renamed (see D9 for why we later resisted "Editorial Memory Engine"): the system isn't
 translating, it's **reconstructing a translator's decisions**. The central object became the
-**Decision**, retrieved instead of whole documents. Glossary/character DB/TM became *derived
-views* over the decision store (one source of truth). Style moved to example banks. TM
+**Decision**, retrieved instead of whole documents. Glossary/character DB/TM became _derived
+views_ over the decision store (one source of truth). Style moved to example banks. TM
 reinterpreted as **stylistic patterns** (dialogue/voice/combat), retrieved by scene type.
 Checkers made **modular/pluggable**. Added a **regression suite** (every bug = permanent
 test). Flagged **variant clustering** as the top technical risk.
@@ -106,9 +106,9 @@ Found and fixed:
 
 - Renamed **Rule Generator → Policy Miner** (extraction is uncertain/verification-gated,
   not deterministic generation). Object renamed **Rule → Policy** throughout for coherence.
-- **Hypothesis made precise**: *Explicit translator-policy retrieval produces better
+- **Hypothesis made precise**: _Explicit translator-policy retrieval produces better
   cross-chapter consistency than document-level retrieval for long-form translation
-  rewriting.*
+  rewriting._
 - **Policy evolution**: added `valid_from` / `valid_until` / `superseded_by` to the schema.
 - **Decomposed confidence**: `frequency` / `consistency` / `context` / `verification`
   scores → `confidence`.
@@ -128,10 +128,10 @@ Created `translator-memory-engine/` (correct system name) with package
 `translator_memory_engine/{ingest, extract, memory}` and `docs/`. v0 contains **only** these three packages
 
 - config — no retriever, rewriter, validators, or UI yet. The immediate goal: prove the
-**Policy Miner** can produce a high-quality `memory/policies.jsonl` from ~30 chapters.
+  **Policy Miner** can produce a high-quality `memory/policies.jsonl` from ~30 chapters.
 
 **Package-naming rationale (D8→D10):** the engine package is named `translator_memory_engine`,
-*not* `app` (that implies a web application — this is a library/engine) and *not* a cryptic
+_not_ `app` (that implies a web application — this is a library/engine) and _not_ a cryptic
 initialism like `tme`/`novelmtl` (unsearchable, meaningless to future readers). A wrapper
 package is required for **namespacing**: domain subpackages (`policy`, `memory`, `extract`,
 `validate`, `eval`, …) are too generic to be safe top-level imports, so they live under
@@ -159,8 +159,8 @@ Adopted a **domain / bounded-context** layout instead of a technology layout (no
   package produces / stores / retrieves / consumes. `policy/schema.py` is the **single
   source of truth** for the `Policy` type; `memory/`, `retrieve/`, `validate/`, `rewrite/`
   import it and never redefine it.
-- **Split `extract` from `policy`:** `extract/` produces *signals* (entity / terminology /
-  honorific / formatting / style); `policy/` consumes signals and emits *policies*
+- **Split `extract` from `policy`:** `extract/` produces _signals_ (entity / terminology /
+  honorific / formatting / style); `policy/` consumes signals and emits _policies_
   (Evidence → Signals → Policies). The Miner does not do extraction itself.
 - **Validators are report-only.** Findings are returned, never text edits. Auto-fix lives in
   `rewrite/postprocessor.py` (or a dedicated fixer).
@@ -189,7 +189,7 @@ Key changes:
   Language Memory, 7 validators, pattern mining, vector retrieval, versioning) is now
   explicitly labeled future work in §15.
 - **Added four-condition ablation study** (§12). Without it, the deterministic pre-pass
-  could capture all gains and the hypothesis ("policy *retrieval* helps") would be
+  could capture all gains and the hypothesis ("policy _retrieval_ helps") would be
   unattributable. Conditions: (A) baseline RAG, (B) pre-pass only, (C) retrieval only,
   (D) full pipeline.
 - **Simplified v0 Policy schema.** Removed `valid_from`, `valid_until`, `superseded_by` —
@@ -249,6 +249,7 @@ contextual significance together; GLiNER mostly yields candidate spans. spaCy + 
 covers this. Do not reintroduce unless later benchmarked with a measurable extraction benefit.
 
 **2. Component positioning (Evidence → Inference → Policy preserved):**
+
 - **spaCy:** cheap, deterministic signal generation + structural analysis (POS/dependency,
   sentence structure, boundaries, measurable style statistics).
 - **LLM:** primary semantic extractor AND verifier.
@@ -261,15 +262,17 @@ covers this. Do not reintroduce unless later benchmarked with a measurable extra
 
 **3. Style needs no separate extraction model yet.** The LLM is the primary style-pattern
 extractor (later, for Language Memory) while spaCy supplies the measurable evidence (excerpts
-+ statistics). A candidate Language Pattern is `{type, observation, evidence[], counterexamples[],
+
+- statistics). A candidate Language Pattern is `{type, observation, evidence[], counterexamples[],
 confidence}` — far more useful than a latent style vector ("similarity 0.78"). It requires
-evidence AND counterexamples, not just a score.
+  evidence AND counterexamples, not just a score.
 
 **4. Evaluation independence is a hard constraint (LLM circularity).** Research shows same-
 model produce+judge inflates results: Dietz et al. 2025 (Tropes #1 Circularity, #2 LLM-
 Evaluator-as-Ranker — self-reinforcing, inflated scores); Panickssery et al. 2024 (LLMs self-
 recognize — GPT-4 at 73.5% — and that drives self-preference); DBG / consensus-deviation
 metrics exist to quantify and debias. Therefore:
+
 - Extraction-LLM, rewrite-LLM, and evaluator must be **independent**.
 - Evaluation stack = (a) deterministic glossary adherence [primary, always]; (b) human reader
   judgments [gold]; (c) spaCy-derived stylometry [independent, structural]; (d) optional LLM
@@ -284,6 +287,7 @@ bank / example-bank approach for Language Memory and the max-fidelity reference 
 chapters that have an original.
 
 **Implications for current work:**
+
 - Keep M0/extraction as-is (spaCy POS + LLM verify).
 - Style bank (example excerpts + spaCy stats) is the core style signal for chapters without an
   original (40+); the per-chapter original reference is a fidelity/validation bonus only.
@@ -328,12 +332,14 @@ model cannot distinguish correct English from MTL errors that happen to be valid
 The known error dictionary provides the missing context.
 
 **Implementation:**
+
 - `data/known_errors.json` — curated dictionary of MTL errors → Korean source → correct English
 - `scan_known_errors()` — detects known errors in MTL text
 - `format_known_errors_for_prompt()` — formats corrections for LLM prompt
 - Integrated into `build_prompt()` — corrections injected automatically when errors detected
 
 **Results:**
+
 - ch040: 7/7 errors fixed (was 5/7 with system message removal only)
 - ch041: watermark fixed, Hmm cleaned
 

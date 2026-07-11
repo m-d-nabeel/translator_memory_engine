@@ -12,7 +12,6 @@ deterministic edit for explainability.
 The LLM call reuses the OpenAI-compatible client (same backend as verification).
 """
 
-import json
 import logging
 import os
 import re
@@ -143,10 +142,34 @@ def format_known_errors_for_prompt(matches: List[Dict]) -> str:
     return "\n".join(lines)
 
 
-def _load_policies(path: str) -> List[Policy]:
-    store = PolicyStore()
-    store.load(path)
-    return store.all()
+def _load_policies(source: Any) -> List[Policy]:
+    """Load policies from various sources.
+
+    Args:
+        source: One of:
+            - str: File path to policies.jsonl (legacy/CLI mode)
+            - List[Policy]: Already-loaded policy objects (SQLite mode)
+            - List[dict]: Policy dicts from ORM conversion (SQLite mode)
+            - Any other: raises ValueError
+
+    Returns:
+        List of Policy dataclass instances.
+    """
+    if isinstance(source, list):
+        policies = []
+        for item in source:
+            if isinstance(item, Policy):
+                policies.append(item)
+            elif isinstance(item, dict):
+                policies.append(Policy(**item))
+            else:
+                raise ValueError(f"Unsupported policy item type: {type(item)}")
+        return policies
+    if isinstance(source, str):
+        store = PolicyStore()
+        store.load(source)
+        return store.all()
+    raise ValueError(f"Unsupported policies source type: {type(source)}")
 
 
 def _align_mtl_entities(
@@ -521,7 +544,8 @@ CHAPTER TO REWRITE:
 
 def rewrite(
     text: str,
-    policies_path: str,
+    policies_path: str = "",
+    policies: Any = None,
     model: str = "llama-3.3-70b-versatile",
     base_url: Optional[str] = None,
     api_key_env: str = "LLM_API_KEY",
@@ -535,7 +559,11 @@ def rewrite(
 
     Args:
         text: Raw MTL passage.
-        policies_path: Path to policies.jsonl (the mined store).
+        policies_path: Path to policies.jsonl (legacy/CLI mode). Ignored if
+            ``policies`` is provided.
+        policies: Pre-loaded policies — can be a List[Policy], List[dict], or
+            a PolicyStore instance. When provided, takes precedence over
+            ``policies_path`` (SQLite / web-backend mode).
         model / base_url / api_key_env: LLM backend for the optional rewrite.
         do_llm: If True, call the LLM to rewrite the pre-passed text.
         reference_text: Supervised mode — published translation of the SAME
@@ -554,8 +582,15 @@ def rewrite(
     # Clean MTL artifacts on the input only (gold corpus is untouched).
     text = clean_mtl_artifacts(text)
 
-    policies = _load_policies(policies_path)
-    logger.debug(f"Loaded {len(policies)} policies from {policies_path}")
+    # Load policies from the provided source (in-memory list takes precedence)
+    if policies is not None:
+        if isinstance(policies, PolicyStore):
+            policy_list = policies.all()
+        else:
+            policy_list = _load_policies(policies)
+    else:
+        policy_list = _load_policies(policies_path)
+    logger.debug(f"Loaded {len(policy_list)} policies")
 
     # Alias bridging: use a lightweight LLM call to map MTL transliterations
     # (e.g. "Noh Young-ju") to canonical policy names (e.g. "Lord Noh").
@@ -563,13 +598,13 @@ def rewrite(
     if glossary and (do_llm or reference_text is not None or style_profile is not None):
         keys = _get_groq_keys(api_key_env)
         if keys:
-            logger.debug("Running alias bridging (MTL → canonical)...")
+            logger.debug("Running alias bridging (MTL -> canonical)...")
             _client = GroqRotatingClient(keys, base_url)
             alias_map = _align_mtl_entities(text, glossary, _client, model)
             if alias_map:
                 logger.debug(f"Discovered {len(alias_map)} aliases: {list(alias_map.keys())[:5]}")
                 # Inject discovered aliases into policy match lists in memory
-                for p in policies:
+                for p in policy_list:
                     for mtl_form, canonical in alias_map.items():
                         if p.trigger.lower() == canonical.lower() or canonical.lower() in [
                             a.lower() for a in p.match
@@ -577,7 +612,7 @@ def rewrite(
                             if mtl_form not in p.match:
                                 p.match.append(mtl_form)
 
-    retriever = PolicyRetriever(policies)
+    retriever = PolicyRetriever(policy_list)
     matched = retriever.retrieve(text)
     logger.debug(f"Retriever matched {len(matched)} policies")
 
@@ -699,7 +734,7 @@ def rewrite(
     # even if the LLM renamed or dropped a named entity (PLAN §8: the high-confidence
     # path must not depend on LLM compliance). Runs on the LLM output and on the
     # pre-pass-only output alike.
-    rewritten_text = _apply_deterministic(rewritten_text, policies)
+    rewritten_text = _apply_deterministic(rewritten_text, policy_list)
 
     logger.debug(f"Final output: {len(rewritten_text)} chars")
     return {

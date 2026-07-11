@@ -5,6 +5,7 @@ milestone. Captured so we don't re-litigate them while pushing the hypothesis
 forward (avoid local minima). Each item is small and self-contained.
 
 ## M0 extraction (done enough — review-gated)
+
 - [ ] **`review` subcommand** for `pipeline.py`: print rejected / `needs_review`
       policies with their LLM reasons for quick human eyeballing at the M0 gate.
 - [ ] **RETYPE held behind `needs_review`**: currently RETYPE mutates `Policy.type`
@@ -21,6 +22,7 @@ forward (avoid local minima). Each item is small and self-contained.
       that output contains only canonical forms — reuse the pre-pass logic.
 
 ## M1 retriever / rewriter
+
 - [ ] **Vector / fuzzy retrieval** fallback when lexical match misses (PLAN §15).
 - [ ] **Context-dependent conflict resolution** (speaker/register) — explicitly
       deferred in v0 (PLAN §9, D6).
@@ -28,5 +30,6 @@ forward (avoid local minima). Each item is small and self-contained.
       would make human review cheaper (PLAN §11).
 
 ## Process
+
 - [ ] **Regression tests for every observed bug** (PLAN §12): continue adding as
       new behaviors land (verifier verdicts, conflict resolution, pre-pass).

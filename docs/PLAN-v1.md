@@ -6,12 +6,12 @@ Not a translation tool. **The translation already exists (the MTL).** This syste
 reconstructs a translator's editorial behavior and applies it to new MTL so the output
 reads as if the same person wrote it.
 
-*Translator Memory Engine* is the right level of abstraction: specific enough that people
+_Translator Memory Engine_ is the right level of abstraction: specific enough that people
 immediately understand "translation consistency / terminology / long-form localization,"
 not so narrow as "Novel MTL Fixer," and not so broad as "Editorial Memory Engine" (which
 evokes Grammarly/copy-editing). The underlying architecture **generalizes to editorial
 memory** and can later serve fan-fiction voice-matching, API-documentation styling, manga
-and game localization — but that broader framing is introduced *after* the core is proven.
+and game localization — but that broader framing is introduced _after_ the core is proven.
 
 **Naming:** the system is the **Translator Memory Engine**; `NovelMTL` is the working
 code-name for this implementation (repo: `NovelMTL-Training`).
@@ -24,8 +24,8 @@ code-name for this implementation (repo: `NovelMTL-Training`).
 > document-level retrieval for long-form translation rewriting.**
 
 This is measurable, not a slogan. It is the question the whole system is built to test,
-and the bar every design decision must clear. (A secondary, weaker claim — *policy retrieval
-needs less prompt context than passage retrieval* — is tracked separately via a
+and the bar every design decision must clear. (A secondary, weaker claim — _policy retrieval
+needs less prompt context than passage retrieval_ — is tracked separately via a
 **context-budget metric**: tokens of retrieved material fed to the rewriter. The primary
 evaluated claim is cross-chapter consistency.)
 
@@ -81,7 +81,7 @@ traced to its Inference and the Evidence that produced it.
   "store": "translator",
   "trigger": "Li Qing",
   "match": ["Li Qing", "Li Ching", "Li-Qing"],
-  "action": {"render_as": "Li Qing"},
+  "action": { "render_as": "Li Qing" },
   "applies": "deterministic",
   "valid_from": 3,
   "valid_until": null,
@@ -89,7 +89,7 @@ traced to its Inference and the Evidence that produced it.
   "scores": {
     "frequency": 0.92,
     "consistency": 0.99,
-    "context": 0.80,
+    "context": 0.8,
     "verification": 0.95
   },
   "confidence": 0.99,
@@ -137,8 +137,8 @@ Separating **Policy / Fact / Pattern** matters because they have different extra
 cadences, confidence models, and retrieval paths. Mixing them causes stale or over-eager
 application of policies.
 
-> **Assumption:** Translator Memory is treated as *effectively static* (a translator's
-> naming/formatting choices rarely change mid-series). Translator *style drift* (early vs late
+> **Assumption:** Translator Memory is treated as _effectively static_ (a translator's
+> naming/formatting choices rarely change mid-series). Translator _style drift_ (early vs late
 > volumes) is not modeled; if observed, it becomes a Story/Language Memory concern or a v2 item.
 
 ---
@@ -183,26 +183,26 @@ application of policies.
                        Final Output
 ```
 
-> **Feedback loop (not shown above):** Modular Validators and human review feed *policy
-> refinement* — a low-confidence or contradicted policy is re-weighted, versioned, or split.
+> **Feedback loop (not shown above):** Modular Validators and human review feed _policy
+> refinement_ — a low-confidence or contradicted policy is re-weighted, versioned, or split.
 > The architecture is thus self-correcting rather than purely linear.
 
 ---
 
 ## 7. Module breakdown
 
-| Module | Dir | Responsibility |
-|---|---|---|
-| Ingest & Normalize | `ingest/` | Load good chapters; split; strip Translator Notes / page breaks |
-| Signal extractors | `extract/` (`entity/`, `terminology/`, `honorific/`, `formatting/`, `style/`) | Produce *signals* (Evidence → Signals) |
-| **Policy Miner** | `policy/` (`miner.py`, `verifier.py`, `scorer.py`, `lifecycle.py`, `confidence.py`, `versioning.py`, `schema.py`) | Signals → verified Policies; the heart of the system |
-| Memory (3 stores) | `memory/` (`translator/`, `story/`, `language/`, `storage/`, `index/`) | Translator (Policy), Story (Fact), Language (Pattern) + storage/index |
-| Retriever + Resolver | `retrieve/` (`lexical.py`, `vector.py`, `policy.py`, `resolver.py`, `orchestrator.py`) | Retrieve policies/facts/patterns; resolve conflicts |
-| Rewriter | `rewrite/` (`prompt_builder.py`, `preprocessor.py`, `llm.py`, `postprocessor.py`) | Prompt assembly + pluggable LLM; emits change trace |
-| Explainability | `explain/` (`change_trace.py`, `renderer.py`, `formatter.py`) | Maps each change → policy + evidence + confidence |
-| Modular Validators | `validate/` (`glossary.py`, `entity.py`, `relationship.py`, `timeline.py`, `dialogue.py`, `formatting.py`, `style.py`, `report.py`) | **Report-only** checkers; never edit text |
-| Eval + Regression | `eval/` (`extraction/`, `retrieval/`, `generation/`, `reader/`, `regression/`) | Four benchmark classes + regression suite |
-| Orchestrator | `pipeline.py` + `configs/` | Stages, paths, model, thresholds |
+| Module               | Dir                                                                                                                                 | Responsibility                                                        |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Ingest & Normalize   | `ingest/`                                                                                                                           | Load good chapters; split; strip Translator Notes / page breaks       |
+| Signal extractors    | `extract/` (`entity/`, `terminology/`, `honorific/`, `formatting/`, `style/`)                                                       | Produce _signals_ (Evidence → Signals)                                |
+| **Policy Miner**     | `policy/` (`miner.py`, `verifier.py`, `scorer.py`, `lifecycle.py`, `confidence.py`, `versioning.py`, `schema.py`)                   | Signals → verified Policies; the heart of the system                  |
+| Memory (3 stores)    | `memory/` (`translator/`, `story/`, `language/`, `storage/`, `index/`)                                                              | Translator (Policy), Story (Fact), Language (Pattern) + storage/index |
+| Retriever + Resolver | `retrieve/` (`lexical.py`, `vector.py`, `policy.py`, `resolver.py`, `orchestrator.py`)                                              | Retrieve policies/facts/patterns; resolve conflicts                   |
+| Rewriter             | `rewrite/` (`prompt_builder.py`, `preprocessor.py`, `llm.py`, `postprocessor.py`)                                                   | Prompt assembly + pluggable LLM; emits change trace                   |
+| Explainability       | `explain/` (`change_trace.py`, `renderer.py`, `formatter.py`)                                                                       | Maps each change → policy + evidence + confidence                     |
+| Modular Validators   | `validate/` (`glossary.py`, `entity.py`, `relationship.py`, `timeline.py`, `dialogue.py`, `formatting.py`, `style.py`, `report.py`) | **Report-only** checkers; never edit text                             |
+| Eval + Regression    | `eval/` (`extraction/`, `retrieval/`, `generation/`, `reader/`, `regression/`)                                                      | Four benchmark classes + regression suite                             |
+| Orchestrator         | `pipeline.py` + `configs/`                                                                                                          | Stages, paths, model, thresholds                                      |
 
 > Note: `Policy Refinement` (versioning, confidence updates) is **folded into `policy/`
 > (`lifecycle.py`, `versioning.py`), not a separate top-level package. The Policy schema has
@@ -212,10 +212,10 @@ application of policies.
 **Observability (every module emits metrics):** each stage prints/structured-logs a metrics
 block so the pipeline is debuggable end-to-end, e.g.
 
-- *Policy Miner*: `extracted=142 avg_support=18.2 low_confidence=12 duplicates=4`.
-- *Retriever*: `retrieved=8 unused=2 conflicting=1`.
-- *Rewriter*: `applied=7 ignored=1`.
-This makes regressions and extraction drift visible without reading the JSON by hand.
+- _Policy Miner_: `extracted=142 avg_support=18.2 low_confidence=12 duplicates=4`.
+- _Retriever_: `retrieved=8 unused=2 conflicting=1`.
+- _Rewriter_: `applied=7 ignored=1`.
+  This makes regressions and extraction drift visible without reading the JSON by hand.
 
 ---
 
@@ -232,9 +232,16 @@ This makes regressions and extraction drift visible without reading the JSON by 
 **Character / Entity DB** (derived from naming policies; referenced by Story Memory):
 
 ```json
-{"id":"c_001","name":"Tianxuan Sect","type":"organization","first_appearance":3,
- "aliases":["Tian Xuan Sect","the Sect"],"relationships":[{"to":"c_002","type":"rival","since_chapter":12}],
- "status":"active","policy_ref":"r_001"}
+{
+  "id": "c_001",
+  "name": "Tianxuan Sect",
+  "type": "organization",
+  "first_appearance": 3,
+  "aliases": ["Tian Xuan Sect", "the Sect"],
+  "relationships": [{ "to": "c_002", "type": "rival", "since_chapter": 12 }],
+  "status": "active",
+  "policy_ref": "r_001"
+}
 ```
 
 **Policy `type` enumeration:** `entity-naming`, `honorific`, `terminology`, `formatting`,
@@ -242,13 +249,13 @@ This makes regressions and extraction drift visible without reading the JSON by 
 known variant/forbidden forms) so Retriever / Conflict Resolver / Validators detect and fix
 variant spellings, not just the canonical trigger.
 
-> `profile.yaml` `honorifics` is a *default*; per-source / per-policy honorific policies
+> `profile.yaml` `honorifics` is a _default_; per-source / per-policy honorific policies
 > override it (a mixed CN/JP/KR corpus has different honorific handling per policy).
 
 **Lean profile** (`profile.yaml`) — only mechanically enforceable facts:
 
 ```yaml
-honorifics: retain          # retain | translate | drop
+honorifics: retain # retain | translate | drop
 capitalization: title-case
 paragraph_spacing: double-newline
 ```
@@ -260,8 +267,13 @@ paragraph_spacing: double-newline
 **Explainability record** (per rewrite):
 
 ```json
-{"original":"Heavenly Mysterious Sect","output":"Tianxuan Sect",
- "policy":"r_184","confidence":0.98,"evidence":[3,11,19]}
+{
+  "original": "Heavenly Mysterious Sect",
+  "output": "Tianxuan Sect",
+  "policy": "r_184",
+  "confidence": 0.98,
+  "evidence": [3, 11, 19]
+}
 ```
 
 ---
@@ -270,7 +282,7 @@ paragraph_spacing: double-newline
 
 Sentence-exact TM is weak for novels. Retrieve **stylistic patterns**: dialogue snippets,
 recurring descriptions, idioms, narrator voice, combat narration, emotional scenes — stored
-in Language Memory as example banks + a fuzzy/vector index, retrieved by *scene type*.
+in Language Memory as example banks + a fuzzy/vector index, retrieved by _scene type_.
 
 ---
 
@@ -286,7 +298,7 @@ trigger→action table toward context-conditioned policies. This is the gating r
 (Secondary risks, in order: Policy extraction quality — is a singleton "Elder Brother" a
 mistake or a real alternative policy?; variant clustering — `Azure Dragon Palace` vs `Hall`.)
 
-> **Staging:** v0 targets *extraction quality* (can we get 100+ good policies?). Applicability
+> **Staging:** v0 targets _extraction quality_ (can we get 100+ good policies?). Applicability
 > becomes the active risk only once the Rewriter + Validators exist and can observe conflicts.
 > The deterministic pre-pass in §4 already removes the easiest class of applicability errors
 > (unambiguous naming/terminology), leaving context-conditioned voice/phrasing as the hard core.
@@ -324,7 +336,7 @@ Auto-fixes apply safe substitutions; everything else goes to a human-review queu
 
 ## 13. Explainability (central, not optional)
 
-Every rewrite answers *"why did you change this?"* Each edit cites the Policy applied, its
+Every rewrite answers _"why did you change this?"_ Each edit cites the Policy applied, its
 confidence, and the evidence chapters. This is a debugging and trust surface, and it doubles
 as a verification aid for the validators. A review UI showing
 `changed -> reason -> policy # -> confidence -> evidence` makes human review dramatically cheaper.
@@ -374,10 +386,10 @@ Then expand:
 
 - **M0 — Policy Miner + store structure.** Build the three-store schema and populate the
   Translator (Policy) store with extracted policies; Story/Language stores created empty.
-  *Gate: human review of 100+ extracted policies.*
-- **M1 — Retriever + Conflict Resolver.** Right Policies, disambiguated. *Gate: retrieval precision.*
-- **M2 — Simple Rewriter + Explainability.** Applying Policies improves consistency? *Gate: human read vs baseline.*
-- **M3 — Modular validators + auto-fix.** Policies verified? *Gate: adherence % on M2 output.*
+  _Gate: human review of 100+ extracted policies._
+- **M1 — Retriever + Conflict Resolver.** Right Policies, disambiguated. _Gate: retrieval precision._
+- **M2 — Simple Rewriter + Explainability.** Applying Policies improves consistency? _Gate: human read vs baseline._
+- **M3 — Modular validators + auto-fix.** Policies verified? _Gate: adherence % on M2 output._
 - **M4 — Ingestion robustness + corpus scale + derived views.**
 - **M5 — Story Memory depth (world state) + Language Memory patterns.**
 - **M6 — Vector/stylistic retrieval + regression suite end-to-end.**
@@ -387,8 +399,8 @@ Then expand:
 ## 16. Scope discipline
 
 The scope is dangerously large. **Feature filter:** for every proposed addition (another
-checker, memory, retriever, index) ask one question — *Does this make it more likely that
-readers say "chapter 31 was translated by the same person as chapters 1–30"?* If the answer
+checker, memory, retriever, index) ask one question — _Does this make it more likely that
+readers say "chapter 31 was translated by the same person as chapters 1–30"?_ If the answer
 isn't clearly yes, it belongs in v2. Do not build ingestion/world-state/eval infra before
 the M0–M3 prototype validates the policy abstraction.
 
@@ -399,16 +411,16 @@ the M0–M3 prototype validates the policy abstraction.
 Decisions captured from setup; these drive the v0 implementation and are recorded in
 `config.yaml`.
 
-| Decision | Value | Consequence |
-|---|---|---|
-| **Input format** | Mixed **txt + epub** | Ingestion must handle both; epub parsed from zipped xhtml via stdlib. |
-| **Target language** | **English** | All stores, policies, and checks are English↔English. |
-| **Source language** | **Korean / Japanese / Chinese** (per corpus) | Heuristics are tuned per source: `-san/-sama` (JP), `Senior Brother/Junior Sister/Dao` (CN), `hyung/ahjussi` (KR). A corpus may mix; the extractor applies all source-aware patterns. |
-| **Storage** | **JSON** for prototype → **SQLite** for production (graph deferred) | v0 persists Policies as JSON; switch backend behind the same store interface later. |
-| **Extraction** | **Hybrid** (heuristics find candidates + Policy Verification Backend) | Heuristics are deterministic/explainable; the verification backend (LLM / rules / human review / another classifier) confirms candidates. Backend-agnostic by design — not tied to today's models. Off (passthrough) until a backend is configured. |
-| **Goal** | **Balanced** (consistency / readability / fidelity) | Rewriter aggressiveness tuned to a balanced trade-off. |
-| **Rewrite location** | **Cloud** | Rewriter uses a cloud LLM; API key via env var. |
-| **Corpus size** | **30–40 up to 100s** | `min_support` and confidence thresholds scale with available evidence. |
+| Decision             | Value                                                                 | Consequence                                                                                                                                                                                                                                         |
+| -------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Input format**     | Mixed **txt + epub**                                                  | Ingestion must handle both; epub parsed from zipped xhtml via stdlib.                                                                                                                                                                               |
+| **Target language**  | **English**                                                           | All stores, policies, and checks are English↔English.                                                                                                                                                                                               |
+| **Source language**  | **Korean / Japanese / Chinese** (per corpus)                          | Heuristics are tuned per source: `-san/-sama` (JP), `Senior Brother/Junior Sister/Dao` (CN), `hyung/ahjussi` (KR). A corpus may mix; the extractor applies all source-aware patterns.                                                               |
+| **Storage**          | **JSON** for prototype → **SQLite** for production (graph deferred)   | v0 persists Policies as JSON; switch backend behind the same store interface later.                                                                                                                                                                 |
+| **Extraction**       | **Hybrid** (heuristics find candidates + Policy Verification Backend) | Heuristics are deterministic/explainable; the verification backend (LLM / rules / human review / another classifier) confirms candidates. Backend-agnostic by design — not tied to today's models. Off (passthrough) until a backend is configured. |
+| **Goal**             | **Balanced** (consistency / readability / fidelity)                   | Rewriter aggressiveness tuned to a balanced trade-off.                                                                                                                                                                                              |
+| **Rewrite location** | **Cloud**                                                             | Rewriter uses a cloud LLM; API key via env var.                                                                                                                                                                                                     |
+| **Corpus size**      | **30–40 up to 100s**                                                  | `min_support` and confidence thresholds scale with available evidence.                                                                                                                                                                              |
 
 **RAG baseline** (for the §14/§15 comparison): a standard document-level retriever that, for
 each MTL passage, embeds it, retrieves the k most similar good-chapter passages, and rewrites
@@ -429,8 +441,8 @@ tested against.
 5. **Minimal Retriever** — lexical match of policy `match` forms against an MTL chapter to select
    the relevant policies (enough to run the validation prototype end-to-end).
 6. **Validation run** — extract from a sample corpus; retrieve policies for one unseen MTL chapter;
-   report policy count, retrieval precision, and a sample rewrite. *Gate: extraction + retrieval
-   quality confirmed before building the full Rewriter/Validators.*
+   report policy count, retrieval precision, and a sample rewrite. _Gate: extraction + retrieval
+   quality confirmed before building the full Rewriter/Validators._
 
 Only after step 6 confirms extraction + retrieval quality do we proceed to the full
 Rewriter, Validators, and refinements.
@@ -439,7 +451,7 @@ Rewriter, Validators, and refinements.
 
 ## 19. Repository layout (domain-driven, not technology-driven)
 
-**Principle:** top-level packages map to *architecture concepts* (bounded contexts), never
+**Principle:** top-level packages map to _architecture concepts_ (bounded contexts), never
 to technologies (`llm/`, `rag/`, `embeddings/`, `database/`). The LLM is an implementation
 detail of `rewrite/llm.py`, not an architecture pillar. The **`policy/`** package is the
 heart — every other package produces, stores, retrieves, or consumes policies.
@@ -515,7 +527,7 @@ translator-memory-engine/        # repo root
 
 - `policy/schema.py` is the **only** definition of the `Policy` type. `memory/`, `retrieve/`,
   `validate/`, `rewrite/` import it; they never redefine it.
-- `validate/` checkers return *findings* only. Text edits / auto-fixes happen in
+- `validate/` checkers return _findings_ only. Text edits / auto-fixes happen in
   `rewrite/postprocessor.py` (or a dedicated fixer), never inside a validator.
 - `retrieve/` depends on `policy` (to read `match` forms) and on `memory` (via `retrieve()`),
   not on storage internals.
@@ -524,5 +536,5 @@ translator-memory-engine/        # repo root
 
 **Build status (v0):** only the packages needed to clear the extraction gate exist as code:
 `ingest/` (done), `extract/` (signals), `policy/` (miner + schema), `memory/` (storage).
-The remaining packages above are the *target* shape, created only when their stage is built.
+The remaining packages above are the _target_ shape, created only when their stage is built.
 This avoids scaffolding 30 empty directories that then rot.

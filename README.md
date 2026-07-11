@@ -107,23 +107,23 @@ uv run python pipeline.py align outputs \
 
 ### Preprocessing (one-time)
 
-| Step | Command | Produces | Cost |
-|------|---------|----------|------|
-| Extract policies | `pipeline.py extract <corpus> --verify llm` | `policies.jsonl`, `glossary.json` | ~50 LLM calls |
-| Download embeddings | (automatic on first rewrite) | `~/.cache/fastembed/` | One-time ~130MB |
+| Step                | Command                                     | Produces                          | Cost            |
+| ------------------- | ------------------------------------------- | --------------------------------- | --------------- |
+| Extract policies    | `pipeline.py extract <corpus> --verify llm` | `policies.jsonl`, `glossary.json` | ~50 LLM calls   |
+| Download embeddings | (automatic on first rewrite)                | `~/.cache/fastembed/`             | One-time ~130MB |
 
 The style bank and exemplar index are built in-memory from `--reference` during rewrite. No separate build step needed.
 
 ### Translation (per chapter)
 
-| Feature | Flag | What it does |
-|---------|------|-------------|
-| LLM rewrite | `--reference` (forces on) or `--llm` | Calls LLM to repair MTL |
-| Style bank | `--reference <dir>` | Builds voice profile from good translations |
-| Entity shielding | `--glossary <file>` | Protects names during LLM rewrite |
-| Cross-chapter context | process dir (not single file) | Passes previous chapter's tail for continuity |
-| Faithfulness guard | (always on) | Strips invented characters post-rewrite |
-| Known error correction | (automatic) | Applies corrections from `data/known_errors.json` |
+| Feature                | Flag                                 | What it does                                      |
+| ---------------------- | ------------------------------------ | ------------------------------------------------- |
+| LLM rewrite            | `--reference` (forces on) or `--llm` | Calls LLM to repair MTL                           |
+| Style bank             | `--reference <dir>`                  | Builds voice profile from good translations       |
+| Entity shielding       | `--glossary <file>`                  | Protects names during LLM rewrite                 |
+| Cross-chapter context  | process dir (not single file)        | Passes previous chapter's tail for continuity     |
+| Faithfulness guard     | (always on)                          | Strips invented characters post-rewrite           |
+| Known error correction | (automatic)                          | Applies corrections from `data/known_errors.json` |
 
 ### Examples
 

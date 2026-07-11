@@ -6,12 +6,12 @@ Not a translation tool. **The translation already exists (the MTL).** This syste
 reconstructs a translator's editorial behavior and applies it to new MTL so the output
 reads as if the same person wrote it.
 
-*Translator Memory Engine* captures the right level of abstraction: specific enough that
+_Translator Memory Engine_ captures the right level of abstraction: specific enough that
 people immediately understand "translation consistency / terminology / long-form
 localization," not so narrow as "Novel MTL Fixer," and not so broad as "Editorial Memory
 Engine." The underlying architecture generalizes to editorial memory (fan-fiction
 voice-matching, API-documentation styling, manga/game localization) — but that broader
-framing is introduced *after* the core is proven.
+framing is introduced _after_ the core is proven.
 
 ---
 
@@ -52,7 +52,7 @@ text, no source↔target alignment.**
 
 **Acknowledged limitation:** without source text, the system cannot distinguish between a
 translator's deliberate context-specific rendering and an inconsistency. A term that appears
-once as "Heavenly Mysterious Sect" and four times as "Tianxuan Sect" is *probably*
+once as "Heavenly Mysterious Sect" and four times as "Tianxuan Sect" is _probably_
 inconsistency — but it might be a deliberate contextual choice. The confidence model must
 account for this: singleton occurrences receive low confidence, and the deterministic
 pre-pass only applies policies above a configurable threshold. Ambiguous cases are flagged
@@ -95,13 +95,13 @@ be traced to its Inference and the Evidence that produced it.
   "type": "entity-naming",
   "trigger": "Li Qing",
   "match": ["Li Qing", "Li Ching", "Li-Qing"],
-  "action": {"render_as": "Li Qing"},
+  "action": { "render_as": "Li Qing" },
   "applies": "deterministic",
   "confidence": 0.99,
   "scores": {
     "frequency": 0.92,
     "consistency": 0.99,
-    "context": 0.80
+    "context": 0.8
   },
   "evidence": [3, 9, 11, 18]
 }
@@ -273,7 +273,7 @@ lexical/phrasal consistency is a significant component of reader-perceived consi
 - Capitalized multi-word phrases → candidate entity names
 - Domain-suffix mining (Sect, Palace, Hall, Peak, Clan, Court) → organization/place names
 - Source-aware patterns: CJK title/honorific detection (`-san/-sama`, `Senior/Junior
-  Brother/Sister`, `Dao Friend`, `hyung/noona`)
+Brother/Sister`, `Dao Friend`, `hyung/noona`)
 - Bracketed/italic term capture → technique/item names
 - Frequency + cross-chapter consistency → confidence scoring
 - Variant clustering by string normalization → canonical form + aliases
@@ -291,8 +291,8 @@ the same source) or LLM-based stylometric analysis — both of which need source
 paired data that the monolingual constraint excludes.
 
 If the v0 evaluation (§12) shows that Layer 1–2 policies produce significant consistency
-gains but readers still perceive voice mismatch, that result *validates the policy
-architecture* while identifying Layer 3 extraction as the next research frontier.
+gains but readers still perceive voice mismatch, that result _validates the policy
+architecture_ while identifying Layer 3 extraction as the next research frontier.
 
 ### Recommended pre-validation experiment
 
@@ -312,7 +312,7 @@ measured independently (see §12 Ablation).
 **Mechanism 1: Deterministic pre-pass (guaranteed consistency)**
 
 High-confidence policies (`applies: "deterministic"`, confidence ≥ threshold) are applied
-as literal string substitution *before* the LLM sees the text. Every occurrence of a
+as literal string substitution _before_ the LLM sees the text. Every occurrence of a
 `match` form is replaced with the canonical `action.render_as` value.
 
 This is the most reliable path to terminology consistency. It does not depend on the LLM
@@ -375,7 +375,7 @@ quality is confirmed by human review. If heuristics fail, the extraction strateg
 
 ### Risk 2: Policy applicability (v1 research problem)
 
-The hardest reasoning problem: knowing *which* policy applies when the same source term is
+The hardest reasoning problem: knowing _which_ policy applies when the same source term is
 rendered differently by context (`Master` → Teacher / Master / Instructor).
 
 **Scoping decision:** this is explicitly out of scope for v0. v0 targets unambiguous
@@ -400,12 +400,17 @@ provide a weaker but still useful signal.
 
 ## 11. Explainability
 
-Every rewrite answers *"why did you change this?"* Each edit cites the policy applied, its
+Every rewrite answers _"why did you change this?"_ Each edit cites the policy applied, its
 confidence, and the evidence chapters.
 
 ```json
-{"original": "Heavenly Mysterious Sect", "output": "Tianxuan Sect",
- "policy": "p_184", "confidence": 0.98, "evidence": [3, 11, 19]}
+{
+  "original": "Heavenly Mysterious Sect",
+  "output": "Tianxuan Sect",
+  "policy": "p_184",
+  "confidence": 0.98,
+  "evidence": [3, 11, 19]
+}
 ```
 
 The change trace is a debugging and trust surface. It doubles as a verification aid: if a
@@ -425,12 +430,12 @@ chapter. No review UI in v0 — JSON inspection is sufficient for the prototype.
 This is the most important evaluation component. Without it, the hypothesis is
 unattributable.
 
-| Condition | Pre-pass | Policy retrieval | Purpose |
-|---|---|---|---|
-| **(A) Baseline RAG** | No | No (passage retrieval) | Control: standard document-level RAG |
-| **(B) Pre-pass only** | Yes | No (LLM sees pre-passed text, no policy instructions) | Isolates the deterministic substitution contribution |
-| **(C) Retrieval only** | No | Yes (policies in prompt, no pre-pass) | Isolates the policy-retrieval contribution |
-| **(D) Full pipeline** | Yes | Yes | The complete system |
+| Condition              | Pre-pass | Policy retrieval                                      | Purpose                                              |
+| ---------------------- | -------- | ----------------------------------------------------- | ---------------------------------------------------- |
+| **(A) Baseline RAG**   | No       | No (passage retrieval)                                | Control: standard document-level RAG                 |
+| **(B) Pre-pass only**  | Yes      | No (LLM sees pre-passed text, no policy instructions) | Isolates the deterministic substitution contribution |
+| **(C) Retrieval only** | No       | Yes (policies in prompt, no pre-pass)                 | Isolates the policy-retrieval contribution           |
+| **(D) Full pipeline**  | Yes      | Yes                                                   | The complete system                                  |
 
 **Possible outcomes and what they mean:**
 
@@ -450,18 +455,18 @@ claiming "policy retrieval works" when actually "deterministic substitution work
 Each layer has its own benchmark so failures localize:
 
 **Extraction:** precision/recall of mined policies vs human-labeled gold. Duplicate rate,
-low-confidence rate, coverage of named entities. *Resource estimate: 4–6 hours to manually
-label gold policies for one 30-chapter corpus.*
+low-confidence rate, coverage of named entities. _Resource estimate: 4–6 hours to manually
+label gold policies for one 30-chapter corpus._
 
 **Retrieval:** retrieval precision/recall @k on held-out passages. How often does the
-retriever surface the right policies for a given MTL passage? *Automated once gold policies
-exist.*
+retriever surface the right policies for a given MTL passage? _Automated once gold policies
+exist._
 
 **Generation + Reader (combined):** glossary adherence %, honorific retention %,
 meaning-preservation (NLI score vs original MTL). Blinded A/B preference: "was chapter 31
-translated by the same person as chapters 1–30?" *Resource estimate: 3–5 evaluators, each
+translated by the same person as chapters 1–30?" _Resource estimate: 3–5 evaluators, each
 reading 2–3 rewritten chapters (~1 hour per evaluator). Evaluators should be regular novel
-readers, not domain experts.*
+readers, not domain experts._
 
 ### Context-budget metric
 
@@ -510,16 +515,17 @@ judgments.
 **Evaluation independence is a hard constraint (see D11).** LLM circularity is a documented
 failure mode: the same model that extracts style, rewrites using it, and evaluates will
 report inflated success. Therefore the evaluation stack must keep the three roles apart:
+
 - **Deterministic glossary adherence** — primary, always on, no LLM signal.
 - **Human reader judgments** — the gold standard.
 - **spaCy-derived stylometry** — independent, structural/lexical comparison (sentence
   shape, dialogue density, punctuation, type-token ratio); does not depend on the rewrite LLM.
-- **Optional LLM judge** — only from a *different model family* than the rewriter; never the
+- **Optional LLM judge** — only from a _different model family_ than the rewriter; never the
   same model that produced the text.
-BLEU/lexical overlap alone is inadequate for literary style (use MQM/SQM/BWS where possible).
-On chapters with no original (no gold), report **proxy metrics only**, explicitly labeled
-"no gold": style-consistency vs the style bank, policy/name adherence, cross-chapter
-consistency.
+  BLEU/lexical overlap alone is inadequate for literary style (use MQM/SQM/BWS where possible).
+  On chapters with no original (no gold), report **proxy metrics only**, explicitly labeled
+  "no gold": style-consistency vs the style bank, policy/name adherence, cross-chapter
+  consistency.
 
 **Gate:** statistically meaningful preference for the policy pipeline over baseline RAG. If
 not, diagnose: is it extraction quality? Retrieval? LLM compliance? The layered evaluation
@@ -538,11 +544,11 @@ The system is defined by a **learn / apply / evaluate** split, not by chapter pa
 chapter, the data can be in one of three states: **(orig, MTL)** both exist, **(orig only)**
 no MTL to rewrite, **(MTL only)** no original to compare against. Each state maps to a role:
 
-| Chapter state | Role | What happens |
-| --- | --- | --- |
-| orig + MTL | **Validate** | Supervised reference post-edit; real alignment `sim(gen, orig)` measured. Also the subset that *certifies* the method. |
-| orig only | **Learn** | Nothing to rewrite (no MTL input), but feeds policy + style-bank extraction. |
-| MTL only | **Apply** | Rewrite using learned policies + style bank. No gold → proxy metrics only. |
+| Chapter state | Role         | What happens                                                                                                           |
+| ------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| orig + MTL    | **Validate** | Supervised reference post-edit; real alignment `sim(gen, orig)` measured. Also the subset that _certifies_ the method. |
+| orig only     | **Learn**    | Nothing to rewrite (no MTL input), but feeds policy + style-bank extraction.                                           |
+| MTL only      | **Apply**    | Rewrite using learned policies + style bank. No gold → proxy metrics only.                                             |
 
 This separation is what makes the project work when the two corpora don't line up. Concrete
 scenarios:
@@ -555,7 +561,7 @@ scenarios:
   There is **no paired (MTL, original) data anywhere**, so the method can never be directly
   trained or scored on it. Handling: learn policies + style bank from 1–50 (no MTL needed);
   apply to 51+ with policies + style bank (no per-chapter reference possible). Evaluation has
-  *no gold* → proxy metrics (style-consistency, name adherence, cross-chapter) + human review.
+  _no gold_ → proxy metrics (style-consistency, name adherence, cross-chapter) + human review.
   **Escape hatch:** synthesize degraded MTL by MT round-tripping the originals
   (original → foreign → MT English) to create (synthetic-MTL, original) pairs, recovering a
   real alignment number even with zero real MTL.
@@ -567,25 +573,26 @@ scenarios:
   on its own; it is an input requirement, not a code path.
 
 **Key invariants the design must preserve:**
+
 1. Learning needs originals; applying needs MTL + learned artifacts; real evaluation needs
-   overlap *somewhere* — proxy metrics + the style bank cover the rest.
+   overlap _somewhere_ — proxy metrics + the style bank cover the rest.
 2. The per-chapter original is a **bonus for validation/fidelity only**; the style bank is the
    universal style signal (S2 proves it must carry chapters 51+ alone).
-3. Evaluation must never let the same LLM produce *and* judge (D11).
+3. Evaluation must never let the same LLM produce _and_ judge (D11).
 
 ---
 
 ## 14. Configuration (locked for v0)
 
-| Decision | Value | Consequence |
-|---|---|---|
-| **Input format** | Mixed **txt + epub** | Ingestion handles both; epub via stdlib zipfile |
-| **Target language** | **English** | All policies and checks are English→English |
-| **Source language** | **Korean / Japanese / Chinese** (per corpus) | Heuristics tuned per source: honorific patterns, title conventions |
-| **Storage** | **JSON** (prototype) → **SQLite** (production) | Behind the same store interface |
-| **Extraction** | **Hybrid** (heuristics + optional verification backend) | Verification backend is pluggable: LLM / rules / human. Off by default |
-| **Rewrite** | **Cloud LLM** | API key via env var |
-| **Corpus size** | **30–100 chapters** | `min_support` and confidence thresholds scale with evidence |
+| Decision            | Value                                                   | Consequence                                                            |
+| ------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------- |
+| **Input format**    | Mixed **txt + epub**                                    | Ingestion handles both; epub via stdlib zipfile                        |
+| **Target language** | **English**                                             | All policies and checks are English→English                            |
+| **Source language** | **Korean / Japanese / Chinese** (per corpus)            | Heuristics tuned per source: honorific patterns, title conventions     |
+| **Storage**         | **JSON** (prototype) → **SQLite** (production)          | Behind the same store interface                                        |
+| **Extraction**      | **Hybrid** (heuristics + optional verification backend) | Verification backend is pluggable: LLM / rules / human. Off by default |
+| **Rewrite**         | **Cloud LLM**                                           | API key via env var                                                    |
+| **Corpus size**     | **30–100 chapters**                                     | `min_support` and confidence thresholds scale with evidence            |
 
 **RAG baseline** (condition A in §12): a standard document-level retriever that embeds each
 MTL passage, retrieves the k most similar good-chapter passages, and rewrites with those as
@@ -610,24 +617,30 @@ LLM-based analysis that goes beyond v0 heuristics.
 
 A candidate Language Pattern is a structured record, not a latent vector — far more useful
 than a style-embedding "similarity 0.78" (D11):
+
 ```json
 {
   "type": "dialogue-style",
   "observation": "Informal dialogue consistently uses contractions.",
   "evidence": [
-    {"chapter": 3, "excerpt": "I don't think he'll come."},
-    {"chapter": 8, "excerpt": "You can't leave now."}
+    { "chapter": 3, "excerpt": "I don't think he'll come." },
+    { "chapter": 8, "excerpt": "You can't leave now." }
   ],
   "counterexamples": [
-    {"chapter": 11, "excerpt": "I will not tolerate this.", "context": "formal speech"}
+    {
+      "chapter": 11,
+      "excerpt": "I will not tolerate this.",
+      "context": "formal speech"
+    }
   ],
   "confidence": 0.84
 }
 ```
+
 The **LLM is the primary style-pattern extractor** (it reasons over voice, tone, rhythm
 together); **spaCy supplies the measurable evidence** (excerpts + statistics: sentence
 length, dialogue density, punctuation patterns, type-token ratio). Patterns require evidence
-*and* counterexamples, not just a score.
+_and_ counterexamples, not just a score.
 
 **Three-store split:**
 When Story and Language extraction exist, split the single PolicyStore into three physical
@@ -666,7 +679,7 @@ reapplied?" An LLM reasons over terminology, aliases, honorifics, canonical form
 contextual significance together; GLiNER mostly yields candidate spans. The spaCy + LLM hybrid
 already covers this. Originally also blocked by a `transformers>=5.x` conflict with the pinned
 `tensorflow`/embedding stack. Do **not** reintroduce unless later benchmarked against the
-current pipeline with a *measurable* extraction benefit.
+current pipeline with a _measurable_ extraction benefit.
 
 **Known error correction dictionary (data/known_errors.json):**
 A curated mapping of MTL errors to their Korean source and correct English translation. When
@@ -697,15 +710,15 @@ are handled by the Discourse Coherence rules.
 
 The scope of the full vision (§15) is large. The feature filter remains:
 
-> *Does this make it more likely that readers say "chapter 31 was translated by the same
-> person as chapters 1–30"?*
+> _Does this make it more likely that readers say "chapter 31 was translated by the same
+> person as chapters 1–30"?_
 
-If the answer isn't clearly yes *for the current milestone*, it belongs in future work. Do
+If the answer isn't clearly yes _for the current milestone_, it belongs in future work. Do
 not build ingestion robustness, world-state tracking, or evaluation infrastructure before
 M0–M2 validates the policy abstraction.
 
 ---
 
-*Previous versions of this plan are archived in `docs/PLAN-v1.md`. Decision history is
+_Previous versions of this plan are archived in `docs/PLAN-v1.md`. Decision history is
 recorded in `docs/decision-history.md`. Implementation decisions D12+ are recorded in the
-git commit history and PR descriptions.*
+git commit history and PR descriptions._

@@ -93,6 +93,8 @@ def cmd_extract(args: argparse.Namespace) -> None:
     config = _load_config(args.config)
     output_dir = args.output or "outputs"
     os.makedirs(output_dir, exist_ok=True)
+    db_path = args.db or "data/translator_memory.db"
+    novel_id = args.novel_id or 1
 
     # --- Step 1: Load corpus ---
     print(f"Loading corpus from: {args.corpus_dir}")
@@ -221,11 +223,15 @@ def cmd_extract(args: argparse.Namespace) -> None:
     for p in policies:
         store.add(p)
 
+    # Write to SQLite (primary store)
+    store.save_to_db(db_path, novel_id=novel_id)
+    print(f"\n  Policies written to SQLite: {db_path} (novel_id={novel_id})")
+
+    # Also export JSONL for backup/legacy compatibility
     policies_path = os.path.join(output_dir, "policies.jsonl")
     glossary_path = os.path.join(output_dir, "glossary.json")
-
-    store.save(policies_path)
-    print(f"\n  Policies written to: {policies_path}")
+    store.export_jsonl(policies_path)
+    print(f"  Policies exported to: {policies_path}")
 
     glossary = store.export_glossary()
     with open(glossary_path, "w", encoding="utf-8") as f:
@@ -261,6 +267,9 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
     os.makedirs(args.output, exist_ok=True)
     logger.debug(f"Config loaded: {args.config}")
     logger.debug(f"Output dir: {args.output}")
+
+    db_path = args.db or "data/translator_memory.db"
+    novel_id = args.novel_id or 1
 
     # Optional published-reference dir (supervised mode). When present, chapters
     # are matched by number; chapters without an original fall back to the style
@@ -320,11 +329,30 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
 
     # Load glossary for entity shielding
     glossary: Optional[List[Dict]] = None
+
+    # Load policies from SQLite (primary store) or legacy file
+    store = PolicyStore()
+    if args.policies and os.path.exists(args.policies):
+        # Legacy mode: load from JSONL file
+        store.import_jsonl(args.policies)
+        logger.info(f"Policies loaded from file: {args.policies}")
+    else:
+        # Primary mode: load from SQLite
+        store.load_from_db(db_path, novel_id=novel_id)
+        logger.info(f"Policies loaded from SQLite: {db_path} (novel_id={novel_id})")
+    policy_list = store.all()
+    logger.info(f"Policies available: {len(policy_list)}")
+
+    # Also load glossary from SQLite if available, else from file
     if args.glossary and os.path.exists(args.glossary):
         with open(args.glossary, "r", encoding="utf-8") as f:
             glossary = json.load(f)
-        logger.info(f"Glossary loaded: {len(glossary)} entries (entity shielding enabled)")
-        logger.debug(f"Glossary entries: {[e.get('canonical', ['?'])[0] for e in glossary[:10]]}")
+        logger.info(f"Glossary loaded from file: {len(glossary)} entries")
+    else:
+        # Derive glossary from the policy store
+        glossary = store.export_glossary()
+        if glossary:
+            logger.info(f"Glossary derived from policies: {len(glossary)} entries")
 
     # Collect input files
     mtl_path = args.mtl_path
@@ -342,7 +370,7 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     logger.info(f"Found {len(files)} MTL file(s) to rewrite")
-    logger.info(f"Policies: {args.policies}")
+    logger.info(f"Policies: {len(policy_list)} from SQLite (novel_id={novel_id})")
     llm_enabled = args.llm or args.reference or bank_excerpts
     logger.info(f"LLM rewrite: {'ON' if llm_enabled else 'OFF (pre-pass only)'}")
     logger.debug(f"MTL files: {[os.path.basename(f) for f in files]}")
@@ -395,7 +423,7 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
         logger.info("Calling rewrite pipeline...")
         result = rewrite_pass(
             text,
-            policies_path=args.policies,
+            policies=policy_list,
             model=verify_cfg.get("model", "llama-3.3-70b-versatile"),
             base_url=verify_cfg.get("base_url"),
             api_key_env=verify_cfg.get("api_key_env", "LLM_API_KEY"),
@@ -628,6 +656,17 @@ def main() -> None:
         help="Output directory (default: data/policies/)",
     )
     extract_parser.add_argument(
+        "--db",
+        default=None,
+        help="Path to SQLite database (default: data/translator_memory.db)",
+    )
+    extract_parser.add_argument(
+        "--novel-id",
+        type=int,
+        default=1,
+        help="Novel ID for SQLite storage (default: 1)",
+    )
+    extract_parser.add_argument(
         "--verify",
         choices=["none", "llm"],
         default="none",
@@ -652,8 +691,8 @@ def main() -> None:
     rewrite_parser.add_argument(
         "--policies",
         "-p",
-        default="data/policies/policies.jsonl",
-        help="Path to mined policies.jsonl (default: data/policies/policies.jsonl)",
+        default=None,
+        help="Path to mined policies.jsonl (legacy, ignored if --db is used)",
     )
     rewrite_parser.add_argument(
         "--config",
@@ -666,6 +705,17 @@ def main() -> None:
         "-o",
         default="data/output",
         help="Output directory (default: data/output/)",
+    )
+    rewrite_parser.add_argument(
+        "--db",
+        default=None,
+        help="Path to SQLite database (default: data/translator_memory.db)",
+    )
+    rewrite_parser.add_argument(
+        "--novel-id",
+        type=int,
+        default=1,
+        help="Novel ID for SQLite storage (default: 1)",
     )
     rewrite_parser.add_argument(
         "--llm",

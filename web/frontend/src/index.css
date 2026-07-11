@@ -1,0 +1,247 @@
+@import url("https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;500;600;700&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&family=Outfit:wght@400;500;600;700;800&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Merriweather", Georgia, serif;
+  --font-outfit: "Outfit", sans-serif;
+  --font-mono: "Fira Code", monospace;
+}
+
+:root {
+  --color-bg: #0d1117;
+  --color-surface: #141b2d;
+  --color-surface-hover: #1e293b;
+  --color-surface-active: #334155;
+  --color-text: #f1f5f9;
+  --color-text-muted: #94a3b8;
+  --color-border: #1e293b;
+  --color-border-subtle: rgba(255, 255, 255, 0.07);
+
+  --color-accent: #f97316; /* Webnovel Orange Gold */
+  --color-accent-hover: #ea580c;
+  --color-accent-glow: rgba(249, 115, 22, 0.25);
+
+  --color-ai: #38bdf8; /* Memory Engine Cyber Blue */
+  --color-ai-glow: rgba(56, 189, 248, 0.2);
+  --color-box-bg: rgba(0, 0, 0, 0.25);
+
+  --color-success: #10b981;
+  --color-error: #ef4444;
+  --color-warning: #f59e0b;
+  --color-warning-subtle: rgba(245, 158, 11, 0.2);
+}
+
+[data-theme="dark"] {
+  --color-bg: #0d1117;
+  --color-surface: #161d2e;
+  --color-surface-hover: #1f2a40;
+  --color-surface-active: #2d3b59;
+  --color-text: #f8fafc;
+  --color-text-muted: #94a3b8;
+  --color-border: #222f47;
+  --color-border-subtle: rgba(255, 255, 255, 0.07);
+  --color-accent: #f97316;
+  --color-accent-hover: #ea580c;
+  --color-accent-glow: rgba(249, 115, 22, 0.25);
+  --color-ai: #38bdf8;
+  --color-ai-glow: rgba(56, 189, 248, 0.2);
+  --color-box-bg: rgba(0, 0, 0, 0.25);
+  --color-warning: #f59e0b;
+  --color-warning-subtle: rgba(245, 158, 11, 0.2);
+}
+
+[data-theme="oled"] {
+  --color-bg: #000000;
+  --color-surface: #0a0a0a;
+  --color-surface-hover: #141414;
+  --color-surface-active: #222222;
+  --color-text: #ffffff;
+  --color-text-muted: #888888;
+  --color-border: #1a1a1a;
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
+  --color-accent: #fbbf24;
+  --color-accent-hover: #f59e0b;
+  --color-accent-glow: rgba(251, 191, 36, 0.25);
+  --color-ai: #60a5fa;
+  --color-ai-glow: rgba(96, 165, 250, 0.2);
+  --color-box-bg: rgba(255, 255, 255, 0.04);
+  --color-warning: #fbbf24;
+  --color-warning-subtle: rgba(251, 191, 36, 0.2);
+}
+
+[data-theme="light"] {
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f1f5f9;
+  --color-surface-active: #e2e8f0;
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+  --color-border: #e2e8f0;
+  --color-border-subtle: rgba(0, 0, 0, 0.06);
+  --color-accent: #ea580c;
+  --color-accent-hover: #c2410c;
+  --color-accent-glow: rgba(234, 88, 12, 0.15);
+  --color-ai: #0284c7;
+  --color-ai-glow: rgba(2, 132, 199, 0.12);
+  --color-box-bg: #f1f5f9;
+  --color-warning: #d97706; /* Deep readable amber gold on white background */
+  --color-warning-subtle: rgba(217, 119, 6, 0.15);
+  --color-success: #059669; /* Deep emerald green for crisp contrast on light background */
+  --color-error: #dc2626;
+}
+
+[data-theme="sepia"] {
+  --color-bg: #f4ecd8;
+  --color-surface: #eaddc5;
+  --color-surface-hover: #e2d3b8;
+  --color-surface-active: #d6c4a5;
+  --color-text: #433422;
+  --color-text-muted: #7d6b56;
+  --color-border: #d3c3a9;
+  --color-border-subtle: rgba(67, 52, 34, 0.1);
+  --color-accent: #b45309;
+  --color-accent-hover: #92400e;
+  --color-accent-glow: rgba(180, 83, 9, 0.2);
+  --color-ai: #1d4ed8;
+  --color-ai-glow: rgba(29, 78, 216, 0.15);
+  --color-box-bg: #dfd2b9;
+  --color-warning: #b45309; /* Deep rust amber on warm cream */
+  --color-warning-subtle: rgba(180, 83, 9, 0.2);
+  --color-success: #047857; /* Deep forest green for high contrast on warm cream background */
+  --color-error: #b91c1c;
+}
+
+[data-theme="cyber"] {
+  --color-bg: #090812;
+  --color-surface: #121024;
+  --color-surface-hover: #1c1836;
+  --color-surface-active: #29234d;
+  --color-text: #f3e8ff;
+  --color-text-muted: #a899c4;
+  --color-border: #2e2654;
+  --color-border-subtle: rgba(168, 85, 247, 0.15);
+  --color-accent: #a855f7;
+  --color-accent-hover: #9333ea;
+  --color-accent-glow: rgba(168, 85, 247, 0.35);
+  --color-ai: #06b6d4;
+  --color-ai-glow: rgba(6, 182, 212, 0.25);
+  --color-box-bg: rgba(0, 0, 0, 0.35);
+  --color-warning: #f59e0b;
+  --color-warning-subtle: rgba(245, 158, 11, 0.25);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Custom transitions and glassmorphism */
+.glass-surface {
+  background-color: var(--color-surface);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+[data-theme="oled"] .glass-surface {
+  background-color: rgba(10, 10, 10, 0.9);
+}
+
+[data-theme="light"] .glass-surface {
+  background-color: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="sepia"] .glass-surface {
+  background-color: rgba(234, 221, 197, 0.9);
+}
+
+[data-theme="cyber"] .glass-surface {
+  background-color: rgba(18, 16, 36, 0.88);
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* Custom keyframe animations for rich feedback */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulseGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 15px var(--color-accent-glow);
+  }
+  50% {
+    box-shadow:
+      0 0 25px var(--color-accent-glow),
+      0 0 5px var(--color-accent);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.glow-accent {
+  box-shadow: 0 0 20px var(--color-accent-glow);
+}
+
+.glow-ai {
+  box-shadow: 0 0 20px var(--color-ai-glow);
+}
+
+/* Utilities for touch and mobile optimization */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
