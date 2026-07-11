@@ -290,15 +290,13 @@ _STYLE_REFERENCE = [
 # only fix broken MTL, and preserve the translator's voice/metaphors/onomatopoeia.
 # Never invent. (8B models love to echo the scaffolding — see _strip_echo.)
 _FALLBACK_RULES = """Repair rules:
-- FIX machine-translation artifacts: duplicated or truncated sentence fragments (e.g. "With my daughter, with my daughter-."), bracketed thought markers, site watermarks, filler, and awkward repetition. Repair them into natural prose — do not just delete the sentence.
-- TRANSFORM literal Korean transliterations into natural English. Examples: "evil! evil! my arms! eight!" → repair the garbled onomatopoeia/swears into English equivalents; "Do you have a long tongue?" → "Are you being cheeky?"; "with Maparam as if hiding his eyes" → rephrase as a natural English idiom.
-- MAKE dialogue snappy and colloquial. Convert stilted MTL dialogue rhythm into natural spoken English. Preserve the speaker's intent and emotional weight.
-- ACTIVE VOICE: Convert passive/stilted clause chains into punchy, close-third-person narration.
-- Do NOT invent new events, characters, or change the story. Preserve meaning and paragraph structure.
-- Do NOT add speaker attributions ("he said"/"Dominic said") if the source does not have them — leave lines UNATTRIBUTED.
-- Do NOT summarize, condense, or skip scenes/beats. Reproduce ALL content of the source.
-- Preserve onomatopoeia that makes sense (e.g. "Pak!" for a slap/hit). Only repair garbled or nonsensical sound effects.
-- Output ONLY the repaired chapter text. Do not add "Here is the repaired text", headers, or markdown code fences."""
+- REWRITE MACHINE TRANSLATION (A) into fluent, natural English prose matching the translator's voice.
+- RESOLVE DISCOURSE & NARRATIVE COHERENCE ANOMALIES (DECEPTIVE MTL ARTIFACTS):
+  Machine translations frequently output grammatically valid English words that make zero logical sense inside the scene (due to homograph dictionary lookups, flipped pronouns, or literalized idioms).
+  Before preserving any sentence or exclamation verbatim, verify its Discourse Coherence against the immediate scene:
+  1. Conversational Logic: If a standalone noun, exclamation, or idiom violates the conversational or emotional logic of the scene (e.g. an unrelated economic/technical noun during a physical confrontation, or a bizarre non-sequitur), recognize it as a deceptive MTL homograph/idiom artifact and repair it so it makes natural sense inside the scene's context.
+  2. Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses" or bending "her own arm" while attacking an enemy), correct the pronoun logic ("so that you would come to your senses" / "bent his arm") to restore clear narrative causality.
+- Do NOT invent new plot events or characters. Output ONLY the repaired chapter text."""
 
 
 def build_prompt(
@@ -347,9 +345,10 @@ Apply the following translator policies consistently:
 
 Repair rules:
 - REWRITE the MACHINE TRANSLATION (A) so it READS LIKE the PUBLISHED TRANSLATION (B): match its phrasing, voice, tone, rhythm, and emotional weight as closely as possible.
-- FIX machine-translation artifacts aggressively: broken syntax, mistranslations, duplicated/truncated fragments, bracketed thought markers, garbled onomatopoeia, and site watermarks. Repair into natural prose — never just delete.
-- TRANSFORM literal Korean transliterations into natural English idioms fitting the translator's gritty fantasy tone.
-- MAKE dialogue snappy and colloquial. Match (B)'s dialogue rhythm.
+- RESOLVE DISCOURSE & NARRATIVE COHERENCE ANOMALIES (DECEPTIVE MTL ARTIFACTS):
+  Machine translations frequently output grammatically valid English words that make zero logical sense inside the scene. Before preserving any sentence verbatim, verify its Discourse Coherence against the immediate scene:
+  1. Conversational Logic: If a noun, exclamation, or idiom violates the conversational or emotional logic of the scene (e.g. an unrelated economic noun during a physical confrontation, or a bizarre non-sequitur), recognize it as a deceptive artifact and repair it to match (B)'s phrasing.
+  2. Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses"), correct the pronoun logic to restore clear narrative causality.
 - Do NOT invent events, characters, or details absent from both (A) and (B).
 - Do NOT add speaker attributions ("he said") if neither (A) nor (B) has them.
 - Do NOT summarize, condense, or skip content. Reproduce ALL scenes and beats from (A).
@@ -514,14 +513,9 @@ def rewrite(
                     model=model,
                     messages=[
                         {
-                            "role": "system",
-                            "content": "You are an expert post-editor of machine-translated web novels. "
-                            "You aggressively repair broken MTL into fluent, natural English — fixing "
-                            "garbled onomatopoeia, awkward literal translations, stilted dialogue, and "
-                            "broken syntax — while preserving the original meaning and never inventing "
-                            "new content.",
+                            "role": "user",
+                            "content": prompt,
                         },
-                        {"role": "user", "content": prompt},
                     ],
                     temperature=0.45,
                 )
