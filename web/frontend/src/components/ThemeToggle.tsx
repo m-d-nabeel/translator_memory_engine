@@ -1,5 +1,8 @@
 import { Moon, Sun, Laptop } from "lucide-react";
-import { useReaderSettings, type ReaderTheme } from "../hooks/useReaderSettings";
+import {
+  useReaderSettings,
+  type ReaderTheme,
+} from "../hooks/useReaderSettings";
 
 export function ThemeToggle() {
   const { theme, setTheme } = useReaderSettings();
@@ -13,17 +16,19 @@ export function ThemeToggle() {
   return (
     <button
       onClick={cycleTheme}
-      className="p-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] transition-colors hover:bg-white/5 cursor-pointer flex items-center gap-1.5"
+      className="p-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-hover)] cursor-pointer flex items-center gap-1.5"
       title={`Current Theme: ${theme}. Click to change.`}
     >
       {theme === "light" ? (
-        <Sun className="w-4 h-4 text-amber-500" />
+        <Sun className="w-4 h-4" style={{ color: "var(--color-warning)" }} />
       ) : theme === "sepia" ? (
-        <Laptop className="w-4 h-4 text-amber-700" />
+        <Laptop className="w-4 h-4" style={{ color: "var(--color-warning)" }} />
       ) : (
         <Moon className="w-4 h-4 text-[var(--color-accent)]" />
       )}
-      <span className="text-xs font-mono uppercase hidden sm:inline">{theme}</span>
+      <span className="text-xs font-mono uppercase hidden sm:inline">
+        {theme}
+      </span>
     </button>
   );
 }

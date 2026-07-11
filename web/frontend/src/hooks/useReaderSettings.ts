@@ -30,7 +30,9 @@ function load(): ReaderSettings {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) return { ...defaults, ...JSON.parse(stored) };
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return defaults;
 }
 
@@ -51,7 +53,10 @@ export function useReaderSettings() {
   }, []);
 
   const setFontSize = useCallback((fontSize: number) => {
-    setSettings((s) => ({ ...s, fontSize: Math.max(14, Math.min(30, fontSize)) }));
+    setSettings((s) => ({
+      ...s,
+      fontSize: Math.max(14, Math.min(30, fontSize)),
+    }));
   }, []);
 
   const setLineHeight = useCallback((lineHeight: ReaderLineHeight) => {

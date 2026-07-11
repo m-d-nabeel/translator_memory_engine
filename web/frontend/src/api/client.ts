@@ -110,13 +110,23 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   listNovels: () => request<Novel[]>("/novels"),
   getNovel: (id: number) => request<NovelDetail>(`/novels/${id}`),
-  createNovel: (data: { name: string; title?: string; source_language?: string }) =>
+  createNovel: (data: {
+    name: string;
+    title?: string;
+    source_language?: string;
+  }) =>
     request<Novel>("/novels", { method: "POST", body: JSON.stringify(data) }),
   deleteNovel: (id: number) =>
     request<void>(`/novels/${id}`, { method: "DELETE" }),
 
-  createChapter: (novelId: number, data: { chapter_number: number; source_type: string; raw_text: string }) =>
-    request<Chapter>(`/novels/${novelId}/chapters`, { method: "POST", body: JSON.stringify(data) }),
+  createChapter: (
+    novelId: number,
+    data: { chapter_number: number; source_type: string; raw_text: string },
+  ) =>
+    request<Chapter>(`/novels/${novelId}/chapters`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   listChapters: (novelId: number, sourceType?: string) => {
     const params = sourceType ? `?source_type=${sourceType}` : "";
     return request<Chapter[]>(`/novels/${novelId}/chapters${params}`);

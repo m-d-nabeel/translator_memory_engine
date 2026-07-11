@@ -41,22 +41,37 @@ export function TableOfContentsDrawer({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-start animate-fade-in bg-black/60 backdrop-blur-xs" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex justify-start animate-fade-in bg-black/60 backdrop-blur-xs"
+      onClick={onClose}
+    >
       <div
         className="w-full max-w-sm h-full border-r flex flex-col justify-between p-5 shadow-2xl glass-surface animate-slide-right"
-        style={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-border)" }}
+        style={{
+          backgroundColor: "var(--color-surface)",
+          borderColor: "var(--color-border)",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <div>
           {/* Header */}
-          <div className="flex items-center justify-between mb-4 border-b pb-3.5" style={{ borderColor: "var(--color-border)" }}>
+          <div
+            className="flex items-center justify-between mb-4 border-b pb-3.5"
+            style={{ borderColor: "var(--color-border)" }}
+          >
             <div className="flex items-center gap-2 min-w-0">
               <BookOpen className="w-5 h-5 shrink-0 text-[var(--color-accent)]" />
               <div className="min-w-0">
-                <h3 className="text-sm font-bold font-outfit line-clamp-1" style={{ color: "var(--color-text)" }}>
+                <h3
+                  className="text-sm font-bold font-outfit line-clamp-1"
+                  style={{ color: "var(--color-text)" }}
+                >
                   {novelName || "Catalog / Table of Contents"}
                 </h3>
-                <p className="text-[11px] opacity-70" style={{ color: "var(--color-text-muted)" }}>
+                <p
+                  className="text-[11px] opacity-70"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
                   {Object.keys(grouped).length} Total Entries
                 </p>
               </div>
@@ -73,20 +88,30 @@ export function TableOfContentsDrawer({
           {/* Search Box and Sort Button */}
           <div className="flex items-center gap-2 mb-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 opacity-50" style={{ color: "var(--color-text-muted)" }} />
+              <Search
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 opacity-50"
+                style={{ color: "var(--color-text-muted)" }}
+              />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Find Ch. #"
                 className="w-full pl-8 pr-3 py-1.5 rounded-xl text-xs border focus:outline-none focus:ring-1"
-                style={{ backgroundColor: "var(--color-bg)", borderColor: "var(--color-border)", color: "var(--color-text)" }}
+                style={{
+                  backgroundColor: "var(--color-bg)",
+                  borderColor: "var(--color-border)",
+                  color: "var(--color-text)",
+                }}
               />
             </div>
             <button
               onClick={() => setSortAsc(!sortAsc)}
               className="px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-colors hover:bg-white/5 cursor-pointer"
-              style={{ borderColor: "var(--color-border)", color: "var(--color-text)" }}
+              style={{
+                borderColor: "var(--color-border)",
+                color: "var(--color-text)",
+              }}
             >
               {sortAsc ? "1 -> N" : "N -> 1"}
             </button>
@@ -118,22 +143,40 @@ export function TableOfContentsDrawer({
                 <div className="flex items-center gap-3 min-w-0">
                   <div
                     className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 ${
-                      isCurrent ? "bg-[var(--color-accent)] text-white" : "bg-black/20 text-[var(--color-text-muted)]"
+                      isCurrent
+                        ? "bg-[var(--color-accent)] text-white"
+                        : "bg-black/20 text-[var(--color-text-muted)]"
                     }`}
                   >
                     {chNum}
                   </div>
                   <div className="min-w-0">
-                    <span className="text-xs font-bold block line-clamp-1" style={{ color: isCurrent ? "var(--color-accent)" : "var(--color-text)" }}>
+                    <span
+                      className="text-xs font-bold block line-clamp-1"
+                      style={{
+                        color: isCurrent
+                          ? "var(--color-accent)"
+                          : "var(--color-text)",
+                      }}
+                    >
                       Chapter {chNum}
                     </span>
-                    <span className="text-[10px] opacity-60 flex items-center gap-1 mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-                      {mtl?.status === "completed" ? "✨ Refined AI" : orig ? "📄 Original" : "⏳ Processing"}
+                    <span
+                      className="text-[10px] opacity-60 flex items-center gap-1 mt-0.5"
+                      style={{ color: "var(--color-text-muted)" }}
+                    >
+                      {mtl?.status === "completed"
+                        ? "✨ Refined AI"
+                        : orig
+                          ? "📄 OG TL (Ref)"
+                          : "⏳ Processing"}
                     </span>
                   </div>
                 </div>
 
-                <ChevronRight className={`w-4 h-4 shrink-0 ${isCurrent ? "text-[var(--color-accent)]" : "opacity-30"}`} />
+                <ChevronRight
+                  className={`w-4 h-4 shrink-0 ${isCurrent ? "text-[var(--color-accent)]" : "opacity-30"}`}
+                />
               </button>
             );
           })}

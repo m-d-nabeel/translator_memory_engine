@@ -1,7 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type ProcessingJob } from "../api/client";
-import { Terminal, RefreshCw, X, CheckCircle2, AlertCircle, Clock, Cpu, Layers, Sparkles } from "lucide-react";
+import {
+  Terminal,
+  RefreshCw,
+  X,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  Cpu,
+  Layers,
+  Sparkles,
+} from "lucide-react";
 
 interface EngineInspectorModalProps {
   novelId: number;
@@ -9,7 +19,11 @@ interface EngineInspectorModalProps {
   onClose: () => void;
 }
 
-export function EngineInspectorModal({ novelId, chapterId, onClose }: EngineInspectorModalProps) {
+export function EngineInspectorModal({
+  novelId,
+  chapterId,
+  onClose,
+}: EngineInspectorModalProps) {
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [filterMode, setFilterMode] = useState<"all" | "chapter">("all");
   const [autoScroll, setAutoScroll] = useState(true);
@@ -28,9 +42,10 @@ export function EngineInspectorModal({ novelId, chapterId, onClose }: EngineInsp
   });
 
   // Filtered jobs
-  const displayedJobs: ProcessingJob[] = filterMode === "chapter" && chapterId
-    ? novelJobs.filter((j) => j.chapter_id === chapterId)
-    : novelJobs;
+  const displayedJobs: ProcessingJob[] =
+    filterMode === "chapter" && chapterId
+      ? novelJobs.filter((j) => j.chapter_id === chapterId)
+      : novelJobs;
 
   // Auto-select latest job if none selected
   useEffect(() => {
@@ -46,7 +61,8 @@ export function EngineInspectorModal({ novelId, chapterId, onClose }: EngineInsp
     }
   }, [displayedJobs, selectedJobId, chapterId]);
 
-  const activeJob = displayedJobs.find((j) => j.id === selectedJobId) || displayedJobs[0];
+  const activeJob =
+    displayedJobs.find((j) => j.id === selectedJobId) || displayedJobs[0];
 
   // Parse result_summary JSON if present
   let jobSummary: {
@@ -81,25 +97,48 @@ export function EngineInspectorModal({ novelId, chapterId, onClose }: EngineInsp
         style={{
           backgroundColor: "#0d0e12",
           borderColor: "var(--color-border)",
-          boxShadow: "0 25px 50px -12px rgba(0,0,0,0.8), 0 0 40px rgba(234,88,12,0.1)",
+          boxShadow:
+            "0 25px 50px -12px rgba(0,0,0,0.8), 0 0 40px rgba(234,88,12,0.1)",
         }}
       >
         {/* Header Bar */}
-        <div className="px-5 py-4 border-b flex items-center justify-between gap-4 bg-black/40 shrink-0" style={{ borderColor: "var(--color-border)" }}>
+        <div
+          className="px-5 py-4 border-b flex items-center justify-between gap-4 shrink-0"
+          style={{
+            backgroundColor: "var(--color-surface-hover)",
+            borderColor: "var(--color-border)",
+          }}
+        >
           <div className="flex items-center gap-3 min-w-0">
             <div className="p-2 rounded-2xl bg-gradient-to-tr from-[var(--color-accent)] to-amber-500 text-white shadow-md shadow-orange-500/20">
               <Terminal className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-white font-outfit">Translator Memory Engine Logs</h3>
-                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <h3
+                  className="text-base font-bold font-outfit"
+                  style={{ color: "var(--color-text)" }}
+                >
+                  Translator Memory Engine Logs
+                </h3>
+                <span
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border"
+                  style={{
+                    backgroundColor: "var(--color-box-bg)",
+                    color: "var(--color-success)",
+                    borderColor: "var(--color-border)",
+                  }}
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full animate-pulse"
+                    style={{ backgroundColor: "var(--color-success)" }}
+                  ></span>
                   LIVE TELEMETRY
                 </span>
               </div>
               <p className="text-xs text-[var(--color-text-muted)] truncate">
-                Real-time execution pipeline, terminology prepasses, and AI context rewrites
+                Real-time execution pipeline, terminology prepasses, and AI
+                context rewrites
               </p>
             </div>
           </div>
@@ -110,7 +149,9 @@ export function EngineInspectorModal({ novelId, chapterId, onClose }: EngineInsp
               className="p-2 rounded-xl border border-[var(--color-border)] hover:bg-white/5 text-[var(--color-text-muted)] transition-colors cursor-pointer"
               title="Refresh logs now"
             >
-              <RefreshCw className={`w-4 h-4 ${isRefetching ? "animate-spin text-[var(--color-accent)]" : ""}`} />
+              <RefreshCw
+                className={`w-4 h-4 ${isRefetching ? "animate-spin text-[var(--color-accent)]" : ""}`}
+              />
             </button>
             <button
               onClick={onClose}
@@ -122,9 +163,14 @@ export function EngineInspectorModal({ novelId, chapterId, onClose }: EngineInsp
         </div>
 
         {/* Filter & Subheader */}
-        <div className="px-5 py-2.5 border-b bg-white/[0.02] flex flex-wrap items-center justify-between gap-3 text-xs" style={{ borderColor: "var(--color-border)" }}>
+        <div
+          className="px-5 py-2.5 border-b bg-white/[0.02] flex flex-wrap items-center justify-between gap-3 text-xs"
+          style={{ borderColor: "var(--color-border)" }}
+        >
           <div className="flex items-center gap-2">
-            <span className="text-[var(--color-text-muted)] font-medium">Scope:</span>
+            <span className="text-[var(--color-text-muted)] font-medium">
+              Scope:
+            </span>
             <button
               onClick={() => setFilterMode("all")}
               className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
@@ -151,8 +197,11 @@ export function EngineInspectorModal({ novelId, chapterId, onClose }: EngineInsp
 
           <div className="flex items-center gap-4 text-[var(--color-text-muted)]">
             <div className="flex items-center gap-1.5">
-              <Cpu className="w-3.5 h-3.5 text-amber-400" />
-              <span>Engine Status: <strong className="text-white">Active (Worker Pool)</strong></span>
+              <Cpu className="w-3.5 h-3.5" style={{ color: "var(--color-warning)" }} />
+              <span>
+                Engine Status:{" "}
+                <strong style={{ color: "var(--color-text)" }}>Active (Worker Pool)</strong>
+              </span>
             </div>
           </div>
         </div>
@@ -175,14 +224,18 @@ export function EngineInspectorModal({ novelId, chapterId, onClose }: EngineInsp
               <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-[var(--color-text-muted)]">
                 <Layers className="w-8 h-8 mb-2 opacity-30" />
                 <span className="text-xs">No processing jobs logged yet.</span>
-                <span className="text-[10px] opacity-60 mt-1">Press "Reprocess" or "Process" on any chapter to start!</span>
+                <span className="text-[10px] opacity-60 mt-1">
+                  Press "Reprocess" or "Process" on any chapter to start!
+                </span>
               </div>
             ) : (
               displayedJobs.map((job) => {
                 const isSelected = activeJob?.id === job.id;
                 let summary: any = {};
                 if (job.result_summary) {
-                  try { summary = JSON.parse(job.result_summary); } catch (e) {}
+                  try {
+                    summary = JSON.parse(job.result_summary);
+                  } catch (e) {}
                 }
 
                 return (
@@ -196,21 +249,34 @@ export function EngineInspectorModal({ novelId, chapterId, onClose }: EngineInsp
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <span className="font-mono text-amber-400">#{job.id}</span>
+                      <span className="text-xs font-bold flex items-center gap-1.5" style={{ color: "var(--color-text)" }}>
+                        <span className="font-mono" style={{ color: "var(--color-warning)" }}>
+                          #{job.id}
+                        </span>
                         <span>Ch. {job.chapter_number ?? job.chapter_id}</span>
                       </span>
 
                       <span
-                        className={`text-[10px] px-2 py-0.5 rounded-full font-bold font-mono tracking-wider uppercase flex items-center gap-1 ${
-                          job.status === "completed"
-                            ? "bg-emerald-500/20 text-emerald-400"
-                            : job.status === "running"
-                            ? "bg-amber-500/20 text-amber-400 animate-pulse"
-                            : job.status === "failed"
-                            ? "bg-red-500/20 text-red-400"
-                            : "bg-white/10 text-white/60"
-                        }`}
+                        className="text-[10px] px-2 py-0.5 rounded-full font-bold font-mono tracking-wider uppercase flex items-center gap-1 border"
+                        style={{
+                          backgroundColor:
+                            job.status === "completed"
+                              ? "var(--color-box-bg)"
+                              : job.status === "running"
+                                ? "var(--color-warning-subtle)"
+                                : job.status === "failed"
+                                  ? "var(--color-box-bg)"
+                                  : "var(--color-box-bg)",
+                          color:
+                            job.status === "completed"
+                              ? "var(--color-success)"
+                              : job.status === "running"
+                                ? "var(--color-warning)"
+                                : job.status === "failed"
+                                  ? "var(--color-error)"
+                                  : "var(--color-text-muted)",
+                          borderColor: "var(--color-border)",
+                        }}
                       >
                         {job.status === "completed" ? (
                           <>
@@ -218,7 +284,8 @@ export function EngineInspectorModal({ novelId, chapterId, onClose }: EngineInsp
                           </>
                         ) : job.status === "running" ? (
                           <>
-                            <RefreshCw className="w-3 h-3 animate-spin" /> Running
+                            <RefreshCw className="w-3 h-3 animate-spin" />{" "}
+                            Running
                           </>
                         ) : job.status === "failed" ? (
                           <>
@@ -235,7 +302,15 @@ export function EngineInspectorModal({ novelId, chapterId, onClose }: EngineInsp
                         {job.job_type} • {summary.mode || "pipeline"}
                       </span>
                       <span className="font-mono">
-                        {summary.processing_time_ms ? `${summary.processing_time_ms}ms` : job.started_at ? new Date(job.started_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : ""}
+                        {summary.processing_time_ms
+                          ? `${summary.processing_time_ms}ms`
+                          : job.started_at
+                            ? new Date(job.started_at).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                              })
+                            : ""}
                       </span>
                     </div>
                   </button>
@@ -252,23 +327,39 @@ export function EngineInspectorModal({ novelId, chapterId, onClose }: EngineInsp
                 <div className="px-5 py-3 border-b border-white/5 bg-white/[0.015] flex flex-wrap items-center justify-between gap-4 text-xs">
                   <div className="flex items-center gap-4 flex-wrap">
                     <div>
-                      <span className="text-[var(--color-text-muted)] block text-[10px] uppercase font-mono">Status</span>
-                      <span className={`font-bold uppercase font-mono ${
-                        activeJob.status === "completed" ? "text-emerald-400" : activeJob.status === "running" ? "text-amber-400 animate-pulse" : activeJob.status === "failed" ? "text-red-400" : "text-white"
-                      }`}>
+                      <span className="text-[var(--color-text-muted)] block text-[10px] uppercase font-mono">
+                        Status
+                      </span>
+                      <span
+                        className="font-bold uppercase font-mono"
+                        style={{
+                          color:
+                            activeJob.status === "completed"
+                              ? "var(--color-success)"
+                              : activeJob.status === "running"
+                                ? "var(--color-warning)"
+                                : activeJob.status === "failed"
+                                  ? "var(--color-error)"
+                                  : "var(--color-text)",
+                        }}
+                      >
                         {activeJob.status}
                       </span>
                     </div>
 
                     <div>
-                      <span className="text-[var(--color-text-muted)] block text-[10px] uppercase font-mono">Pre-Pass Replacements</span>
-                      <span className="font-bold text-amber-400 font-mono">
+                      <span className="text-[var(--color-text-muted)] block text-[10px] uppercase font-mono">
+                        Pre-Pass Replacements
+                      </span>
+                      <span className="font-bold font-mono" style={{ color: "var(--color-warning)" }}>
                         {jobSummary.deterministic_count ?? 0} terms matched
                       </span>
                     </div>
 
                     <div>
-                      <span className="text-[var(--color-text-muted)] block text-[10px] uppercase font-mono">Context Corrections</span>
+                      <span className="text-[var(--color-text-muted)] block text-[10px] uppercase font-mono">
+                        Context Corrections
+                      </span>
                       <span className="font-bold text-sky-400 font-mono flex items-center gap-1">
                         <Sparkles className="w-3 h-3" />
                         {jobSummary.prompted_count ?? 0} semantic rules
@@ -276,9 +367,15 @@ export function EngineInspectorModal({ novelId, chapterId, onClose }: EngineInsp
                     </div>
 
                     <div>
-                      <span className="text-[var(--color-text-muted)] block text-[10px] uppercase font-mono">Processing Time</span>
+                      <span className="text-[var(--color-text-muted)] block text-[10px] uppercase font-mono">
+                        Processing Time
+                      </span>
                       <span className="font-bold text-white font-mono">
-                        {jobSummary.processing_time_ms ? `${jobSummary.processing_time_ms} ms` : activeJob.status === "running" ? "Running..." : "N/A"}
+                        {jobSummary.processing_time_ms
+                          ? `${jobSummary.processing_time_ms} ms`
+                          : activeJob.status === "running"
+                            ? "Running..."
+                            : "N/A"}
                       </span>
                     </div>
                   </div>
@@ -297,9 +394,23 @@ export function EngineInspectorModal({ novelId, chapterId, onClose }: EngineInsp
                 </div>
 
                 {/* Terminal Window */}
-                <div className="flex-1 overflow-y-auto p-5 font-mono text-xs leading-relaxed space-y-2 selection:bg-[var(--color-accent)]/30">
-                  <div className="text-white/40 pb-2 border-b border-white/5 mb-3">
-                    === translator_memory_engine telemetry session [Job #{activeJob.id}] ===
+                <div
+                  className="flex-1 overflow-y-auto p-5 font-mono text-xs leading-relaxed space-y-2 selection:bg-[var(--color-accent)]/30 border-t"
+                  style={{
+                    backgroundColor: "var(--color-box-bg)",
+                    borderColor: "var(--color-border)",
+                    color: "var(--color-text)",
+                  }}
+                >
+                  <div
+                    className="pb-2 border-b mb-3"
+                    style={{
+                      borderColor: "var(--color-border)",
+                      color: "var(--color-text-muted)",
+                    }}
+                  >
+                    === translator_memory_engine telemetry session [Job #
+                    {activeJob.id}] ===
                   </div>
 
                   {logs.length === 0 ? (
@@ -307,49 +418,86 @@ export function EngineInspectorModal({ novelId, chapterId, onClose }: EngineInsp
                       {activeJob.status === "running" ? (
                         <div className="flex flex-col items-center gap-3">
                           <RefreshCw className="w-6 h-6 animate-spin text-[var(--color-accent)]" />
-                          <span>Engine pipeline initializing for Chapter {activeJob.chapter_number ?? activeJob.chapter_id}...</span>
+                          <span>
+                            Engine pipeline initializing for Chapter{" "}
+                            {activeJob.chapter_number ?? activeJob.chapter_id}
+                            ...
+                          </span>
                         </div>
                       ) : (
-                        <span>No detailed log stream available for this job record.</span>
+                        <span>
+                          No detailed log stream available for this job record.
+                        </span>
                       )}
                     </div>
                   ) : (
                     logs.map((line, idx) => {
-                      const isError = line.includes("❌") || line.includes("ERROR") || line.includes("failed");
-                      const isSuccess = line.includes("✅") || line.includes("completed successfully");
-                      const isEngine = line.includes("📚") || line.includes("⚡") || line.includes("🧹");
+                      const isError =
+                        line.includes("❌") ||
+                        line.includes("ERROR") ||
+                        line.includes("failed");
+                      const isSuccess =
+                        line.includes("✅") ||
+                        line.includes("completed successfully");
+                      const isEngine =
+                        line.includes("📚") ||
+                        line.includes("⚡") ||
+                        line.includes("🧹");
 
                       return (
                         <div
                           key={idx}
-                          className={`flex items-start gap-2.5 py-0.5 rounded px-2 ${
-                            isError
-                              ? "bg-red-500/10 text-red-300 border-l-2 border-red-500"
+                          className="flex items-start gap-2.5 py-0.5 rounded px-2"
+                          style={{
+                            backgroundColor:
+                              isError || isSuccess
+                                ? "var(--color-surface)"
+                                : "transparent",
+                            color: isError
+                              ? "var(--color-error)"
                               : isSuccess
-                              ? "bg-emerald-500/10 text-emerald-300 font-bold border-l-2 border-emerald-500"
-                              : isEngine
-                              ? "text-amber-200/90"
-                              : "text-white/80"
-                          }`}
+                                ? "var(--color-success)"
+                                : isEngine
+                                  ? "var(--color-warning)"
+                                  : "var(--color-text)",
+                            borderLeft: isError
+                              ? "2px solid var(--color-error)"
+                              : isSuccess
+                                ? "2px solid var(--color-success)"
+                                : isEngine
+                                  ? "2px solid var(--color-warning)"
+                                  : "none",
+                          }}
                         >
-                          <span className="select-none text-white/30 shrink-0 mt-0.5">
+                          <span
+                            className="select-none shrink-0 mt-0.5"
+                            style={{
+                              color: "var(--color-text-muted)",
+                              opacity: 0.7,
+                            }}
+                          >
                             {idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
                           </span>
-                          <span className="break-all whitespace-pre-wrap flex-1">{line}</span>
+                          <span className="break-all whitespace-pre-wrap flex-1">
+                            {line}
+                          </span>
                         </div>
                       );
                     })
                   )}
 
-                  {activeJob.error_message && !logs.some(l => l.includes(activeJob.error_message!)) && (
-                    <div className="bg-red-500/15 border border-red-500/40 rounded-xl p-4 text-red-300 mt-4 space-y-1">
-                      <div className="font-bold flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4 text-red-400" />
-                        <span>Exception Stack Trace & Error Detail:</span>
+                  {activeJob.error_message &&
+                    !logs.some((l) => l.includes(activeJob.error_message!)) && (
+                      <div className="bg-red-500/15 border border-red-500/40 rounded-xl p-4 text-red-300 mt-4 space-y-1">
+                        <div className="font-bold flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-red-400" />
+                          <span>Exception Stack Trace & Error Detail:</span>
+                        </div>
+                        <p className="font-mono text-[11px] break-all">
+                          {activeJob.error_message}
+                        </p>
                       </div>
-                      <p className="font-mono text-[11px] break-all">{activeJob.error_message}</p>
-                    </div>
-                  )}
+                    )}
 
                   <div ref={terminalEndRef} />
                 </div>
@@ -357,18 +505,31 @@ export function EngineInspectorModal({ novelId, chapterId, onClose }: EngineInsp
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-[var(--color-text-muted)]">
                 <Terminal className="w-12 h-12 mb-3 opacity-20" />
-                <span className="text-sm font-semibold text-white">Select a job from the left to view live telemetry</span>
-                <span className="text-xs opacity-60 mt-1">Watch exact pre-pass translations and LLM context polish in action.</span>
+                <span className="text-sm font-semibold text-white">
+                  Select a job from the left to view live telemetry
+                </span>
+                <span className="text-xs opacity-60 mt-1">
+                  Watch exact pre-pass translations and LLM context polish in
+                  action.
+                </span>
               </div>
             )}
           </div>
         </div>
 
         {/* Footer Info Box */}
-        <div className="px-5 py-3 border-t bg-black/40 flex flex-wrap items-center justify-between gap-3 text-[11px] text-[var(--color-text-muted)] shrink-0" style={{ borderColor: "var(--color-border)" }}>
+        <div
+          className="px-5 py-3 border-t bg-black/40 flex flex-wrap items-center justify-between gap-3 text-[11px] text-[var(--color-text-muted)] shrink-0"
+          style={{ borderColor: "var(--color-border)" }}
+        >
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-            <span><strong>How it works:</strong> When you press <em>Reprocess</em>, the backend queues an async pipeline worker that cleans text, loads current AI terminology rules, runs deterministic replacements, and performs contextual LLM refinement.</span>
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--color-warning)" }}></span>
+            <span>
+              <strong>How it works:</strong> When you press <em>Reprocess</em>,
+              the backend queues an async pipeline worker that cleans text,
+              loads current AI terminology rules, runs deterministic
+              replacements, and performs contextual LLM refinement.
+            </span>
           </div>
           <div className="font-mono opacity-70">v2.4.0 Engine Telemetry</div>
         </div>

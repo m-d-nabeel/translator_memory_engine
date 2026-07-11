@@ -22,7 +22,10 @@ const statusLabels: Record<string, string> = {
 export function ChapterList({ chapters, onRead }: ChapterListProps) {
   if (chapters.length === 0) {
     return (
-      <p className="text-center py-8" style={{ color: "var(--color-text-muted)" }}>
+      <p
+        className="text-center py-8"
+        style={{ color: "var(--color-text-muted)" }}
+      >
         No chapters yet. Paste some text above to get started.
       </p>
     );
@@ -40,7 +43,10 @@ export function ChapterList({ chapters, onRead }: ChapterListProps) {
           }}
         >
           <div className="flex items-center gap-3">
-            <span className="font-mono text-sm font-semibold" style={{ color: "var(--color-accent)" }}>
+            <span
+              className="font-mono text-sm font-semibold"
+              style={{ color: "var(--color-accent)" }}
+            >
               Ch. {ch.chapter_number}
             </span>
             <span
@@ -52,7 +58,10 @@ export function ChapterList({ chapters, onRead }: ChapterListProps) {
             >
               {statusLabels[ch.status]}
             </span>
-            <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+            <span
+              className="text-xs"
+              style={{ color: "var(--color-text-muted)" }}
+            >
               {ch.source_type}
             </span>
           </div>

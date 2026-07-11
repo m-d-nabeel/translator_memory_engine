@@ -30,7 +30,9 @@ export function NovelCard({ novel, onClick, onQuickRead }: NovelCardProps) {
     chinese: "🇨🇳 CN",
     japanese: "🇯🇵 JP",
   };
-  const langBadge = flagMap[novel.source_language.toLowerCase()] || `🌐 ${novel.source_language.toUpperCase()}`;
+  const langBadge =
+    flagMap[novel.source_language.toLowerCase()] ||
+    `🌐 ${novel.source_language.toUpperCase()}`;
 
   return (
     <div
@@ -52,7 +54,7 @@ export function NovelCard({ novel, onClick, onQuickRead }: NovelCardProps) {
         >
           {/* Decorative book spine line */}
           <div className="absolute top-0 bottom-0 left-2.5 w-0.5 bg-white/20" />
-          
+
           <div className="flex justify-between items-center z-10">
             <span className="text-[10px] font-black tracking-tighter uppercase px-1 py-0.5 rounded bg-black/40 text-white backdrop-blur-sm">
               AI
@@ -71,34 +73,65 @@ export function NovelCard({ novel, onClick, onQuickRead }: NovelCardProps) {
         <div className="flex-1 min-w-0 py-1 flex flex-col justify-between h-28">
           <div>
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md border" style={{ backgroundColor: "var(--color-bg)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
+              <span
+                className="text-[10px] font-semibold px-2 py-0.5 rounded-md border"
+                style={{
+                  backgroundColor: "var(--color-bg)",
+                  borderColor: "var(--color-border)",
+                  color: "var(--color-text-muted)",
+                }}
+              >
                 {langBadge}
               </span>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1" style={{ backgroundColor: "var(--color-ai-glow)", color: "var(--color-ai)" }}>
+              <span
+                className="text-[10px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1"
+                style={{
+                  backgroundColor: "var(--color-ai-glow)",
+                  color: "var(--color-ai)",
+                }}
+              >
                 <Layers className="w-3 h-3" />
                 Memory Active
               </span>
             </div>
 
-            <h3 className="text-base font-bold leading-snug line-clamp-1 transition-colors group-hover:text-[var(--color-accent)] font-outfit" style={{ color: "var(--color-text)" }}>
+            <h3
+              className="text-base font-bold leading-snug line-clamp-1 transition-colors group-hover:text-[var(--color-accent)] font-outfit"
+              style={{ color: "var(--color-text)" }}
+            >
               {novel.name}
             </h3>
 
             {novel.title && novel.title !== novel.name && (
-              <p className="text-xs line-clamp-1 opacity-70 mt-0.5" style={{ color: "var(--color-text-muted)" }}>
+              <p
+                className="text-xs line-clamp-1 opacity-70 mt-0.5"
+                style={{ color: "var(--color-text-muted)" }}
+              >
                 {novel.title}
               </p>
             )}
           </div>
 
           {/* Chapters and status bar */}
-          <div className="flex items-center justify-between text-xs pt-2 border-t" style={{ borderColor: "var(--color-border)" }}>
-            <span className="flex items-center gap-1.5 font-medium" style={{ color: "var(--color-text-muted)" }}>
+          <div
+            className="flex items-center justify-between text-xs pt-2 border-t"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            <span
+              className="flex items-center gap-1.5 font-medium"
+              style={{ color: "var(--color-text-muted)" }}
+            >
               <BookOpen className="w-3.5 h-3.5 text-[var(--color-accent)]" />
-              <strong style={{ color: "var(--color-text)" }}>{novel.chapter_count}</strong> chapters
+              <strong style={{ color: "var(--color-text)" }}>
+                {novel.chapter_count}
+              </strong>{" "}
+              chapters
             </span>
 
-            <span className="text-[10px] uppercase tracking-wider font-semibold opacity-60" style={{ color: "var(--color-text-muted)" }}>
+            <span
+              className="text-[10px] uppercase tracking-wider font-semibold opacity-60"
+              style={{ color: "var(--color-text-muted)" }}
+            >
               Engine Ready
             </span>
           </div>
@@ -106,8 +139,14 @@ export function NovelCard({ novel, onClick, onQuickRead }: NovelCardProps) {
       </div>
 
       {/* Action Footer Button Bar */}
-      <div className="px-4 py-2.5 bg-black/20 border-t flex items-center justify-between transition-colors group-hover:bg-black/40" style={{ borderColor: "var(--color-border)" }}>
-        <span className="text-xs font-semibold flex items-center gap-1 transition-colors group-hover:text-[var(--color-accent)]" style={{ color: "var(--color-text)" }}>
+      <div
+        className="px-4 py-2.5 bg-black/20 border-t flex items-center justify-between transition-colors group-hover:bg-black/40"
+        style={{ borderColor: "var(--color-border)" }}
+      >
+        <span
+          className="text-xs font-semibold flex items-center gap-1 transition-colors group-hover:text-[var(--color-accent)]"
+          style={{ color: "var(--color-text)" }}
+        >
           <span>Open Webnovel Studio</span>
           <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
         </span>
@@ -119,7 +158,10 @@ export function NovelCard({ novel, onClick, onQuickRead }: NovelCardProps) {
               onQuickRead(e);
             }}
             className="px-3 py-1 rounded-lg text-xs font-bold text-white flex items-center gap-1.5 shadow-sm transition-transform hover:scale-105 active:scale-95 cursor-pointer"
-            style={{ background: "linear-gradient(135deg, var(--color-accent) 0%, #ea580c 100%)" }}
+            style={{
+              background:
+                "linear-gradient(135deg, var(--color-accent) 0%, #ea580c 100%)",
+            }}
           >
             <Play className="w-3 h-3 fill-white" />
             <span>Read</span>

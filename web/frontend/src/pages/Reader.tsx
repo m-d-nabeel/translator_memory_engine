@@ -42,19 +42,24 @@ export function Reader() {
 
   const { data: novel } = useQuery({
     queryKey: ["novel", chapterData?.novel_id],
-    queryFn: () => (chapterData?.novel_id ? api.getNovel(chapterData.novel_id) : null),
+    queryFn: () =>
+      chapterData?.novel_id ? api.getNovel(chapterData.novel_id) : null,
     enabled: !!chapterData?.novel_id,
   });
 
   const { data: neighbors } = useQuery({
     queryKey: ["neighbors", id],
-    queryFn: () => (chapterData?.novel_id ? api.chapterNeighbors(chapterData.novel_id, id) : null),
+    queryFn: () =>
+      chapterData?.novel_id
+        ? api.chapterNeighbors(chapterData.novel_id, id)
+        : null,
     enabled: !!chapterData?.novel_id,
   });
 
   const { data: allChapters } = useQuery({
     queryKey: ["chaptersForNovel", chapterData?.novel_id],
-    queryFn: () => (chapterData?.novel_id ? api.listChapters(chapterData.novel_id) : null),
+    queryFn: () =>
+      chapterData?.novel_id ? api.listChapters(chapterData.novel_id) : null,
     enabled: !!chapterData?.novel_id,
   });
 
@@ -71,7 +76,11 @@ export function Reader() {
   // Keyboard navigation support
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      )
+        return;
       // CRITICAL: Do not intercept shortcuts with modifier keys (Alt, Ctrl, Meta, Shift)
       // This allows browser navigation like Alt+Left (Back) / Alt+Right (Forward) to function without getting trapped!
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
@@ -81,11 +90,14 @@ export function Reader() {
       } else if (e.key === "ArrowRight" && neighbors?.next) {
         navigate(`/read/${neighbors.next.id}`);
       } else if (e.key.toLowerCase() === "v") {
-        setViewMode((prev) => (prev === "refined" ? "mtl" : prev === "mtl" ? "original" : "refined"));
+        setViewMode((prev) =>
+          prev === "refined" ? "mtl" : prev === "mtl" ? "original" : "refined",
+        );
       } else if (e.key === "Escape") {
         if (showSettings) setShowSettings(false);
         else if (showToc) setShowToc(false);
-        else if (chapterData?.novel_id) navigate(`/novels/${chapterData.novel_id}`);
+        else if (chapterData?.novel_id)
+          navigate(`/novels/${chapterData.novel_id}`);
         else navigate("/");
       }
     };
@@ -98,7 +110,12 @@ export function Reader() {
     let lastScrollY = window.scrollY;
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
-      if (currentScrollY > lastScrollY && currentScrollY > 120 && !showSettings && !showToc) {
+      if (
+        currentScrollY > lastScrollY &&
+        currentScrollY > 120 &&
+        !showSettings &&
+        !showToc
+      ) {
         setIsControlsVisible(false);
       } else if (lastScrollY - currentScrollY > 15 || currentScrollY < 40) {
         setIsControlsVisible(true);
@@ -119,7 +136,8 @@ export function Reader() {
 
   const getDisplayText = () => {
     if (!chapter) return "";
-    if (viewMode === "refined" && chapter.refined_text) return chapter.refined_text;
+    if (viewMode === "refined" && chapter.refined_text)
+      return chapter.refined_text;
     if (viewMode === "original") {
       const origVer = versions.find((c) => c.source_type === "original");
       if (origVer) return origVer.raw_text;
@@ -141,7 +159,9 @@ export function Reader() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-[var(--color-bg)] text-[var(--color-text)]">
         <div className="w-8 h-8 rounded-full border-2 border-t-[var(--color-accent)] border-white/20 animate-spin" />
-        <p className="text-xs font-medium text-[var(--color-text-muted)]">Loading Webnovel reader...</p>
+        <p className="text-xs font-medium text-[var(--color-text-muted)]">
+          Loading Webnovel reader...
+        </p>
       </div>
     );
   }
@@ -165,9 +185,12 @@ export function Reader() {
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[var(--color-bg)] text-[var(--color-text)] p-6">
         <div className="w-10 h-10 rounded-full border-2 border-t-[var(--color-accent)] border-white/20 animate-spin" />
         <div className="text-center">
-          <h3 className="text-base font-bold font-outfit">AI Memory Engine is Refining Chapter {chapter.chapter_number}</h3>
+          <h3 className="text-base font-bold font-outfit">
+            AI Memory Engine is Refining Chapter {chapter.chapter_number}
+          </h3>
           <p className="text-xs text-[var(--color-text-muted)] mt-1 max-w-sm">
-            Applying terminology policies, polishing tone, and ensuring consistency across the series...
+            Applying terminology policies, polishing tone, and ensuring
+            consistency across the series...
           </p>
         </div>
         <button
@@ -182,11 +205,12 @@ export function Reader() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--color-bg)] text-[var(--color-text)] transition-colors duration-200">
-      
       {/* Top Floating Reader App Bar */}
       <header
         className={`fixed top-0 left-0 right-0 z-30 glass-surface border-b transition-all duration-300 px-3 sm:px-6 py-3 ${
-          isControlsVisible ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none"
+          isControlsVisible
+            ? "translate-y-0 opacity-100"
+            : "-translate-y-full opacity-0 pointer-events-none"
         }`}
         style={{ borderColor: "var(--color-border)" }}
       >
@@ -194,19 +218,32 @@ export function Reader() {
           {/* Back & Title Breadcrumb */}
           <div className="flex items-center gap-3 min-w-0">
             <button
-              onClick={() => (chapterData?.novel_id ? navigate(`/novels/${chapterData.novel_id}`) : navigate("/"))}
+              onClick={() =>
+                chapterData?.novel_id
+                  ? navigate(`/novels/${chapterData.novel_id}`)
+                  : navigate("/")
+              }
               className="p-2 rounded-xl border hover:bg-white/5 transition-colors shrink-0 cursor-pointer"
-              style={{ borderColor: "var(--color-border)", color: "var(--color-text)" }}
+              style={{
+                borderColor: "var(--color-border)",
+                color: "var(--color-text)",
+              }}
               title="Return to Novel Studio"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
 
             <div className="min-w-0">
-              <span className="text-[10px] font-bold uppercase tracking-wider block line-clamp-1 opacity-70" style={{ color: "var(--color-accent)" }}>
+              <span
+                className="text-[10px] font-bold uppercase tracking-wider block line-clamp-1 opacity-70"
+                style={{ color: "var(--color-accent)" }}
+              >
                 {novel?.name || "Webnovel AI"}
               </span>
-              <h1 className="text-sm font-extrabold font-outfit line-clamp-1" style={{ color: "var(--color-text)" }}>
+              <h1
+                className="text-sm font-extrabold font-outfit line-clamp-1"
+                style={{ color: "var(--color-text)" }}
+              >
                 Chapter {chapter.chapter_number}
               </h1>
             </div>
@@ -214,12 +251,17 @@ export function Reader() {
 
           {/* Version Switcher Segmented Control */}
           {showVersionSwitcher && (
-            <div className="hidden sm:flex gap-1 p-1 rounded-xl border bg-black/30 shrink-0" style={{ borderColor: "var(--color-border)" }}>
+            <div
+              className="hidden sm:flex gap-1 p-1 rounded-xl border bg-black/30 shrink-0"
+              style={{ borderColor: "var(--color-border)" }}
+            >
               {hasRefined && (
                 <button
                   onClick={() => setViewMode("refined")}
                   className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                    viewMode === "refined" ? "shadow-sm bg-[var(--color-accent)] text-white" : "opacity-60 hover:opacity-100"
+                    viewMode === "refined"
+                      ? "shadow-sm bg-[var(--color-accent)] text-white"
+                      : "opacity-60 hover:opacity-100"
                   }`}
                 >
                   <Sparkles className="w-3 h-3" />
@@ -229,7 +271,9 @@ export function Reader() {
               <button
                 onClick={() => setViewMode("mtl")}
                 className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  viewMode === "mtl" ? "shadow-sm bg-[var(--color-surface-hover)] text-[var(--color-text)]" : "opacity-60 hover:opacity-100"
+                  viewMode === "mtl"
+                    ? "shadow-sm bg-[var(--color-surface-hover)] text-[var(--color-text)]"
+                    : "opacity-60 hover:opacity-100"
                 }`}
               >
                 Raw MTL
@@ -238,10 +282,12 @@ export function Reader() {
                 <button
                   onClick={() => setViewMode("original")}
                   className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    viewMode === "original" ? "shadow-sm bg-[var(--color-surface-hover)] text-[var(--color-text)]" : "opacity-60 hover:opacity-100"
+                    viewMode === "original"
+                      ? "shadow-sm bg-[var(--color-surface-hover)] text-[var(--color-text)]"
+                      : "opacity-60 hover:opacity-100"
                   }`}
                 >
-                  Original
+                  OG TL (Ref)
                 </button>
               )}
             </div>
@@ -255,7 +301,9 @@ export function Reader() {
                 onClick={() => setSplitMode(!splitMode)}
                 title="Toggle Side-by-Side Comparison Mode"
                 className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                  splitMode ? "shadow-md glow-accent bg-[var(--color-accent)] text-white border-transparent" : "hover:bg-white/5"
+                  splitMode
+                    ? "shadow-md glow-accent bg-[var(--color-accent)] text-white border-transparent"
+                    : "hover:bg-white/5"
                 }`}
                 style={{ borderColor: "var(--color-border)" }}
               >
@@ -265,7 +313,13 @@ export function Reader() {
             )}
 
             {/* Quick Font Size Controls */}
-            <div className="flex items-center gap-1 border rounded-xl p-0.5" style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-surface)" }}>
+            <div
+              className="flex items-center gap-1 border rounded-xl p-0.5"
+              style={{
+                borderColor: "var(--color-border)",
+                backgroundColor: "var(--color-surface)",
+              }}
+            >
               <button
                 onClick={settings.decreaseFontSize}
                 className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold transition-colors hover:bg-white/10 cursor-pointer"
@@ -290,13 +344,21 @@ export function Reader() {
       >
         {/* Mobile Version Toggle Bar (Only visible when controls visible on mobile) */}
         {showVersionSwitcher && isControlsVisible && (
-          <div className="sm:hidden px-4 mb-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex gap-1 p-1 rounded-xl border bg-black/20" style={{ borderColor: "var(--color-border)" }}>
+          <div
+            className="sm:hidden px-4 mb-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="flex gap-1 p-1 rounded-xl border bg-black/20"
+              style={{ borderColor: "var(--color-border)" }}
+            >
               {hasRefined && (
                 <button
                   onClick={() => setViewMode("refined")}
                   className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer ${
-                    viewMode === "refined" ? "shadow-sm bg-[var(--color-accent)] text-white" : "opacity-60"
+                    viewMode === "refined"
+                      ? "shadow-sm bg-[var(--color-accent)] text-white"
+                      : "opacity-60"
                   }`}
                 >
                   <Sparkles className="w-3 h-3" />
@@ -306,7 +368,9 @@ export function Reader() {
               <button
                 onClick={() => setViewMode("mtl")}
                 className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
-                  viewMode === "mtl" ? "shadow-sm bg-[var(--color-surface-hover)] text-[var(--color-text)]" : "opacity-60"
+                  viewMode === "mtl"
+                    ? "shadow-sm bg-[var(--color-surface-hover)] text-[var(--color-text)]"
+                    : "opacity-60"
                 }`}
               >
                 Raw MTL
@@ -315,10 +379,12 @@ export function Reader() {
                 <button
                   onClick={() => setViewMode("original")}
                   className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
-                    viewMode === "original" ? "shadow-sm bg-[var(--color-surface-hover)] text-[var(--color-text)]" : "opacity-60"
+                    viewMode === "original"
+                      ? "shadow-sm bg-[var(--color-surface-hover)] text-[var(--color-text)]"
+                      : "opacity-60"
                   }`}
                 >
-                  Original
+                  OG TL (Ref)
                 </button>
               )}
             </div>
@@ -326,13 +392,20 @@ export function Reader() {
         )}
 
         {/* Reading Article Area (Supports Single or Side-by-Side Split View) */}
-        <div className={`flex-1 px-2 sm:px-4 ${splitMode ? "grid grid-cols-1 md:grid-cols-2 gap-6 max-w-7xl mx-auto w-full" : ""}`}>
-          
+        <div
+          className={`flex-1 px-2 sm:px-4 ${splitMode ? "grid grid-cols-1 md:grid-cols-2 gap-6 max-w-7xl mx-auto w-full" : ""}`}
+        >
           {/* Main Reading Column */}
           <div className="min-w-0">
             {splitMode && (
               <div className="max-w-[720px] mx-auto mb-3 px-4 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-[var(--color-accent)]">
-                <span>{viewMode === "refined" ? "✨ AI Refined Translation" : viewMode === "original" ? "📄 Original Source" : "🤖 Raw MTL Stream"}</span>
+                <span>
+                  {viewMode === "refined"
+                    ? "✨ AI Refined Translation"
+                    : viewMode === "original"
+                      ? "📄 Reference Translation (OG TL)"
+                      : "🤖 Raw MTL Stream"}
+                </span>
               </div>
             )}
             <ReaderView
@@ -347,9 +420,16 @@ export function Reader() {
 
           {/* Side-by-Side Comparison Column (Active in splitMode) */}
           {splitMode && (
-            <div className="min-w-0 border-t md:border-t-0 md:border-l pt-8 md:pt-0 pl-0 md:pl-6" style={{ borderColor: "var(--color-border)" }}>
+            <div
+              className="min-w-0 border-t md:border-t-0 md:border-l pt-8 md:pt-0 pl-0 md:pl-6"
+              style={{ borderColor: "var(--color-border)" }}
+            >
               <div className="max-w-[720px] mx-auto mb-3 px-4 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-[var(--color-ai)]">
-                <span>{viewMode === "refined" ? "🤖 Raw Machine Translation (MTL)" : "✨ AI Refined Translation"}</span>
+                <span>
+                  {viewMode === "refined"
+                    ? "🤖 Raw Machine Translation (MTL)"
+                    : "✨ AI Refined Translation"}
+                </span>
               </div>
               <ReaderView
                 text={getCompareText()}
@@ -367,47 +447,69 @@ export function Reader() {
       {/* Bottom Floating Navigation Toolbar */}
       <footer
         className={`fixed bottom-0 left-0 right-0 z-30 glass-surface border-t transition-all duration-300 py-3 px-4 sm:px-6 ${
-          isControlsVisible ? "translate-y-0 opacity-100" : "translate-y-full opacity-0 pointer-events-none"
+          isControlsVisible
+            ? "translate-y-0 opacity-100"
+            : "translate-y-full opacity-0 pointer-events-none"
         }`}
         style={{ borderColor: "var(--color-border)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
-          
           {/* Catalog TOC Drawer Trigger */}
           <button
             onClick={() => setShowToc(true)}
             className="flex items-center gap-2 px-3.5 py-2 rounded-2xl border text-xs font-bold transition-all hover:bg-white/5 cursor-pointer shrink-0"
-            style={{ borderColor: "var(--color-border)", color: "var(--color-text)" }}
+            style={{
+              borderColor: "var(--color-border)",
+              color: "var(--color-text)",
+            }}
           >
             <Menu className="w-4 h-4 text-[var(--color-accent)]" />
             <span className="hidden sm:inline">Catalog</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-black/30 font-mono opacity-80">{allChapters?.length ?? 0}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-black/30 font-mono opacity-80">
+              {allChapters?.length ?? 0}
+            </span>
           </button>
 
           {/* Chapter Scrubber / Prev & Next Controls */}
           <div className="flex items-center gap-2 flex-1 justify-center max-w-sm">
             <button
-              onClick={() => neighbors?.prev && navigate(`/read/${neighbors.prev.id}`)}
+              onClick={() =>
+                neighbors?.prev && navigate(`/read/${neighbors.prev.id}`)
+              }
               disabled={!neighbors?.prev}
               className="p-2.5 rounded-xl border flex items-center justify-center text-xs font-bold transition-all cursor-pointer disabled:opacity-20 disabled:cursor-not-allowed hover:bg-white/5"
-              style={{ borderColor: "var(--color-border)", color: "var(--color-text)" }}
+              style={{
+                borderColor: "var(--color-border)",
+                color: "var(--color-text)",
+              }}
               title="Previous Chapter (Left Arrow key)"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
 
-            <div className="px-4 py-2 rounded-xl bg-black/20 border text-center flex-1 min-w-[110px]" style={{ borderColor: "var(--color-border)" }}>
-              <span className="text-xs font-bold block leading-none font-outfit" style={{ color: "var(--color-text)" }}>
+            <div
+              className="px-4 py-2 rounded-xl bg-black/20 border text-center flex-1 min-w-[110px]"
+              style={{ borderColor: "var(--color-border)" }}
+            >
+              <span
+                className="text-xs font-bold block leading-none font-outfit"
+                style={{ color: "var(--color-text)" }}
+              >
                 Chapter {chapter.chapter_number}
               </span>
             </div>
 
             <button
-              onClick={() => neighbors?.next && navigate(`/read/${neighbors.next.id}`)}
+              onClick={() =>
+                neighbors?.next && navigate(`/read/${neighbors.next.id}`)
+              }
               disabled={!neighbors?.next}
               className="p-2.5 rounded-xl border flex items-center justify-center text-xs font-bold transition-all cursor-pointer disabled:opacity-20 disabled:cursor-not-allowed hover:bg-white/5"
-              style={{ borderColor: "var(--color-border)", color: "var(--color-text)" }}
+              style={{
+                borderColor: "var(--color-border)",
+                color: "var(--color-text)",
+              }}
               title="Next Chapter (Right Arrow key)"
             >
               <ArrowRight className="w-4 h-4" />
@@ -418,7 +520,10 @@ export function Reader() {
           <button
             onClick={() => setShowSettings(true)}
             className="flex items-center gap-2 px-3.5 py-2 rounded-2xl border text-xs font-bold transition-all hover:bg-white/5 cursor-pointer shrink-0"
-            style={{ borderColor: "var(--color-border)", color: "var(--color-text)" }}
+            style={{
+              borderColor: "var(--color-border)",
+              color: "var(--color-text)",
+            }}
           >
             <Sliders className="w-4 h-4 text-[var(--color-accent)]" />
             <span className="hidden sm:inline">Aa Display</span>
