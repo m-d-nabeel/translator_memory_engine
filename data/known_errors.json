@@ -1,0 +1,92 @@
+[
+  {
+    "id": "corpse-minus-stamina",
+    "mtl_phrase": "corpse minus the stamina",
+    "korean_source": "시체 빼고 다 OK",
+    "correct_translation": "It's a piece of cake",
+    "category": "literal_translation",
+    "context": "reassuring that something is easy/fine",
+    "notes": "Literal word-for-word mistranslation. 시체=corpse, 빼고=minus/except, 다=everything/OK"
+  },
+  {
+    "id": "hee-squeal",
+    "mtl_phrase": "Hee!",
+    "korean_source": "히이이!",
+    "correct_translation": "Heh!",
+    "category": "onomatopoeia",
+    "context": "mocking laugh or squeal",
+    "notes": "Korean squeal sound. Should be rendered as a short mocking laugh in English."
+  },
+  {
+    "id": "profit-teeth-gritting",
+    "mtl_phrase": "Profit!",
+    "korean_source": "흑!",
+    "correct_translation": "Tch!",
+    "category": "onomatopoeia",
+    "context": "teeth-gritting, frustration, or annoyance",
+    "notes": "흑 is a sound of teeth-gritting/frustration, not the English word 'Profit'. Already fixed by system message removal."
+  },
+  {
+    "id": "growl-groan",
+    "mtl_phrase": "Growl-",
+    "korean_source": "끄응-",
+    "correct_translation": "Ugh-",
+    "category": "onomatopoeia",
+    "context": "groaning or straining sound",
+    "notes": "Korean groan/strain sound. Already fixed."
+  },
+  {
+    "id": "cried-ate-mustard",
+    "mtl_phrase": "cried and ate mustard",
+    "korean_source": "울며 겨자 먹기",
+    "correct_translation": "gritting their teeth",
+    "category": "idiom",
+    "context": "doing something reluctantly, forced to endure",
+    "notes": "Korean idiom meaning 'eating mustard while crying' = doing something unpleasant reluctantly. Already fixed."
+  },
+  {
+    "id": "suck-honey",
+    "mtl_phrase": "suck honey",
+    "korean_source": "꿀을 빨다",
+    "correct_translation": "flattering",
+    "category": "idiom",
+    "context": "someone being sycophantic or overly sweet",
+    "notes": "Korean idiom for being overly sweet/flattering. Already fixed."
+  },
+  {
+    "id": "head-case",
+    "mtl_phrase": "head case",
+    "korean_source": "대가리",
+    "correct_translation": "idiot",
+    "category": "mistranslation",
+    "context": "insulting someone's intelligence",
+    "notes": "대가리 is vulgar slang for head, used as an insult. Already fixed by system message removal."
+  },
+  {
+    "id": "evil-my-arms",
+    "mtl_phrase": "evil! evil! my arms!",
+    "korean_source": "악! 악! 내 팔!",
+    "correct_translation": "Ah! Ah! My arm!",
+    "category": "onomatopoeia",
+    "context": "pain, arm being grabbed or injured",
+    "notes": "악 is a scream of pain, not 'evil'. Already fixed."
+  },
+  {
+    "id": "long-tongue",
+    "mtl_phrase": "Do you have a long tongue?",
+    "korean_source": "재롱이 긴가?",
+    "correct_translation": "Are you being cheeky?",
+    "category": "idiom",
+    "context": "someone being playful or cheeky",
+    "notes": "Korean idiom about having a 'long tongue' = being talkative/cheeky. Already fixed."
+  },
+  {
+    "id": "pak-dash",
+    "mtl_phrase": "Pak-!",
+    "korean_source": "퍽-!",
+    "correct_translation": "Pak!",
+    "category": "onomatopoeia",
+    "context": "sound of a hit or slap",
+    "notes": "Garbled with trailing dash. Should be clean 'Pak!' without dash. Already fixed."
+  }
+]

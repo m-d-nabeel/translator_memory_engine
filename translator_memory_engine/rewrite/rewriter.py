@@ -29,6 +29,57 @@ from translator_memory_engine.rewrite.conflict import resolve
 from translator_memory_engine.rewrite.prepass import apply_prepass
 from translator_memory_engine.rewrite.shield import restore_entities, shield_entities
 
+# ---------------------------------------------------------------------------
+# Known MTL error corrections (outputs/known_errors.json)
+# ---------------------------------------------------------------------------
+
+_KNOWN_ERRORS_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "known_errors.json")
+
+
+def _load_known_errors() -> List[Dict]:
+    """Load known MTL error corrections from JSON."""
+    try:
+        import json
+        with open(_KNOWN_ERRORS_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def scan_known_errors(text: str, known_errors: Optional[List[Dict]] = None) -> List[Dict]:
+    """Scan MTL text for known error phrases and return matches.
+
+    Returns a list of dicts with keys: id, mtl_phrase, correct_translation,
+    korean_source, context. Only returns errors that are actually present in text.
+    """
+    if known_errors is None:
+        known_errors = _load_known_errors()
+
+    matches = []
+    for error in known_errors:
+        phrase = error.get("mtl_phrase", "")
+        if phrase and re.search(re.escape(phrase), text, re.IGNORECASE):
+            matches.append(error)
+    return matches
+
+
+def format_known_errors_for_prompt(matches: List[Dict]) -> str:
+    """Format matched known errors as prompt instructions."""
+    if not matches:
+        return ""
+
+    lines = ["KNOWN MTL ERROR CORRECTIONS (apply these):"]
+    for m in matches:
+        phrase = m.get("mtl_phrase", "")
+        correct = m.get("correct_translation", "")
+        korean = m.get("korean_source", "")
+        context = m.get("context", "")
+        lines.append(
+            f'  - "{phrase}" → "{correct}" '
+            f'(Korean: {korean}) — {context}'
+        )
+    return "\n".join(lines)
+
 
 def _load_policies(path: str) -> List[Policy]:
     store = PolicyStore()
@@ -319,6 +370,10 @@ def build_prompt(
         previous_tail: Last 1-2 paragraphs of the previous chapter, for
             cross-chapter continuity (pronoun consistency, scene flow).
     """
+    # Scan for known MTL errors and inject corrections
+    known_errors = scan_known_errors(prepassed_text)
+    known_errors_block = format_known_errors_for_prompt(known_errors)
+
     lines = []
     for p in prompted_policies:
         render_as = p.action.get("render_as", p.trigger)
@@ -338,11 +393,12 @@ def build_prompt(
         )
 
     if reference:
+        known_errors_section = f"\n{known_errors_block}\n" if known_errors_block else ""
         return f"""You are POST-EDITING a machine-translated web-novel chapter toward a published human translation of the SAME passage.
 {tail_block}
 Apply the following translator policies consistently:
 {instructions}
-
+{known_errors_section}
 Repair rules:
 - REWRITE the MACHINE TRANSLATION (A) so it READS LIKE the PUBLISHED TRANSLATION (B): match its phrasing, voice, tone, rhythm, and emotional weight as closely as possible.
 - RESOLVE DISCOURSE & NARRATIVE COHERENCE ANOMALIES (DECEPTIVE MTL ARTIFACTS):
@@ -361,6 +417,7 @@ Repair rules:
 {reference}"""
 
     if style_profile:
+        known_errors_section = f"\n{known_errors_block}\n" if known_errors_block else ""
         profile_txt = "\n".join(f"- {ex}" for ex in style_profile)
         return f"""You are repairing a machine-translated web-novel chapter into fluent, natural English. There is NO published translation for this chapter.
 {tail_block}
@@ -371,18 +428,19 @@ The following quotes are from DIFFERENT chapters by the SAME translator. Use the
 
 Apply the following translator policies consistently:
 {instructions}
-
+{known_errors_section}
 {_FALLBACK_RULES}
 
 CHAPTER TO REWRITE:
 {prepassed_text}"""
 
     profile_txt = "\n".join(f"- {ex}" for ex in _STYLE_REFERENCE)
+    known_errors_section = f"\n{known_errors_block}\n" if known_errors_block else ""
     return f"""You are aggressively repairing a machine-translated web novel chapter into fluent, natural English.
 {tail_block}
 Apply the following translator policies consistently:
 {instructions}
-
+{known_errors_section}
 ### VOICE REFERENCE EXCERPTS (DO NOT COPY OR INSERT THESE LINES)
 The following quotes show the translator's vocabulary, dialogue rhythm, and gritty tone. They are from DIFFERENT chapters. Use them ONLY as stylistic inspiration. DO NOT copy, insert, or weave any of these lines or characters into the current chapter:
 {profile_txt}
