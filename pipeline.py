@@ -15,6 +15,7 @@ Runs the M0 extraction pipeline:
 
 import argparse
 import json
+import logging
 import os
 import re
 import sys
@@ -29,6 +30,25 @@ from translator_memory_engine.memory.store import PolicyStore
 from translator_memory_engine.policy.miner import mine_policies
 from translator_memory_engine.policy.verifier import create_verifier
 from translator_memory_engine.rewrite.rewriter import rewrite as rewrite_pass
+
+# ---------------------------------------------------------------------------
+# Logging setup
+# ---------------------------------------------------------------------------
+
+logger = logging.getLogger("tme")
+
+
+def _setup_logging(verbose: bool = False) -> None:
+    """Configure logging based on verbose flag."""
+    level = logging.DEBUG if verbose else logging.INFO
+    fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s" if verbose else "%(message)s"
+    logging.basicConfig(level=level, format=fmt, stream=sys.stderr)
+    # Quiet noisy loggers
+    if not verbose:
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
+        logging.getLogger("openai").setLevel(logging.WARNING)
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 
 def _load_config(path: str) -> dict:
@@ -232,9 +252,15 @@ def cmd_extract(args: argparse.Namespace) -> None:
 
 def cmd_rewrite(args: argparse.Namespace) -> None:
     """Run the M1 rewrite pipeline on one MTL chapter or a directory of them."""
+    logger.info("=" * 60)
+    logger.info("M1 Rewrite Pipeline")
+    logger.info("=" * 60)
+
     config = _load_config(args.config)
     verify_cfg = config.get("extraction", {}).get("verification", {})
     os.makedirs(args.output, exist_ok=True)
+    logger.debug(f"Config loaded: {args.config}")
+    logger.debug(f"Output dir: {args.output}")
 
     # Optional published-reference dir (supervised mode). When present, chapters
     # are matched by number; chapters without an original fall back to the style
@@ -246,26 +272,33 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
 
     if args.reference:
         if not os.path.isdir(args.reference):
-            print(f"ERROR: --reference dir not found: {args.reference}")
+            logger.error(f"Reference dir not found: {args.reference}")
             sys.exit(1)
         reference_index = _index_by_chapter(args.reference)
+        logger.info(f"Reference dir: {args.reference} ({len(reference_index)} originals)")
+        logger.debug(f"Reference chapters: {sorted(reference_index.keys())}")
+
         from translator_memory_engine.memory.style_bank import (
             build_exemplar_index_from_chapters,
             build_style_bank,
             retrieve_style_excerpts,
         )
 
+        logger.info("Building style bank from reference chapters...")
         ref_chapters = _read_text_chapters(args.reference)
         raw_profile = build_style_bank(ref_chapters)
         stats_line = (
             raw_profile[-1] if raw_profile and raw_profile[-1].startswith("Measured") else None
         )
         bank_excerpts = [e for e in raw_profile if e != stats_line]
+        logger.info(f"Style bank: {len(bank_excerpts)} excerpts")
+        logger.debug(f"Stats line: {stats_line[:80] if stats_line else 'None'}")
 
         # Build exemplar index for embedding-based retrieval (fastembed if available)
         try:
             from fastembed import TextEmbedding
 
+            logger.info("Loading embedding model (BAAI/bge-base-en-v1.5)...")
             _emb_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
 
             def _embed_fn(text: str) -> list:
@@ -277,25 +310,21 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
                 ref_nums,
                 embed_fn=_embed_fn,
             )
-            print(
-                f"  Exemplar index: {len(exemplar_index.exemplars)} exemplars "
+            logger.info(
+                f"Exemplar index: {len(exemplar_index.exemplars)} exemplars "
                 f"(embedding-based retrieval)"
             )
         except ImportError:
-            print("  fastembed not available, using Jaccard fallback for exemplars")
+            logger.warning("fastembed not available, using Jaccard fallback for exemplars")
             exemplar_index = None
-
-        print(
-            f"  Reference dir: {args.reference} "
-            f"({len(reference_index)} originals, style bank={len(bank_excerpts)} excerpts)"
-        )
 
     # Load glossary for entity shielding
     glossary: Optional[List[Dict]] = None
     if args.glossary and os.path.exists(args.glossary):
         with open(args.glossary, "r", encoding="utf-8") as f:
             glossary = json.load(f)
-        print(f"  Glossary loaded: {len(glossary)} entries (entity shielding enabled)")
+        logger.info(f"Glossary loaded: {len(glossary)} entries (entity shielding enabled)")
+        logger.debug(f"Glossary entries: {[e.get('canonical', ['?'])[0] for e in glossary[:10]]}")
 
     # Collect input files
     mtl_path = args.mtl_path
@@ -309,13 +338,14 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
         files = [mtl_path]
 
     if not files:
-        print(f"ERROR: No MTL files found at {mtl_path}")
+        logger.error(f"No MTL files found at {mtl_path}")
         sys.exit(1)
 
-    print(f"Rewriting {len(files)} MTL file(s) using {args.policies}")
-    print(
-        f"  LLM rewrite: {'on' if (args.llm or args.reference or bank_excerpts) else 'off (pre-pass only)'}"
-    )
+    logger.info(f"Found {len(files)} MTL file(s) to rewrite")
+    logger.info(f"Policies: {args.policies}")
+    llm_enabled = args.llm or args.reference or bank_excerpts
+    logger.info(f"LLM rewrite: {'ON' if llm_enabled else 'OFF (pre-pass only)'}")
+    logger.debug(f"MTL files: {[os.path.basename(f) for f in files]}")
 
     from translator_memory_engine.memory.style_bank import retrieve_style_excerpts
 
@@ -323,17 +353,23 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
     total_conflicts = 0
     prev_tail: Optional[str] = None
 
-    for path in files:
+    for i, path in enumerate(files, 1):
+        chapter_name = os.path.basename(path)
+        logger.info(f"\n--- [{i}/{len(files)}] Processing: {chapter_name} ---")
+
         with open(path, "r", encoding="utf-8") as f:
             text = f.read()
+        logger.debug(f"Read {len(text)} chars, {len(text.split())} words")
 
         num = _chapter_num(path)
         reference_text = reference_index.get(num) if num is not None else None
+        logger.debug(f"Chapter number: {num}, has reference: {reference_text is not None}")
 
         # Per-chapter style retrieval: use ExemplarIndex if available,
         # otherwise fall back to Jaccard-based retrieval.
         chapter_style = None
         if reference_text is None and bank_excerpts:
+            logger.debug("Retrieving style excerpts for unsupervised mode...")
             if exemplar_index is not None:
                 chapter_style = retrieve_style_excerpts(
                     text,
@@ -344,6 +380,7 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
                 )
             else:
                 chapter_style = retrieve_style_excerpts(text, bank_excerpts, k=8)
+            logger.debug(f"Retrieved {len(chapter_style) if chapter_style else 0} style excerpts")
             # Stats line excluded from LLM prompt — it causes "Measured style" dialogue bleed
             # (the 8B model treats the statistical summary as a dialogue line)
 
@@ -353,7 +390,9 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
             else ("unsupervised_stylebank" if chapter_style else "fallback")
         )
         use_llm = args.llm or (reference_text is not None) or (chapter_style is not None)
+        logger.info(f"Mode: {mode}, LLM: {'ON' if use_llm else 'OFF'}")
 
+        logger.info("Calling rewrite pipeline...")
         result = rewrite_pass(
             text,
             policies_path=args.policies,
@@ -385,20 +424,21 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
 
         total_trace += result["deterministic_count"]
         total_conflicts += len(result["conflicts"])
-        print(
-            f"  {base} [{mode}]: prepass_edits={result['deterministic_count']}, "
-            f"prompted={result['prompted_count']}, conflicts={len(result['conflicts'])} "
-            f"-> {out_path}"
+        logger.info(
+            f"Done: prepass_edits={result['deterministic_count']}, "
+            f"prompted={result['prompted_count']}, conflicts={len(result['conflicts'])}"
         )
+        logger.debug(f"Output: {out_path}")
+        logger.debug(f"Trace: {trace_path}")
 
-    print(f"\n{'=' * 60}")
-    print("M1 Rewrite Summary")
-    print(f"{'=' * 60}")
-    print(f"  Files rewritten:     {len(files)}")
-    print(f"  Deterministic edits: {total_trace}")
-    print(f"  Conflicts resolved:  {total_conflicts}")
-    print(f"  Output:              {args.output}/")
-    print(f"{'=' * 60}")
+    logger.info(f"\n{'=' * 60}")
+    logger.info("M1 Rewrite Summary")
+    logger.info(f"{'=' * 60}")
+    logger.info(f"  Files rewritten:     {len(files)}")
+    logger.info(f"  Deterministic edits: {total_trace}")
+    logger.info(f"  Conflicts resolved:  {total_conflicts}")
+    logger.info(f"  Output:              {args.output}/")
+    logger.info(f"{'=' * 60}")
 
 
 def cmd_align(args: argparse.Namespace) -> None:
@@ -557,6 +597,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Translator Memory Engine — pipeline CLI",
     )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        default=False,
+        help="Enable verbose/debug logging (shows full pipeline flow)",
+    )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # extract command
@@ -577,8 +623,8 @@ def main() -> None:
     extract_parser.add_argument(
         "--output",
         "-o",
-        default="outputs",
-        help="Output directory (default: outputs/)",
+        default="data/policies",
+        help="Output directory (default: data/policies/)",
     )
     extract_parser.add_argument(
         "--verify",
@@ -605,8 +651,8 @@ def main() -> None:
     rewrite_parser.add_argument(
         "--policies",
         "-p",
-        default="outputs/policies.jsonl",
-        help="Path to mined policies.jsonl (default: outputs/policies.jsonl)",
+        default="data/policies/policies.jsonl",
+        help="Path to mined policies.jsonl (default: data/policies/policies.jsonl)",
     )
     rewrite_parser.add_argument(
         "--config",
@@ -617,8 +663,8 @@ def main() -> None:
     rewrite_parser.add_argument(
         "--output",
         "-o",
-        default="outputs",
-        help="Output directory (default: outputs/)",
+        default="data/output",
+        help="Output directory (default: data/output/)",
     )
     rewrite_parser.add_argument(
         "--llm",
@@ -690,6 +736,7 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+    _setup_logging(verbose=args.verbose)
 
     if args.command == "extract":
         cmd_extract(args)

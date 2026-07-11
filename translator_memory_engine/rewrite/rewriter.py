@@ -12,6 +12,8 @@ deterministic edit for explainability.
 The LLM call reuses the OpenAI-compatible client (same backend as verification).
 """
 
+import json
+import logging
 import os
 import re
 import time
@@ -28,6 +30,8 @@ from translator_memory_engine.rewrite.clean import clean_mtl_artifacts
 from translator_memory_engine.rewrite.conflict import resolve
 from translator_memory_engine.rewrite.prepass import apply_prepass
 from translator_memory_engine.rewrite.shield import restore_entities, shield_entities
+
+logger = logging.getLogger("tme.rewrite")
 
 # ---------------------------------------------------------------------------
 # Known MTL error corrections (data/known_errors.json)
@@ -57,12 +61,16 @@ def scan_known_errors(text: str, known_errors: Optional[List[Dict]] = None) -> L
     """
     if known_errors is None:
         known_errors = _load_known_errors()
+        logger.debug(f"Loaded {len(known_errors)} known errors from {_KNOWN_ERRORS_PATH}")
 
     matches = []
     for error in known_errors:
         phrase = error.get("mtl_phrase", "")
         if phrase and re.search(re.escape(phrase), text, re.IGNORECASE):
             matches.append(error)
+            logger.debug(f"Known error detected: '{phrase}' → '{error.get('correct_translation', '?')}'")
+    if matches:
+        logger.info(f"Detected {len(matches)} known MTL errors for correction")
     return matches
 
 
@@ -490,6 +498,7 @@ def rewrite(
     text = clean_mtl_artifacts(text)
 
     policies = _load_policies(policies_path)
+    logger.debug(f"Loaded {len(policies)} policies from {policies_path}")
 
     # Alias bridging: use a lightweight LLM call to map MTL transliterations
     # (e.g. "Noh Young-ju") to canonical policy names (e.g. "Lord Noh").
@@ -500,9 +509,11 @@ def rewrite(
         if api_key:
             from openai import OpenAI
 
+            logger.debug("Running alias bridging (MTL → canonical)...")
             _client = OpenAI(api_key=api_key, base_url=base_url)
             alias_map = _align_mtl_entities(text, glossary, _client, model)
             if alias_map:
+                logger.debug(f"Discovered {len(alias_map)} aliases: {list(alias_map.keys())[:5]}")
                 # Inject discovered aliases into policy match lists in memory
                 for p in policies:
                     for mtl_form, canonical in alias_map.items():
@@ -514,12 +525,15 @@ def rewrite(
 
     retriever = PolicyRetriever(policies)
     matched = retriever.retrieve(text)
+    logger.debug(f"Retriever matched {len(matched)} policies")
 
     resolution = resolve(text, matched)
     prepassed_text, trace = apply_prepass(text, resolution)
+    logger.debug(f"Pre-pass applied {len(trace)} deterministic edits")
 
     # Prompted (non-deterministic, non-rejected) policies for the LLM
     prompted = [p for p in matched if p.applies == "prompted" and not p.llm_rejected]
+    logger.debug(f"Prompted policies for LLM: {len(prompted)}")
 
     # Mode: supervised (reference) > unsupervised (style bank) > fallback.
     if reference_text is not None:
@@ -528,12 +542,14 @@ def rewrite(
         mode = "unsupervised_stylebank"
     else:
         mode = "fallback_faithful_repair"
+    logger.debug(f"Rewrite mode: {mode}")
 
     # A reference or style profile only makes sense with the LLM on; force it.
     use_llm = do_llm or (reference_text is not None) or (style_profile is not None)
     # The LLM has something to do only if there are policies to apply, or a
     # reference / style bank to steer voice against.
     need_llm = bool(prompted) or (reference_text is not None) or (style_profile is not None)
+    logger.debug(f"LLM: use={use_llm}, need={need_llm}")
 
     # Entity shielding: replace glossary entries with placeholders before LLM,
     # restore after. This prevents the LLM from mangling entity names and makes
@@ -542,12 +558,14 @@ def rewrite(
     restore_map: Dict[str, str] = {}
     if glossary and use_llm and need_llm:
         shielded_text, restore_map = shield_entities(prepassed_text, glossary)
+        logger.debug(f"Shielded {len(restore_map)} entities")
 
     # Long chapters exceed the small model's per-request token budget, so rewrite
     # in capped chunks (supervised: MTL chunk + matching reference chunk, aligned
     # by chunk index).
     mtl_chunks = _chunk_text(shielded_text)
     ref_chunks = _chunk_text(reference_text) if reference_text else []
+    logger.debug(f"Split into {len(mtl_chunks)} chunks")
 
     rewritten_text = shielded_text
     client = None
@@ -558,8 +576,10 @@ def rewrite(
             from openai import OpenAI
 
             client = OpenAI(api_key=api_key, base_url=base_url)
+            logger.info(f"LLM client initialized (model={model})")
             out_parts = []
             for k, mtl_chunk in enumerate(mtl_chunks):
+                logger.debug(f"Processing chunk {k+1}/{len(mtl_chunks)}...")
                 ref_chunk = ref_chunks[k] if k < len(ref_chunks) else None
                 prompt = build_prompt(
                     mtl_chunk,
@@ -568,6 +588,7 @@ def rewrite(
                     style_profile=style_profile,
                     previous_tail=previous_tail if k == 0 else None,
                 )
+                logger.debug(f"Prompt length: {len(prompt)} chars")
                 resp = _llm_complete(
                     client,
                     model=model,
@@ -581,10 +602,12 @@ def rewrite(
                 )
                 out_parts.append(_strip_echo(resp.choices[0].message.content))
             rewritten_text = "\n\n".join(out_parts)
+            logger.info(f"LLM rewrite complete: {len(out_parts)} chunks")
 
     # Restore shielded entities after LLM rewrite
     if restore_map:
         rewritten_text = restore_entities(rewritten_text, restore_map)
+        logger.debug(f"Restored {len(restore_map)} entities")
 
     # Faithfulness guard: the small model can still invent speakers/characters
     # (e.g. ch040 'Ian'). Detect PERSON/ORG/GPE absent from the TRUE source and
@@ -601,6 +624,7 @@ def rewrite(
     if client is not None and reference_text is not None:
         novel = _novel_entities(rewritten_text, reference_text, whitelist=canon)
         if novel:
+            logger.warning(f"Faithfulness guard: {len(novel)} novel entities detected: {novel}")
             guard_prompt = _faithfulness_prompt(rewritten_text, novel)
             resp = _llm_complete(
                 client,
@@ -616,6 +640,9 @@ def rewrite(
                 temperature=0.1,
             )
             rewritten_text = _strip_echo(resp.choices[0].message.content)
+            logger.info("Faithfulness guard applied")
+        else:
+            logger.debug("Faithfulness guard: no novel entities found")
 
     # Re-apply the deterministic pre-pass so canonical names/honorifics survive
     # even if the LLM renamed or dropped a named entity (PLAN §8: the high-confidence
@@ -623,6 +650,7 @@ def rewrite(
     # pre-pass-only output alike.
     rewritten_text = _apply_deterministic(rewritten_text, policies)
 
+    logger.debug(f"Final output: {len(rewritten_text)} chars")
     return {
         "prepassed_text": prepassed_text,
         "rewritten_text": rewritten_text,
