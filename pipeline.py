@@ -141,7 +141,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
         print(f"\nVerifying policies (backend={verify_backend})...")
         verifier = create_verifier(
             backend=verify_backend,
-            model=verify_cfg.get("model", "llama-3.1-8b-instant"),
+            model=verify_cfg.get("model", "llama-3.3-70b-versatile"),
             base_url=verify_cfg.get("base_url"),
             api_key_env=verify_cfg.get("api_key_env", "LLM_API_KEY"),
         )
@@ -344,8 +344,8 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
                 )
             else:
                 chapter_style = retrieve_style_excerpts(text, bank_excerpts, k=8)
-            if stats_line:
-                chapter_style = chapter_style + [stats_line]
+            # Stats line excluded from LLM prompt — it causes "Measured style" dialogue bleed
+            # (the 8B model treats the statistical summary as a dialogue line)
 
         mode = (
             "supervised_reference"
@@ -357,7 +357,7 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
         result = rewrite_pass(
             text,
             policies_path=args.policies,
-            model=verify_cfg.get("model", "llama-3.1-8b-instant"),
+            model=verify_cfg.get("model", "llama-3.3-70b-versatile"),
             base_url=verify_cfg.get("base_url"),
             api_key_env=verify_cfg.get("api_key_env", "LLM_API_KEY"),
             do_llm=use_llm,

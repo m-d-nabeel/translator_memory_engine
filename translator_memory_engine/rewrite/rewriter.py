@@ -67,7 +67,7 @@ def _align_mtl_entities(
         _spacy_nlp = spacy.load("en_core_web_sm")
     except Exception:
         return {}
-    doc = _spacy_nlp(mtl_text[:8000])  # cap to avoid token limits
+    doc = _spacy_nlp(mtl_text)  # parse full chapter so late-introduced entities are caught
     mtl_entities = set()
     for ent in doc.ents:
         if ent.label_ in ("PERSON", "ORG", "GPE", "LOC"):
@@ -79,7 +79,8 @@ def _align_mtl_entities(
     if not mtl_entities:
         return {}
 
-    entity_list = "\n".join(f"- {e}" for e in sorted(mtl_entities))
+    # Cap to top 45 unique entities to avoid token bloat in the LLM prompt
+    entity_list = "\n".join(f"- {e}" for e in sorted(mtl_entities)[:45])
 
     prompt = (
         "Map these MTL (machine-translated) entity names to known canonical names.\n"
@@ -146,14 +147,15 @@ def _split_paragraphs(text: str) -> List[str]:
 _SENT_RE = re.compile(r"(?<=[.!?])\s+")
 
 
-def _chunk_text(text: str, max_chars: int = 1200) -> List[str]:
+def _chunk_text(text: str, max_chars: int = 3500) -> List[str]:
     """Split text into chunks capped at ``max_chars``.
 
     Paragraphs are grouped; any single paragraph longer than the cap is further
-    split at sentence boundaries so no chunk blows the small model's per-request
-    token budget (Groq free tier rejects >~6000-token requests). For supervised
-    mode, the SAME chunker is run on the MTL and its reference so chunk k of each
-    stays roughly aligned.
+    split at sentence boundaries. Setting max_chars=3500 (~600-700 words) ensures
+    the actual story text outweighs the prompt scaffolding (~550 words) by ~1.2:1,
+    preventing small models from hallucinating prompt bullets into the output while
+    staying safely inside Groq's token budget. For supervised mode, the SAME chunker
+    is run on the MTL and its reference so chunk k of each stays roughly aligned.
     """
     paras = _split_paragraphs(text)
     chunks: List[str] = []
@@ -361,9 +363,12 @@ Repair rules:
 
     if style_profile:
         profile_txt = "\n".join(f"- {ex}" for ex in style_profile)
-        return f"""You are repairing a machine-translated web-novel chapter into fluent, natural English. There is NO published translation for this chapter, so use these excerpts from earlier chapters by the SAME translator as voice anchors:
+        return f"""You are repairing a machine-translated web-novel chapter into fluent, natural English. There is NO published translation for this chapter.
 {tail_block}
+### VOICE REFERENCE EXCERPTS (DO NOT COPY OR INSERT THESE LINES)
+The following quotes are from DIFFERENT chapters by the SAME translator. Use them ONLY as stylistic inspiration for tone, rhythm, and vocabulary. DO NOT copy, insert, or weave any of these lines, characters, or dialogue into the current chapter:
 {profile_txt}
+### END REFERENCE EXCERPTS
 
 Apply the following translator policies consistently:
 {instructions}
@@ -379,8 +384,10 @@ CHAPTER TO REWRITE:
 Apply the following translator policies consistently:
 {instructions}
 
-Use this translator's established voice as a guide:
+### VOICE REFERENCE EXCERPTS (DO NOT COPY OR INSERT THESE LINES)
+The following quotes show the translator's vocabulary, dialogue rhythm, and gritty tone. They are from DIFFERENT chapters. Use them ONLY as stylistic inspiration. DO NOT copy, insert, or weave any of these lines or characters into the current chapter:
 {profile_txt}
+### END REFERENCE EXCERPTS
 
 {_FALLBACK_RULES}
 
@@ -391,7 +398,7 @@ CHAPTER TO REWRITE:
 def rewrite(
     text: str,
     policies_path: str,
-    model: str = "llama-3.1-8b-instant",
+    model: str = "llama-3.3-70b-versatile",
     base_url: Optional[str] = None,
     api_key_env: str = "LLM_API_KEY",
     do_llm: bool = False,
