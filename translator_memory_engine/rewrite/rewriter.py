@@ -29,6 +29,57 @@ from translator_memory_engine.rewrite.conflict import resolve
 from translator_memory_engine.rewrite.prepass import apply_prepass
 from translator_memory_engine.rewrite.shield import restore_entities, shield_entities
 
+# ---------------------------------------------------------------------------
+# Known MTL error corrections (outputs/known_errors.json)
+# ---------------------------------------------------------------------------
+
+_KNOWN_ERRORS_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "data", "known_errors.json"
+)
+
+
+def _load_known_errors() -> List[Dict]:
+    """Load known MTL error corrections from JSON."""
+    try:
+        import json
+
+        with open(_KNOWN_ERRORS_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def scan_known_errors(text: str, known_errors: Optional[List[Dict]] = None) -> List[Dict]:
+    """Scan MTL text for known error phrases and return matches.
+
+    Returns a list of dicts with keys: id, mtl_phrase, correct_translation,
+    korean_source, context. Only returns errors that are actually present in text.
+    """
+    if known_errors is None:
+        known_errors = _load_known_errors()
+
+    matches = []
+    for error in known_errors:
+        phrase = error.get("mtl_phrase", "")
+        if phrase and re.search(re.escape(phrase), text, re.IGNORECASE):
+            matches.append(error)
+    return matches
+
+
+def format_known_errors_for_prompt(matches: List[Dict]) -> str:
+    """Format matched known errors as prompt instructions."""
+    if not matches:
+        return ""
+
+    lines = ["KNOWN MTL ERROR CORRECTIONS (apply these):"]
+    for m in matches:
+        phrase = m.get("mtl_phrase", "")
+        correct = m.get("correct_translation", "")
+        korean = m.get("korean_source", "")
+        context = m.get("context", "")
+        lines.append(f'  - "{phrase}" → "{correct}" (Korean: {korean}) — {context}')
+    return "\n".join(lines)
+
 
 def _load_policies(path: str) -> List[Policy]:
     store = PolicyStore()
@@ -63,6 +114,7 @@ def _align_mtl_entities(
 
     # Extract capitalized multi-word phrases from MTL (simple heuristic)
     import spacy
+
     try:
         _spacy_nlp = spacy.load("en_core_web_sm")
     except Exception:
@@ -73,7 +125,13 @@ def _align_mtl_entities(
         if ent.label_ in ("PERSON", "ORG", "GPE", "LOC"):
             text = ent.text.strip()
             if len(text) > 1 and text.lower() not in (
-                "i", "he", "she", "it", "we", "they", "you",
+                "i",
+                "he",
+                "she",
+                "it",
+                "we",
+                "they",
+                "you",
             ):
                 mtl_entities.add(text)
     if not mtl_entities:
@@ -86,8 +144,8 @@ def _align_mtl_entities(
         "Map these MTL (machine-translated) entity names to known canonical names.\n"
         "If an MTL name corresponds to a canonical entity, return the mapping.\n"
         "If an MTL name is NEW (not in the glossary), map it to null.\n\n"
-        "Return ONLY a JSON object like: {\"MTL Name\": \"Canonical Name\"} or "
-        "{\"MTL Name\": null}. No other text.\n\n"
+        'Return ONLY a JSON object like: {"MTL Name": "Canonical Name"} or '
+        '{"MTL Name": null}. No other text.\n\n'
         f"=== KNOWN CANONICAL ENTITIES ===\n{glossary_table}\n\n"
         f"=== MTL ENTITIES TO MAP ===\n{entity_list}"
     )
@@ -110,13 +168,10 @@ def _align_mtl_entities(
         raw = re.sub(r"^```[a-zA-Z]*\s*", "", raw)
         raw = re.sub(r"```\s*$", "", raw)
         import json
+
         mapping = json.loads(raw)
         # Only return valid mappings (non-null, non-identical)
-        return {
-            k: v
-            for k, v in mapping.items()
-            if v and k != v
-        }
+        return {k: v for k, v in mapping.items() if v and k != v}
     except Exception:
         return {}
 
@@ -247,9 +302,7 @@ def _canonical_set(glossary: Optional[List[Dict]] = None) -> set:
     return names
 
 
-def _novel_entities(
-    gen: str, src: str, whitelist: Optional[set] = None
-) -> set:
+def _novel_entities(gen: str, src: str, whitelist: Optional[set] = None) -> set:
     """PERSON/ORG/GPE/LOC spans in `gen` whose text is absent from `src`.
 
     If ``whitelist`` is provided, entities matching a whitelisted name are
@@ -290,15 +343,13 @@ _STYLE_REFERENCE = [
 # only fix broken MTL, and preserve the translator's voice/metaphors/onomatopoeia.
 # Never invent. (8B models love to echo the scaffolding — see _strip_echo.)
 _FALLBACK_RULES = """Repair rules:
-- FIX machine-translation artifacts: duplicated or truncated sentence fragments (e.g. "With my daughter, with my daughter-."), bracketed thought markers, site watermarks, filler, and awkward repetition. Repair them into natural prose — do not just delete the sentence.
-- TRANSFORM literal Korean transliterations into natural English. Examples: "evil! evil! my arms! eight!" → repair the garbled onomatopoeia/swears into English equivalents; "Do you have a long tongue?" → "Are you being cheeky?"; "with Maparam as if hiding his eyes" → rephrase as a natural English idiom.
-- MAKE dialogue snappy and colloquial. Convert stilted MTL dialogue rhythm into natural spoken English. Preserve the speaker's intent and emotional weight.
-- ACTIVE VOICE: Convert passive/stilted clause chains into punchy, close-third-person narration.
-- Do NOT invent new events, characters, or change the story. Preserve meaning and paragraph structure.
-- Do NOT add speaker attributions ("he said"/"Dominic said") if the source does not have them — leave lines UNATTRIBUTED.
-- Do NOT summarize, condense, or skip scenes/beats. Reproduce ALL content of the source.
-- Preserve onomatopoeia that makes sense (e.g. "Pak!" for a slap/hit). Only repair garbled or nonsensical sound effects.
-- Output ONLY the repaired chapter text. Do not add "Here is the repaired text", headers, or markdown code fences."""
+- REWRITE MACHINE TRANSLATION (A) into fluent, natural English prose matching the translator's voice.
+- RESOLVE DISCOURSE & NARRATIVE COHERENCE ANOMALIES (DECEPTIVE MTL ARTIFACTS):
+  Machine translations frequently output grammatically valid English words that make zero logical sense inside the scene (due to homograph dictionary lookups, flipped pronouns, or literalized idioms).
+  Before preserving any sentence or exclamation verbatim, verify its Discourse Coherence against the immediate scene:
+  1. Conversational Logic: If a standalone noun, exclamation, or idiom violates the conversational or emotional logic of the scene (e.g. an unrelated economic/technical noun during a physical confrontation, or a bizarre non-sequitur), recognize it as a deceptive MTL homograph/idiom artifact and repair it so it makes natural sense inside the scene's context.
+  2. Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses" or bending "her own arm" while attacking an enemy), correct the pronoun logic ("so that you would come to your senses" / "bent his arm") to restore clear narrative causality.
+- Do NOT invent new plot events or characters. Output ONLY the repaired chapter text."""
 
 
 def build_prompt(
@@ -321,6 +372,10 @@ def build_prompt(
         previous_tail: Last 1-2 paragraphs of the previous chapter, for
             cross-chapter continuity (pronoun consistency, scene flow).
     """
+    # Scan for known MTL errors and inject corrections
+    known_errors = scan_known_errors(prepassed_text)
+    known_errors_block = format_known_errors_for_prompt(known_errors)
+
     lines = []
     for p in prompted_policies:
         render_as = p.action.get("render_as", p.trigger)
@@ -340,16 +395,18 @@ def build_prompt(
         )
 
     if reference:
+        known_errors_section = f"\n{known_errors_block}\n" if known_errors_block else ""
         return f"""You are POST-EDITING a machine-translated web-novel chapter toward a published human translation of the SAME passage.
 {tail_block}
 Apply the following translator policies consistently:
 {instructions}
-
+{known_errors_section}
 Repair rules:
 - REWRITE the MACHINE TRANSLATION (A) so it READS LIKE the PUBLISHED TRANSLATION (B): match its phrasing, voice, tone, rhythm, and emotional weight as closely as possible.
-- FIX machine-translation artifacts aggressively: broken syntax, mistranslations, duplicated/truncated fragments, bracketed thought markers, garbled onomatopoeia, and site watermarks. Repair into natural prose — never just delete.
-- TRANSFORM literal Korean transliterations into natural English idioms fitting the translator's gritty fantasy tone.
-- MAKE dialogue snappy and colloquial. Match (B)'s dialogue rhythm.
+- RESOLVE DISCOURSE & NARRATIVE COHERENCE ANOMALIES (DECEPTIVE MTL ARTIFACTS):
+  Machine translations frequently output grammatically valid English words that make zero logical sense inside the scene. Before preserving any sentence verbatim, verify its Discourse Coherence against the immediate scene:
+  1. Conversational Logic: If a noun, exclamation, or idiom violates the conversational or emotional logic of the scene (e.g. an unrelated economic noun during a physical confrontation, or a bizarre non-sequitur), recognize it as a deceptive artifact and repair it to match (B)'s phrasing.
+  2. Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses"), correct the pronoun logic to restore clear narrative causality.
 - Do NOT invent events, characters, or details absent from both (A) and (B).
 - Do NOT add speaker attributions ("he said") if neither (A) nor (B) has them.
 - Do NOT summarize, condense, or skip content. Reproduce ALL scenes and beats from (A).
@@ -362,6 +419,7 @@ Repair rules:
 {reference}"""
 
     if style_profile:
+        known_errors_section = f"\n{known_errors_block}\n" if known_errors_block else ""
         profile_txt = "\n".join(f"- {ex}" for ex in style_profile)
         return f"""You are repairing a machine-translated web-novel chapter into fluent, natural English. There is NO published translation for this chapter.
 {tail_block}
@@ -372,18 +430,19 @@ The following quotes are from DIFFERENT chapters by the SAME translator. Use the
 
 Apply the following translator policies consistently:
 {instructions}
-
+{known_errors_section}
 {_FALLBACK_RULES}
 
 CHAPTER TO REWRITE:
 {prepassed_text}"""
 
     profile_txt = "\n".join(f"- {ex}" for ex in _STYLE_REFERENCE)
+    known_errors_section = f"\n{known_errors_block}\n" if known_errors_block else ""
     return f"""You are aggressively repairing a machine-translated web novel chapter into fluent, natural English.
 {tail_block}
 Apply the following translator policies consistently:
 {instructions}
-
+{known_errors_section}
 ### VOICE REFERENCE EXCERPTS (DO NOT COPY OR INSERT THESE LINES)
 The following quotes show the translator's vocabulary, dialogue rhythm, and gritty tone. They are from DIFFERENT chapters. Use them ONLY as stylistic inspiration. DO NOT copy, insert, or weave any of these lines or characters into the current chapter:
 {profile_txt}
@@ -440,16 +499,16 @@ def rewrite(
         api_key = os.environ.get(api_key_env, "")
         if api_key:
             from openai import OpenAI
+
             _client = OpenAI(api_key=api_key, base_url=base_url)
             alias_map = _align_mtl_entities(text, glossary, _client, model)
             if alias_map:
                 # Inject discovered aliases into policy match lists in memory
                 for p in policies:
                     for mtl_form, canonical in alias_map.items():
-                        if (
-                            p.trigger.lower() == canonical.lower()
-                            or canonical.lower() in [a.lower() for a in p.match]
-                        ):
+                        if p.trigger.lower() == canonical.lower() or canonical.lower() in [
+                            a.lower() for a in p.match
+                        ]:
                             if mtl_form not in p.match:
                                 p.match.append(mtl_form)
 
@@ -514,14 +573,9 @@ def rewrite(
                     model=model,
                     messages=[
                         {
-                            "role": "system",
-                            "content": "You are an expert post-editor of machine-translated web novels. "
-                            "You aggressively repair broken MTL into fluent, natural English — fixing "
-                            "garbled onomatopoeia, awkward literal translations, stilted dialogue, and "
-                            "broken syntax — while preserving the original meaning and never inventing "
-                            "new content.",
+                            "role": "user",
+                            "content": prompt,
                         },
-                        {"role": "user", "content": prompt},
                     ],
                     temperature=0.45,
                 )

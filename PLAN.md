@@ -668,6 +668,29 @@ already covers this. Originally also blocked by a `transformers>=5.x` conflict w
 `tensorflow`/embedding stack. Do **not** reintroduce unless later benchmarked against the
 current pipeline with a *measurable* extraction benefit.
 
+**Known error correction dictionary (data/known_errors.json):**
+A curated mapping of MTL errors to their Korean source and correct English translation. When
+rewriting, the engine scans for these errors and injects corrections into the LLM prompt. This
+solves the "information-theoretic limit" problem — without Korean source text, the model cannot
+distinguish correct English from MTL errors that happen to be valid English words. The dictionary
+provides the missing context.
+
+```json
+{
+  "id": "corpse-minus-stamina",
+  "mtl_phrase": "corpse minus the stamina",
+  "korean_source": "시체 빼고 다 OK",
+  "correct_translation": "It's a piece of cake",
+  "category": "literal_translation",
+  "context": "reassuring that something is easy/fine"
+}
+```
+
+**Scope:** dictionary entries cover errors that are impossible to fix via prompt engineering
+alone (valid English words that are mistranslations of Korean idioms, onomatopoeia, or
+slang). Errors that can be fixed via prompt engineering (broken syntax, garbled onomatopoeia)
+are handled by the Discourse Coherence rules.
+
 ---
 
 ## 16. Scope discipline
@@ -684,4 +707,5 @@ M0–M2 validates the policy abstraction.
 ---
 
 *Previous versions of this plan are archived in `docs/PLAN-v1.md`. Decision history is
-recorded in `docs/decision-history.md`.*
+recorded in `docs/decision-history.md`. Implementation decisions D12+ are recorded in the
+git commit history and PR descriptions.*

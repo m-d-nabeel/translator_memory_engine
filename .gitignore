@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+*.pyo
 outputs/
 *.jsonl.tmp
 .DS_Store
@@ -10,5 +11,7 @@ tmp/
 .env
 .venv/
 uv.lock
-# Added by code-review-graph
+.ruff_cache/
+.pytest_cache/
+.opencode.json
 .code-review-graph/

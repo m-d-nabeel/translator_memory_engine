@@ -39,9 +39,7 @@ def _find_spans(text: str, policy: Policy) -> List[SpanMatch]:
         # inside "brilliant").  Case-insensitive so "centipede" matches
         # "Centipede".  The lookbehind/lookahead use \w which covers
         # letters, digits, and underscore — matches retriever.py and shield.py.
-        pattern = re.compile(
-            r"(?<!\w)" + re.escape(form) + r"(?!\w)", re.IGNORECASE
-        )
+        pattern = re.compile(r"(?<!\w)" + re.escape(form) + r"(?!\w)", re.IGNORECASE)
         for m in pattern.finditer(text):
             spans.append(SpanMatch(policy=policy, form=form, start=m.start(), end=m.end()))
     return spans
