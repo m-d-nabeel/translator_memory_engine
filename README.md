@@ -19,7 +19,7 @@ cd translator-memory-engine
 # Install dependencies and create virtual environment
 uv sync
 
-# Download spaCy English model
+# Download spaCy English model (used for NER + stylometry)
 uv run python -m spacy download en_core_web_sm
 ```
 
@@ -32,51 +32,114 @@ GROQ_API_KEY=your_groq_api_key
 GEMINI_API_KEY=your_gemini_api_key  # optional, for judge
 ```
 
-## Usage
+## Quick Start: Translate MTL Chapter 40
 
-All commands use `uv run` to execute within the project's virtual environment.
+Chapter 40 has no original translation (unsupervised). The engine learns voice from chapters 1-39 and applies it.
 
-### Extract Policies
+### Step 1: Extract Policies (one-time preprocessing)
 
-Extract editorial policies from a corpus of good translations:
+Analyzes all 39 good-translation chapters and extracts editorial rules:
 
 ```bash
-uv run python pipeline.py extract test-dataset/feasting-lord-in-another-world \
+uv run python pipeline.py extract \
+    test-dataset/feasting-lord-in-another-world \
     --verify llm \
     --output outputs
 ```
 
-### Rewrite MTL Chapters
+**Produces:**
+- `outputs/policies.jsonl` — 39 editorial rules (entity naming, honorifics, terminology)
+- `outputs/glossary.json` — 27 canonical name entries with surface forms
 
-Rewrite MTL chapters using mined policies:
+### Step 2: Rewrite Chapter 40 (all features enabled)
 
 ```bash
-# Supervised mode (with original translations as reference)
+uv run python pipeline.py rewrite \
+    test-dataset/feasting-lord-in-another-world-input/chapter-040.txt \
+    --reference test-dataset/feasting-lord-in-another-world \
+    --policies outputs/policies.jsonl \
+    --glossary outputs/glossary.json \
+    --output outputs
+```
+
+**What happens internally:**
+1. **Style bank built** from 39 reference chapters (in-memory, ~78 voice excerpts)
+2. **Exemplar index built** with fastembed embeddings (bge-base-en-v1.5, ~385 exemplars)
+3. **Per-chapter retrieval** — top 8 excerpts selected by cosine similarity to ch040
+4. **Entity shielding** — glossary names replaced with `__ENT_N__` placeholders before LLM
+5. **Deterministic pre-pass** — high-confidence substitutions applied
+6. **LLM rewrite** — repairs MTL using style bank + policies as guidance
+7. **Faithfulness guard** — detects/invents characters not in source, re-prompts to strip
+8. **Entity restore** — placeholders replaced with canonical names
+9. **Deterministic post-pass** — ensures canonical forms survive
+
+**Produces:**
+- `outputs/rewritten_chapter-040.txt` — repaired chapter
+- `outputs/trace_chapter-040.json` — change trace (what was edited and why)
+
+### Step 3: Evaluate
+
+```bash
+uv run python pipeline.py align outputs \
+    --mtl test-dataset/feasting-lord-in-another-world-input \
+    --reference test-dataset/feasting-lord-in-another-world \
+    --glossary outputs/glossary.json
+```
+
+## Full Pipeline Reference
+
+### Preprocessing (one-time)
+
+| Step | Command | Produces | Cost |
+|------|---------|----------|------|
+| Extract policies | `pipeline.py extract <corpus> --verify llm` | `policies.jsonl`, `glossary.json` | ~50 LLM calls |
+| Download embeddings | (automatic on first rewrite) | `~/.cache/fastembed/` | One-time ~130MB |
+
+The style bank and exemplar index are built in-memory from `--reference` during rewrite. No separate build step needed.
+
+### Translation (per chapter)
+
+| Feature | Flag | What it does |
+|---------|------|-------------|
+| LLM rewrite | `--reference` (forces on) or `--llm` | Calls LLM to repair MTL |
+| Style bank | `--reference <dir>` | Builds voice profile from good translations |
+| Entity shielding | `--glossary <file>` | Protects names during LLM rewrite |
+| Cross-chapter context | process dir (not single file) | Passes previous chapter's tail for continuity |
+| Faithfulness guard | (always on) | Strips invented characters post-rewrite |
+
+### Examples
+
+**Single chapter (unsupervised, all features):**
+```bash
+uv run python pipeline.py rewrite \
+    test-dataset/feasting-lord-in-another-world-input/chapter-040.txt \
+    --reference test-dataset/feasting-lord-in-another-world \
+    --policies outputs/policies.jsonl \
+    --glossary outputs/glossary.json \
+    --output outputs
+```
+
+**All chapters (with cross-chapter context):**
+```bash
 uv run python pipeline.py rewrite \
     test-dataset/feasting-lord-in-another-world-input \
     --reference test-dataset/feasting-lord-in-another-world \
     --policies outputs/policies.jsonl \
     --glossary outputs/glossary.json \
     --output outputs
+```
 
-# Unsupervised mode (uses style bank, no originals needed)
+**Pre-pass only (no LLM, fast, deterministic edits only):**
+```bash
 uv run python pipeline.py rewrite \
-    test-dataset/feasting-lord-in-another-world-input \
-    --policies outputs/policies.jsonl \
-    --glossary outputs/glossary.json \
-    --output outputs
-
-# Pre-pass only (no LLM call)
-uv run python pipeline.py rewrite \
-    test-dataset/feasting-lord-in-another-world-input \
+    test-dataset/feasting-lord-in-another-world-input/chapter-040.txt \
     --policies outputs/policies.jsonl \
     --output outputs
 ```
 
-### Evaluate Alignment
+### Evaluation
 
-Compare generated chapters against originals:
-
+**Paired eval (chapters with originals):**
 ```bash
 uv run python pipeline.py align outputs \
     --original test-dataset/feasting-lord-in-another-world \
@@ -86,45 +149,32 @@ uv run python pipeline.py align outputs \
     --report outputs/alignment_report.json
 ```
 
-Add `--judge` to enable independent Gemini scoring (costs API calls).
-
-### Run Style Experiment
-
-Run the 4-condition A/B/C/D style experiment:
-
+**With Gemini judge (independent scoring):**
 ```bash
-uv run python scripts/style_experiment.py \
-    --mtl-dir test-dataset/feasting-lord-in-another-world-input \
-    --original-dir test-dataset/feasting-lord-in-another-world \
-    --policies outputs/policies.jsonl \
+uv run python pipeline.py align outputs \
+    --original test-dataset/feasting-lord-in-another-world \
+    --mtl test-dataset/feasting-lord-in-another-world-input \
+    --reference test-dataset/feasting-lord-in-another-world \
     --glossary outputs/glossary.json \
-    --output-dir outputs/experiment
-```
-
-## Development
-
-### Run Tests
-
-```bash
-uv run pytest tests/ -v
-```
-
-### Lint
-
-```bash
-uv run ruff check .
-uv run ruff format .
+    --judge
 ```
 
 ## Architecture
 
 ```
-Extract → Policy Miner → Retrieve → Conflict Resolver → Pre-pass → LLM Rewrite → Eval
-   │                                          │              │            │
-   │                                          │              │            └─ Entity Shielding
-   │                                          │              └─ Deterministic substitutions
-   │                                          └─ Lexical match (word-boundary)
-   └─ spaCy NER + heuristics + LLM verification
+Preprocessing (one-time):
+  Good translations ──→ Extract ──→ policies.jsonl + glossary.json
+                          │
+                          └─ spaCy NER + heuristics + LLM verification
+
+Per-chapter rewrite:
+  Reference dir ──→ Style Bank (in-memory)
+                 ──→ Exemplar Index (fastembed embeddings)
+                 ──→ Per-chapter retrieval (cosine similarity)
+
+  MTL chapter ──→ Shield entities ──→ Pre-pass ──→ LLM rewrite ──→ Restore entities ──→ Post-pass
+                      │                              │
+                      └─ glossary → placeholders      └─ style bank + exemplars + policies
 ```
 
 ### Key Concepts
@@ -140,8 +190,8 @@ Extract → Policy Miner → Retrieve → Conflict Resolver → Pre-pass → LLM
 ```
 test-dataset/
   feasting-lord-in-another-world/          # Original translations (ch 1-39)
-  feasting-lard-in-another-world-input/    # MTL chapters (ch 1-5, 039-041)
-  feasting-lard-in-another-world-output/   # Generated output
+  feasting-lord-in-another-world-input/    # MTL chapters (ch 1-5, 039-041)
+  feasting-lord-in-another-world-output/   # Generated output
 ```
 
 ## Project Structure
@@ -158,4 +208,15 @@ translator_memory_engine/
   ingest/             # Corpus loading (txt, epub)
 pipeline.py           # CLI entry point
 scripts/              # Experiment scripts
+```
+
+## Development
+
+```bash
+# Run tests
+uv run pytest tests/ -v
+
+# Lint
+uv run ruff check .
+uv run ruff format .
 ```
