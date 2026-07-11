@@ -30,7 +30,7 @@ from translator_memory_engine.rewrite.prepass import apply_prepass
 from translator_memory_engine.rewrite.shield import restore_entities, shield_entities
 
 # ---------------------------------------------------------------------------
-# Known MTL error corrections (outputs/known_errors.json)
+# Known MTL error corrections (data/known_errors.json)
 # ---------------------------------------------------------------------------
 
 _KNOWN_ERRORS_PATH = os.path.join(
