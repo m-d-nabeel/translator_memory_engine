@@ -36,9 +36,20 @@ def export_policies(db_path: str, output_dir: str, novel_id: int = 1) -> int:
     with open(out_path, "w", encoding="utf-8") as f:
         for row in cursor:
             (
-                policy_id, ptype, trigger, match_json, action_json,
-                confidence, evidence_json, applies, scores_json, category,
-                note, needs_review, llm_rejected, contexts_json,
+                policy_id,
+                ptype,
+                trigger,
+                match_json,
+                action_json,
+                confidence,
+                evidence_json,
+                applies,
+                scores_json,
+                category,
+                note,
+                needs_review,
+                llm_rejected,
+                contexts_json,
             ) = row
             policy = {
                 "id": policy_id,
@@ -74,8 +85,7 @@ def export_glossary(db_path: str, output_dir: str, novel_id: int = 1) -> int:
     """Export glossary from SQLite to glossary.json."""
     conn = sqlite3.connect(db_path)
     cursor = conn.execute(
-        "SELECT canonical, aliases, entity_type, confidence "
-        "FROM glossary WHERE novel_id = ?",
+        "SELECT canonical, aliases, entity_type, confidence FROM glossary WHERE novel_id = ?",
         (novel_id,),
     )
 
@@ -84,12 +94,14 @@ def export_glossary(db_path: str, output_dir: str, novel_id: int = 1) -> int:
     entries = []
     for row in cursor:
         canonical, aliases_json, entity_type, confidence = row
-        entries.append({
-            "canonical": canonical,
-            "aliases": json.loads(aliases_json) if aliases_json else [],
-            "type": entity_type,
-            "confidence": confidence,
-        })
+        entries.append(
+            {
+                "canonical": canonical,
+                "aliases": json.loads(aliases_json) if aliases_json else [],
+                "type": entity_type,
+                "confidence": confidence,
+            }
+        )
 
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(entries, f, indent=2, ensure_ascii=False)

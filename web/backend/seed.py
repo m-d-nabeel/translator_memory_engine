@@ -6,6 +6,7 @@ Run with:
 Idempotent: skips seeding if data already exists, but will import
 policies/glossary from JSONL files if the tables are empty for a novel.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -82,7 +83,9 @@ async def seed() -> None:
                             note=p.get("note"),
                             needs_review=str(p.get("needs_review", False)).lower(),
                             llm_rejected=str(p.get("llm_rejected", False)).lower(),
-                            contexts=json.dumps(p.get("contexts", [])) if p.get("contexts") else None,
+                            contexts=json.dumps(p.get("contexts", []))
+                            if p.get("contexts")
+                            else None,
                         )
                         db.add(db_policy)
                         count += 1
@@ -95,7 +98,9 @@ async def seed() -> None:
 
         # Glossary: import if empty for this novel
         glossary_count_result = await db.execute(
-            select(func.count()).select_from(GlossaryEntry).where(GlossaryEntry.novel_id == novel.id)
+            select(func.count())
+            .select_from(GlossaryEntry)
+            .where(GlossaryEntry.novel_id == novel.id)
         )
         glossary_count = glossary_count_result.scalar() or 0
 
@@ -166,7 +171,7 @@ async def seed() -> None:
                         chapter_number=ch_num,
                         source_type="mtl",
                         raw_text=text,
-                        status="pending",
+                        status="unprocessed",
                     )
                     db.add(chapter)
                     count += 1

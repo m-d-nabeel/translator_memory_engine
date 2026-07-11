@@ -17,12 +17,8 @@ from web.backend.schemas.novel import (
 router = APIRouter(tags=["chapters"])
 
 
-@router.post(
-    "/api/v1/novels/{novel_id}/chapters", response_model=ChapterResponse, status_code=201
-)
-async def create_chapter(
-    novel_id: int, body: ChapterCreate, db: AsyncSession = Depends(get_db)
-):
+@router.post("/api/v1/novels/{novel_id}/chapters", response_model=ChapterResponse, status_code=201)
+async def create_chapter(novel_id: int, body: ChapterCreate, db: AsyncSession = Depends(get_db)):
     novel_result = await db.execute(select(Novel).where(Novel.id == novel_id))
     if not novel_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Novel not found")
@@ -52,9 +48,7 @@ async def create_chapter(
     return chapter
 
 
-@router.get(
-    "/api/v1/novels/{novel_id}/chapters", response_model=list[ChapterResponse]
-)
+@router.get("/api/v1/novels/{novel_id}/chapters", response_model=list[ChapterResponse])
 async def list_chapters(
     novel_id: int,
     source_type: str | None = Query(None),
@@ -85,9 +79,7 @@ async def get_chapter(
     if source_type:
         stmt = stmt.where(Chapter.source_type == source_type)
     else:
-        stmt = stmt.order_by(
-            Chapter.source_type.desc()
-        ).limit(1)
+        stmt = stmt.order_by(Chapter.source_type.desc()).limit(1)
     result = await db.execute(stmt)
     chapter = result.scalar_one_or_none()
     if not chapter:
@@ -98,10 +90,12 @@ async def get_chapter(
 @router.get("/api/v1/novels/{novel_id}/readable")
 async def list_readable_chapters(novel_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(Chapter).where(
+        select(Chapter)
+        .where(
             Chapter.novel_id == novel_id,
             Chapter.refined_text.isnot(None),
-        ).order_by(Chapter.chapter_number)
+        )
+        .order_by(Chapter.chapter_number)
     )
     chapters = result.scalars().all()
     return [
@@ -123,22 +117,28 @@ async def chapter_neighbors(novel_id: int, chapter_id: int, db: AsyncSession = D
         raise HTTPException(status_code=404, detail="Chapter not found")
 
     prev_result = await db.execute(
-        select(Chapter).where(
+        select(Chapter)
+        .where(
             Chapter.novel_id == novel_id,
             Chapter.chapter_number < current.chapter_number,
             Chapter.source_type == current.source_type,
             Chapter.refined_text.isnot(None),
-        ).order_by(Chapter.chapter_number.desc()).limit(1)
+        )
+        .order_by(Chapter.chapter_number.desc())
+        .limit(1)
     )
     prev_ch = prev_result.scalar_one_or_none()
 
     next_result = await db.execute(
-        select(Chapter).where(
+        select(Chapter)
+        .where(
             Chapter.novel_id == novel_id,
             Chapter.chapter_number > current.chapter_number,
             Chapter.source_type == current.source_type,
             Chapter.refined_text.isnot(None),
-        ).order_by(Chapter.chapter_number.asc()).limit(1)
+        )
+        .order_by(Chapter.chapter_number.asc())
+        .limit(1)
     )
     next_ch = next_result.scalar_one_or_none()
 
@@ -151,6 +151,7 @@ async def chapter_neighbors(novel_id: int, chapter_id: int, db: AsyncSession = D
 async def _run_bg_rewrite(chapter_id: int, do_llm: bool):
     from web.backend.db.database import async_session
     from web.backend.services.rewrite_service import rewrite_chapter
+
     async with async_session() as session:
         res = await session.execute(select(Chapter).where(Chapter.id == chapter_id))
         ch = res.scalar_one_or_none()

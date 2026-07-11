@@ -197,10 +197,15 @@ export function EngineInspectorModal({
 
           <div className="flex items-center gap-4 text-[var(--color-text-muted)]">
             <div className="flex items-center gap-1.5">
-              <Cpu className="w-3.5 h-3.5" style={{ color: "var(--color-warning)" }} />
+              <Cpu
+                className="w-3.5 h-3.5"
+                style={{ color: "var(--color-warning)" }}
+              />
               <span>
                 Engine Status:{" "}
-                <strong style={{ color: "var(--color-text)" }}>Active (Worker Pool)</strong>
+                <strong style={{ color: "var(--color-text)" }}>
+                  Active (Worker Pool)
+                </strong>
               </span>
             </div>
           </div>
@@ -249,8 +254,14 @@ export function EngineInspectorModal({
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold flex items-center gap-1.5" style={{ color: "var(--color-text)" }}>
-                        <span className="font-mono" style={{ color: "var(--color-warning)" }}>
+                      <span
+                        className="text-xs font-bold flex items-center gap-1.5"
+                        style={{ color: "var(--color-text)" }}
+                      >
+                        <span
+                          className="font-mono"
+                          style={{ color: "var(--color-warning)" }}
+                        >
                           #{job.id}
                         </span>
                         <span>Ch. {job.chapter_number ?? job.chapter_id}</span>
@@ -351,7 +362,10 @@ export function EngineInspectorModal({
                       <span className="text-[var(--color-text-muted)] block text-[10px] uppercase font-mono">
                         Pre-Pass Replacements
                       </span>
-                      <span className="font-bold font-mono" style={{ color: "var(--color-warning)" }}>
+                      <span
+                        className="font-bold font-mono"
+                        style={{ color: "var(--color-warning)" }}
+                      >
                         {jobSummary.deterministic_count ?? 0} terms matched
                       </span>
                     </div>
@@ -523,7 +537,10 @@ export function EngineInspectorModal({
           style={{ borderColor: "var(--color-border)" }}
         >
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--color-warning)" }}></span>
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: "var(--color-warning)" }}
+            ></span>
             <span>
               <strong>How it works:</strong> When you press <em>Reprocess</em>,
               the backend queues an async pipeline worker that cleans text,

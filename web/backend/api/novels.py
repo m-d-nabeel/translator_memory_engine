@@ -40,9 +40,7 @@ async def list_novels(db: AsyncSession = Depends(get_db)):
     novels = result.scalars().all()
     responses = []
     for novel in novels:
-        count_result = await db.execute(
-            select(func.count()).where(Chapter.novel_id == novel.id)
-        )
+        count_result = await db.execute(select(func.count()).where(Chapter.novel_id == novel.id))
         chapter_count = count_result.scalar() or 0
         responses.append(
             NovelResponse(
@@ -67,9 +65,7 @@ async def get_novel(novel_id: int, db: AsyncSession = Depends(get_db)):
     if not novel:
         raise HTTPException(status_code=404, detail="Novel not found")
 
-    policy_count_result = await db.execute(
-        select(func.count()).where(Policy.novel_id == novel_id)
-    )
+    policy_count_result = await db.execute(select(func.count()).where(Policy.novel_id == novel_id))
     glossary_count_result = await db.execute(
         select(func.count()).where(GlossaryEntry.novel_id == novel_id)
     )

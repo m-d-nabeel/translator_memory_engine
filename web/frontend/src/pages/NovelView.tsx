@@ -4,7 +4,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Chapter } from "../api/client";
 import { PasteForm } from "../components/PasteForm";
 import { Header } from "../components/Header";
-import { formatPolicyAction, formatAliasesList, isIdentityPolicy } from "../utils/formatters";
+import {
+  formatPolicyAction,
+  formatAliasesList,
+  isIdentityPolicy,
+} from "../utils/formatters";
 import { BottomNav, type NavTab } from "../components/BottomNav";
 import {
   BookOpen,
@@ -66,9 +70,7 @@ export function NovelView() {
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return false;
-      const hasProcessing = data.some(
-        (ch) => ch.status === "processing" || ch.status === "pending",
-      );
+      const hasProcessing = data.some((ch) => ch.status === "processing");
       return hasProcessing ? 2000 : false;
     },
   });
@@ -183,11 +185,7 @@ export function NovelView() {
     if (chapterSearch && !String(chNum).includes(chapterSearch)) return false;
     if (statusFilter === "completed" && mtl.status !== "completed")
       return false;
-    if (
-      statusFilter === "processing" &&
-      mtl.status !== "processing" &&
-      mtl.status !== "pending"
-    )
+    if (statusFilter === "processing" && mtl.status !== "processing")
       return false;
     if (statusFilter === "failed" && mtl.status !== "failed") return false;
     return true;
@@ -325,7 +323,10 @@ export function NovelView() {
                     Policies
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <Database className="w-4 h-4" style={{ color: "var(--color-success)" }} />
+                    <Database
+                      className="w-4 h-4"
+                      style={{ color: "var(--color-success)" }}
+                    />
                     <strong style={{ color: "var(--color-text)" }}>
                       {novel.glossary_count}
                     </strong>{" "}
@@ -555,9 +556,7 @@ export function NovelView() {
                     const isReprocessing = mtl
                       ? reprocessingId === mtl.id
                       : false;
-                    const isItemProcessing =
-                      mtl &&
-                      (mtl.status === "processing" || mtl.status === "pending");
+                    const isMtlProcessing = mtl && mtl.status === "processing";
 
                     return (
                       <div
@@ -600,7 +599,14 @@ export function NovelView() {
                               </span>
 
                               {orig && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded border font-mono opacity-80" style={{ backgroundColor: "var(--color-box-bg)", borderColor: "var(--color-border)", color: "var(--color-text)" }}>
+                                <span
+                                  className="text-[10px] px-1.5 py-0.5 rounded border font-mono opacity-80"
+                                  style={{
+                                    backgroundColor: "var(--color-box-bg)",
+                                    borderColor: "var(--color-border)",
+                                    color: "var(--color-text)",
+                                  }}
+                                >
                                   OG TL (Ref)
                                 </span>
                               )}
@@ -641,7 +647,9 @@ export function NovelView() {
                                 ? "AI translation memory injected & polished"
                                 : mtl?.status === "processing"
                                   ? "Applying rules & rewriting..."
-                                  : "Awaiting processing"}
+                                  : mtl?.status === "unprocessed"
+                                    ? "Awaiting processing"
+                                    : "Awaiting processing"}
                             </span>
                           </div>
                         </div>
@@ -683,7 +691,7 @@ export function NovelView() {
                             </button>
                           )}
 
-                          {mtl && !isItemProcessing && (
+                          {mtl && !isMtlProcessing && (
                             <button
                               onClick={() => handleReprocess(mtl.id, chNum)}
                               disabled={isReprocessing}
@@ -755,22 +763,39 @@ export function NovelView() {
                             Confidence: {Math.round(p.confidence * 100)}%
                           </span>
                         </div>
-                        <h4 className="text-sm font-bold font-outfit mb-1" style={{ color: "var(--color-text)" }}>
+                        <h4
+                          className="text-sm font-bold font-outfit mb-1"
+                          style={{ color: "var(--color-text)" }}
+                        >
                           Trigger:{" "}
                           <span className="text-[var(--color-accent)] font-mono">
                             {p.trigger}
                           </span>
                         </h4>
                         {isIdentityPolicy(p.action, p.trigger) ? (
-                          <div className="flex items-center gap-1.5 mt-2 text-xs font-sans" style={{ color: "var(--color-text)" }}>
-                            <span className="px-2 py-0.5 rounded border font-mono text-[11px] opacity-90" style={{ backgroundColor: "var(--color-box-bg)", borderColor: "var(--color-border)", color: "var(--color-accent)" }}>
+                          <div
+                            className="flex items-center gap-1.5 mt-2 text-xs font-sans"
+                            style={{ color: "var(--color-text)" }}
+                          >
+                            <span
+                              className="px-2 py-0.5 rounded border font-mono text-[11px] opacity-90"
+                              style={{
+                                backgroundColor: "var(--color-box-bg)",
+                                borderColor: "var(--color-border)",
+                                color: "var(--color-accent)",
+                              }}
+                            >
                               🔒 Protected Exact Canonical Entity
                             </span>
                           </div>
                         ) : (
                           <div
                             className="text-xs p-2.5 rounded-xl border-l-2 mt-2 leading-relaxed"
-                            style={{ backgroundColor: "var(--color-box-bg)", borderColor: "var(--color-ai)", color: "var(--color-text)" }}
+                            style={{
+                              backgroundColor: "var(--color-box-bg)",
+                              borderColor: "var(--color-ai)",
+                              color: "var(--color-text)",
+                            }}
                           >
                             <strong
                               className="block text-[10px] uppercase opacity-65 mb-0.5"

@@ -28,6 +28,7 @@ async def list_chapter_jobs(chapter_id: int, db: AsyncSession = Depends(get_db))
 @router.get("/novel/{novel_id}", response_model=list[JobResponse])
 async def list_novel_jobs(novel_id: int, db: AsyncSession = Depends(get_db)):
     from web.backend.db.models import Chapter
+
     stmt = (
         select(ProcessingJob)
         .join(Chapter, ProcessingJob.chapter_id == Chapter.id)

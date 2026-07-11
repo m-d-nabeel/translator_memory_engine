@@ -7,6 +7,7 @@ interface ChapterListProps {
 
 const statusColors: Record<string, string> = {
   pending: "var(--color-text-muted)",
+  unprocessed: "var(--color-text-muted)",
   processing: "var(--color-warning)",
   completed: "var(--color-success)",
   failed: "var(--color-error)",
@@ -14,6 +15,7 @@ const statusColors: Record<string, string> = {
 
 const statusLabels: Record<string, string> = {
   pending: "Pending",
+  unprocessed: "Unprocessed",
   processing: "Processing...",
   completed: "Completed",
   failed: "Failed",

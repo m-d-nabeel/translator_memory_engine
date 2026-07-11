@@ -41,6 +41,7 @@ async def rewrite_chapter(
     await db.commit()
 
     start_time = time.monotonic()
+
     def _ts() -> str:
         ms = int((time.monotonic() - start_time) * 1000)
         secs, millis = divmod(ms, 1000)
@@ -55,11 +56,15 @@ async def rewrite_chapter(
         from translator_memory_engine.rewrite.clean import clean_mtl_artifacts
         from translator_memory_engine.rewrite.rewriter import rewrite as core_rewrite
 
-        logs.append(f"{_ts()} Pre-processing: Executing clean_mtl_artifacts to strip formatting noise.")
+        logs.append(
+            f"{_ts()} Pre-processing: Executing clean_mtl_artifacts to strip formatting noise."
+        )
         cleaned_text = clean_mtl_artifacts(chapter.raw_text)
         orig_len = len(chapter.raw_text)
         clean_len = len(cleaned_text)
-        logs.append(f"{_ts()} Cleaned text length: {clean_len} chars (stripped {orig_len - clean_len} noisy characters).")
+        logs.append(
+            f"{_ts()} Cleaned text length: {clean_len} chars (stripped {orig_len - clean_len} noisy characters)."
+        )
 
         # ---------------------------------------------------------------
         # Load policies and glossary from SQLite (single source of truth)
@@ -107,32 +112,37 @@ async def rewrite_chapter(
         prm_count = result.get("prompted_count", 0)
         mode = result.get("mode", "unknown")
 
-        logs.append(f"{_ts()} Deterministic pre-pass complete: {det_count} exact term/entity rules matched & enforced.")
+        logs.append(
+            f"{_ts()} Deterministic pre-pass complete: {det_count} exact term/entity rules matched & enforced."
+        )
         if do_llm_flag:
             logs.append(
                 f"{_ts()} Contextual LLM rewrite complete: {prm_count} semantic context "
                 f"corrections applied via {settings.LLM_MODEL}."
             )
 
-        chapter.refined_text = (
-            result.get("rewritten_text")
-            or result.get("prepassed_text", cleaned_text)
+        chapter.refined_text = result.get("rewritten_text") or result.get(
+            "prepassed_text", cleaned_text
         )
         chapter.status = "completed"
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
         chapter.processing_time_ms = elapsed_ms
 
-        logs.append(f"{_ts()} Chapter {chapter.chapter_number} refinement completed successfully in {elapsed_ms} ms!")
+        logs.append(
+            f"{_ts()} Chapter {chapter.chapter_number} refinement completed successfully in {elapsed_ms} ms!"
+        )
 
         job.status = "completed"
         job.completed_at = datetime.datetime.utcnow()
-        job.result_summary = json.dumps({
-            "mode": mode,
-            "deterministic_count": det_count,
-            "prompted_count": prm_count,
-            "processing_time_ms": elapsed_ms,
-            "logs": logs,
-        })
+        job.result_summary = json.dumps(
+            {
+                "mode": mode,
+                "deterministic_count": det_count,
+                "prompted_count": prm_count,
+                "processing_time_ms": elapsed_ms,
+                "logs": logs,
+            }
+        )
 
     except Exception as e:
         logger.error("Rewrite failed for chapter %d: %s", chapter.id, traceback.format_exc())
@@ -143,11 +153,13 @@ async def rewrite_chapter(
         job.status = "failed"
         job.completed_at = datetime.datetime.utcnow()
         job.error_message = str(e)
-        job.result_summary = json.dumps({
-            "mode": "failed",
-            "processing_time_ms": elapsed_ms,
-            "logs": logs,
-        })
+        job.result_summary = json.dumps(
+            {
+                "mode": "failed",
+                "processing_time_ms": elapsed_ms,
+                "logs": logs,
+            }
+        )
 
     await db.commit()
 
@@ -176,10 +188,12 @@ async def extract_policies(
 
     corpus_chapters = []
     for ch in chapters:
-        corpus_chapters.append({
-            "text": ch.raw_text,
-            "chapter": ch.chapter_number,
-        })
+        corpus_chapters.append(
+            {
+                "text": ch.raw_text,
+                "chapter": ch.chapter_number,
+            }
+        )
 
     signals = extract_signals(corpus_chapters)
     policies = mine_policies(signals, total_chapters=len(chapters))
@@ -188,9 +202,8 @@ async def extract_policies(
     # Clear old policies for this novel, then write new ones to SQLite
     # ---------------------------------------------------------------
     from sqlalchemy import delete as sql_delete
-    await db.execute(
-        sql_delete(Policy).where(Policy.novel_id == novel_id)
-    )
+
+    await db.execute(sql_delete(Policy).where(Policy.novel_id == novel_id))
 
     for p in policies:
         db_policy = Policy(

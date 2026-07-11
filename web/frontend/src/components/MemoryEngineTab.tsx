@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Cpu,
   Sparkles,
@@ -8,9 +8,14 @@ import {
   ShieldCheck,
   Database,
   ExternalLink,
+  RefreshCw,
 } from "lucide-react";
 import { api } from "../api/client";
-import { formatPolicyAction, formatAliasesList, isIdentityPolicy } from "../utils/formatters";
+import {
+  formatPolicyAction,
+  formatAliasesList,
+  isIdentityPolicy,
+} from "../utils/formatters";
 
 interface MemoryEngineTabProps {
   onSelectNovel?: (novelId: number) => void;
@@ -34,6 +39,14 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
         ? novels[0].id
         : null
       : selectedNovelId;
+
+  const extractMutation = useMutation({
+    mutationFn: (id: number) => api.extractPolicies(id),
+    onSuccess: () => {
+      // In a real app we'd probably poll or show a toast. For now, it runs in the background.
+      alert("Policy regeneration started in the background!");
+    },
+  });
 
   const { data: policies, isLoading: policiesLoading } = useQuery({
     queryKey: ["policies", targetNovelId],
@@ -317,23 +330,44 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
           </button>
         </div>
 
-        <div className="relative flex-1 max-w-sm">
-          <Search
-            className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 opacity-50"
-            style={{ color: "var(--color-text-muted)" }}
-          />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={`Filter ${activeSubTab === "policies" ? "rules & actions..." : "glossary entities & aliases..."}`}
-            className="w-full pl-10 pr-4 py-2 rounded-xl text-xs md:text-sm border transition-all focus:outline-none focus:ring-2"
-            style={{
-              backgroundColor: "var(--color-surface)",
-              borderColor: "var(--color-border)",
-              color: "var(--color-text)",
-            }}
-          />
+        <div className="flex gap-2">
+          {selectedNovelId !== "all" && (
+            <button
+              onClick={() => extractMutation.mutate(selectedNovelId)}
+              disabled={extractMutation.isPending}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs md:text-sm font-semibold border transition-all hover:bg-white/5 disabled:opacity-50 cursor-pointer"
+              title="Re-run policy mining on all original chapters in this novel"
+              style={{
+                borderColor: "var(--color-border)",
+                color: "var(--color-text)",
+              }}
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${extractMutation.isPending ? "animate-spin" : ""}`}
+              />
+              {extractMutation.isPending
+                ? "Starting Extraction..."
+                : "Regenerate Rules"}
+            </button>
+          )}
+          <div className="relative max-w-sm" style={{ width: "250px" }}>
+            <Search
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 opacity-50"
+              style={{ color: "var(--color-text-muted)" }}
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={`Filter ${activeSubTab === "policies" ? "rules & actions..." : "glossary entities & aliases..."}`}
+              className="w-full pl-10 pr-4 py-2 rounded-xl text-xs md:text-sm border transition-all focus:outline-none focus:ring-2"
+              style={{
+                backgroundColor: "var(--color-surface)",
+                borderColor: "var(--color-border)",
+                color: "var(--color-text)",
+              }}
+            />
+          </div>
         </div>
       </div>
 
@@ -412,8 +446,18 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
                   {formatAliasesList(p.match_forms, p.trigger)}
 
                   {isIdentityPolicy(p.action, p.trigger) ? (
-                    <div className="flex items-center gap-1.5 mt-2 text-xs font-sans" style={{ color: "var(--color-text)" }}>
-                      <span className="px-2 py-0.5 rounded border font-mono text-[11px] opacity-90" style={{ backgroundColor: "var(--color-box-bg)", borderColor: "var(--color-border)", color: "var(--color-accent)" }}>
+                    <div
+                      className="flex items-center gap-1.5 mt-2 text-xs font-sans"
+                      style={{ color: "var(--color-text)" }}
+                    >
+                      <span
+                        className="px-2 py-0.5 rounded border font-mono text-[11px] opacity-90"
+                        style={{
+                          backgroundColor: "var(--color-box-bg)",
+                          borderColor: "var(--color-border)",
+                          color: "var(--color-accent)",
+                        }}
+                      >
                         🔒 Protected Exact Canonical Entity
                       </span>
                     </div>
@@ -512,8 +556,8 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
                   {g.canonical}
                 </h4>
 
-              {formatAliasesList(g.aliases, g.canonical)}
-            </div>
+                {formatAliasesList(g.aliases, g.canonical)}
+              </div>
             </div>
           ))}
         </div>

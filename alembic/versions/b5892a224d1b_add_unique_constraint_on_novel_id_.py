@@ -5,14 +5,15 @@ Revises: ca52ef6ed9cd
 Create Date: 2026-07-12 01:46:02.949066
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import inspect
 
-revision: str = 'b5892a224d1b'
-down_revision: Union[str, Sequence[str], None] = 'ca52ef6ed9cd'
+revision: str = "b5892a224d1b"
+down_revision: Union[str, Sequence[str], None] = "ca52ef6ed9cd"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -25,12 +26,12 @@ def _constraint_exists(table_name: str, constraint_name: str) -> bool:
 
 
 def upgrade() -> None:
-    if not _constraint_exists('policies', 'uq_novel_policy'):
-        with op.batch_alter_table('policies', schema=None) as batch_op:
-            batch_op.create_unique_constraint('uq_novel_policy', ['novel_id', 'policy_id'])
+    if not _constraint_exists("policies", "uq_novel_policy"):
+        with op.batch_alter_table("policies", schema=None) as batch_op:
+            batch_op.create_unique_constraint("uq_novel_policy", ["novel_id", "policy_id"])
 
 
 def downgrade() -> None:
-    if _constraint_exists('policies', 'uq_novel_policy'):
-        with op.batch_alter_table('policies', schema=None) as batch_op:
-            batch_op.drop_constraint('uq_novel_policy', type_='unique')
+    if _constraint_exists("policies", "uq_novel_policy"):
+        with op.batch_alter_table("policies", schema=None) as batch_op:
+            batch_op.drop_constraint("uq_novel_policy", type_="unique")

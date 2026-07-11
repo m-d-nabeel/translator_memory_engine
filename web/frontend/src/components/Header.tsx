@@ -131,9 +131,15 @@ export function Header({
             }}
           >
             {settings.theme === "light" ? (
-              <Sun className="w-3.5 h-3.5" style={{ color: "var(--color-warning)" }} />
+              <Sun
+                className="w-3.5 h-3.5"
+                style={{ color: "var(--color-warning)" }}
+              />
             ) : settings.theme === "sepia" ? (
-              <Laptop className="w-3.5 h-3.5" style={{ color: "var(--color-warning)" }} />
+              <Laptop
+                className="w-3.5 h-3.5"
+                style={{ color: "var(--color-warning)" }}
+              />
             ) : (
               <Moon className="w-3.5 h-3.5 text-[var(--color-accent)]" />
             )}

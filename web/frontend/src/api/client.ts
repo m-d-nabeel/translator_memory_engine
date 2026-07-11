@@ -153,6 +153,10 @@ export const api = {
 
   listPolicies: (novelId: number) =>
     request<Policy[]>(`/novels/${novelId}/policies`),
+  extractPolicies: (novelId: number) =>
+    request<{ status: string }>(`/novels/${novelId}/extract`, {
+      method: "POST",
+    }),
   listGlossary: (novelId: number) =>
     request<GlossaryEntry[]>(`/novels/${novelId}/glossary`),
 

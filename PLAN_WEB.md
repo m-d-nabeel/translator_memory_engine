@@ -2,19 +2,19 @@
 
 ## 1. Technology Stack
 
-| Layer | Choice | Version | Rationale |
-|-------|--------|---------|-----------|
-| **Backend** | FastAPI | 0.139.0 | Auto OpenAPI docs, async, Pydantic v2, largest ecosystem |
-| **ORM** | SQLAlchemy (async) | 2.0.51 | Mature, SQLite support, async-first |
-| **DB Driver** | aiosqlite | 0.22.1 | Async SQLite driver |
-| **Database** | SQLite | — | Lightweight, local, zero config |
-| **Server** | uvicorn | 0.51.0 | Standard ASGI server |
-| **Frontend** | React | 19.2.7 | Latest stable, react-dom bundled |
-| **Language** | TypeScript | — | Type safety, better DX |
-| **Build** | Vite | 8.1.4 | Fast HMR, ESM-native |
-| **CSS** | Tailwind CSS | 4.3.2 | CSS-first config (v4), `@tailwindcss/vite` plugin |
-| **Routing** | react-router-dom | 7.18.1 | v7 stable |
-| **Data Fetching** | @tanstack/react-query | 5.101.2 | Caching, polling, revalidation |
+| Layer             | Choice                | Version | Rationale                                                |
+| ----------------- | --------------------- | ------- | -------------------------------------------------------- |
+| **Backend**       | FastAPI               | 0.139.0 | Auto OpenAPI docs, async, Pydantic v2, largest ecosystem |
+| **ORM**           | SQLAlchemy (async)    | 2.0.51  | Mature, SQLite support, async-first                      |
+| **DB Driver**     | aiosqlite             | 0.22.1  | Async SQLite driver                                      |
+| **Database**      | SQLite                | —       | Lightweight, local, zero config                          |
+| **Server**        | uvicorn               | 0.51.0  | Standard ASGI server                                     |
+| **Frontend**      | React                 | 19.2.7  | Latest stable, react-dom bundled                         |
+| **Language**      | TypeScript            | —       | Type safety, better DX                                   |
+| **Build**         | Vite                  | 8.1.4   | Fast HMR, ESM-native                                     |
+| **CSS**           | Tailwind CSS          | 4.3.2   | CSS-first config (v4), `@tailwindcss/vite` plugin        |
+| **Routing**       | react-router-dom      | 7.18.1  | v7 stable                                                |
+| **Data Fetching** | @tanstack/react-query | 5.101.2 | Caching, polling, revalidation                           |
 
 ## 2. Decoupled Architecture
 
@@ -102,6 +102,7 @@ web/backend/services/  ──imports──►  translator_memory_engine/
 ```
 
 **Decoupling rules:**
+
 1. Core engine (`translator_memory_engine/`) has **zero knowledge** of the web layer
 2. Web backend imports from core engine, **never the reverse**
 3. Core engine stays pure Python — usable via CLI (`pipeline.py`) or web
@@ -250,10 +251,10 @@ vite@8.1.4
 
 ## 8. Implementation Phases
 
-| Phase | What | Est. |
-|-------|------|------|
-| **1** | Backend foundation (DB models, config, CRUD API) | 5h |
-| **2** | Pipeline integration (extract/rewrite services, job runner) | 4h |
-| **3** | Frontend shell (React + routing + novel list + paste form) | 5h |
-| **4** | Reader component (mobile/desktop + themes + fonts) | 5h |
-| **5** | Polish (error handling, loading states, status polling) | 3h |
+| Phase | What                                                        | Est. |
+| ----- | ----------------------------------------------------------- | ---- |
+| **1** | Backend foundation (DB models, config, CRUD API)            | 5h   |
+| **2** | Pipeline integration (extract/rewrite services, job runner) | 4h   |
+| **3** | Frontend shell (React + routing + novel list + paste form)  | 5h   |
+| **4** | Reader component (mobile/desktop + themes + fonts)          | 5h   |
+| **5** | Polish (error handling, loading states, status polling)     | 3h   |

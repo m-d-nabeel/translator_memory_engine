@@ -159,9 +159,20 @@ class PolicyStore:
             )
             for row in cursor:
                 (
-                    policy_id, ptype, trigger, match_forms_json, action_json,
-                    confidence, evidence_json, applies, scores_json, category,
-                    note, needs_review, llm_rejected, contexts_json,
+                    policy_id,
+                    ptype,
+                    trigger,
+                    match_forms_json,
+                    action_json,
+                    confidence,
+                    evidence_json,
+                    applies,
+                    scores_json,
+                    category,
+                    note,
+                    needs_review,
+                    llm_rejected,
+                    contexts_json,
                 ) = row
                 policy = Policy(
                     id=policy_id,
