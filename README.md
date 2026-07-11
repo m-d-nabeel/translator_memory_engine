@@ -27,15 +27,18 @@ uv run python -m spacy download en_core_web_sm
 
 ```bash
 # Copy the example and fill in your keys
-cp .env.example translator_memory_engine/.env
+cp .env.example .env
 ```
 
-Or create `translator_memory_engine/.env` manually:
+Or create `.env` at the project root manually:
 
 ```
 GROQ_API_KEY=your_groq_api_key
-GEMINI_API_KEY=your_gemini_api_key  # optional, for judge
+GROQ_API_KEY_2=your_second_groq_api_key  # optional, for rate-limit rotation
+GEMINI_API_KEY=your_gemini_api_key       # optional, for judge evaluation
 ```
+
+Multiple `GROQ_API_KEY*` variables are supported — the pipeline automatically rotates keys on rate-limit errors (429), effectively doubling your daily token budget.
 
 ## Quick Start: Translate MTL Chapter 40
 
@@ -81,6 +84,12 @@ uv run python pipeline.py rewrite \
 
 **Produces:**
 - `outputs/rewritten_chapter-040.txt` — repaired chapter
+
+**Tip:** Add `-v` or `--verbose` to any command for detailed debug logging (shows style bank, exemplar index, known errors, entity shielding, LLM prompts, and rate-limit rotation):
+
+```bash
+uv run python pipeline.py -v rewrite data/mtl/chapter-040.txt --llm
+```
 
 ### Step 3: Evaluate
 

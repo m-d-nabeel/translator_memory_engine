@@ -33,6 +33,60 @@ from translator_memory_engine.rewrite.shield import restore_entities, shield_ent
 
 logger = logging.getLogger("tme.rewrite")
 
+
+# ---------------------------------------------------------------------------
+# Rotating LLM client (multiple API keys for rate-limit resilience)
+# ---------------------------------------------------------------------------
+
+
+class GroqRotatingClient:
+    """OpenAI-compatible client that rotates across multiple API keys.
+
+    When a rate-limit error occurs, automatically falls back to the next key.
+    Cycles through all keys up to ``max_rounds`` times before giving up.
+    """
+
+    def __init__(self, keys: List[str], base_url: str, max_rounds: int = 3):
+        from openai import OpenAI
+
+        self._clients = [OpenAI(api_key=k, base_url=base_url) for k in keys]
+        self._idx = 0
+        self._max_rounds = max_rounds
+        self._num_keys = len(keys)
+
+    def chat_completions_create(self, **kwargs):
+        """Call chat.completions.create, rotating keys on rate-limit errors."""
+        last_err = None
+        for _ in range(self._num_keys * self._max_rounds):
+            try:
+                return self._clients[self._idx].chat.completions.create(**kwargs)
+            except RateLimitError as e:
+                last_err = e
+                logger.warning(
+                    f"Rate limit on key #{self._idx + 1}, "
+                    f"rotating to next key..."
+                )
+                self._idx = (self._idx + 1) % self._num_keys
+                time.sleep(5)
+        raise last_err
+
+
+def _get_groq_keys(api_key_env: str = "LLM_API_KEY") -> List[str]:
+    """Load all GROQ_API_KEY* values from environment.
+
+    If the caller's ``api_key_env`` is not set, also tries loading from
+    ``.env`` via ``load_dotenv()``.  Returns an empty list when no keys
+    are available (keeps the LLM path as a no-op for tests that clear env vars).
+    """
+    load_dotenv()
+    primary = os.environ.get(api_key_env, "")
+    if primary:
+        extras = [v for k, v in os.environ.items()
+                  if k.startswith("GROQ_API_KEY") and v and v != primary]
+        return [primary] + extras
+    return []
+
+
 # ---------------------------------------------------------------------------
 # Known MTL error corrections (data/known_errors.json)
 # ---------------------------------------------------------------------------
@@ -187,10 +241,13 @@ def _align_mtl_entities(
 def _llm_complete(client, retries: int = 5, backoff: float = 15.0, **kwargs):
     """Call the chat completion with retry/backoff for TPM rate limits.
 
-    The free Groq tier caps ~6000 tokens/min, and the chunked rewrite plus the
-    faithfulness re-prompt can burst past it. Backing off keeps the run green
-    instead of aborting mid-chapter.
+    Supports both plain OpenAI clients and ``GroqRotatingClient`` instances.
+    For rotating clients, key rotation is handled internally; this wrapper
+    adds per-key backoff on top.
     """
+    if isinstance(client, GroqRotatingClient):
+        return client.chat_completions_create(**kwargs)
+
     last = None
     for attempt in range(retries):
         try:
@@ -504,13 +561,10 @@ def rewrite(
     # (e.g. "Noh Young-ju") to canonical policy names (e.g. "Lord Noh").
     # This runs before the retriever so the updated match lists capture MTL forms.
     if glossary and (do_llm or reference_text is not None or style_profile is not None):
-        load_dotenv()
-        api_key = os.environ.get(api_key_env, "")
-        if api_key:
-            from openai import OpenAI
-
+        keys = _get_groq_keys(api_key_env)
+        if keys:
             logger.debug("Running alias bridging (MTL → canonical)...")
-            _client = OpenAI(api_key=api_key, base_url=base_url)
+            _client = GroqRotatingClient(keys, base_url)
             alias_map = _align_mtl_entities(text, glossary, _client, model)
             if alias_map:
                 logger.debug(f"Discovered {len(alias_map)} aliases: {list(alias_map.keys())[:5]}")
@@ -570,13 +624,10 @@ def rewrite(
     rewritten_text = shielded_text
     client = None
     if use_llm and need_llm:
-        load_dotenv()
-        api_key = os.environ.get(api_key_env, "")
-        if api_key:
-            from openai import OpenAI
-
-            client = OpenAI(api_key=api_key, base_url=base_url)
-            logger.info(f"LLM client initialized (model={model})")
+        keys = _get_groq_keys(api_key_env)
+        if keys:
+            client = GroqRotatingClient(keys, base_url)
+            logger.info(f"LLM client initialized (model={model}, keys={len(keys)})")
             out_parts = []
             for k, mtl_chunk in enumerate(mtl_chunks):
                 logger.debug(f"Processing chunk {k+1}/{len(mtl_chunks)}...")
