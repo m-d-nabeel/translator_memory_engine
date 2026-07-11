@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from sqlalchemy import select, update
+
 from web.backend.db.database import async_session
 from web.backend.db.models import Chapter
 

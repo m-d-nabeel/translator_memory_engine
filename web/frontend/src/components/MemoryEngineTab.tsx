@@ -161,6 +161,7 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
                   color: "var(--color-text)",
                 }}
               >
+                <option value="all">All Novels</option>
                 {novels?.map((n) => (
                   <option key={n.id} value={n.id}>
                     {n.name} ({n.chapter_count} Chs)
@@ -336,7 +337,7 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
               onClick={() => extractMutation.mutate(selectedNovelId)}
               disabled={extractMutation.isPending}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs md:text-sm font-semibold border transition-all hover:bg-white/5 disabled:opacity-50 cursor-pointer"
-              title="Re-run policy mining on all original chapters in this novel"
+              title="Re-run policy mining on all OG TL chapters in this novel"
               style={{
                 borderColor: "var(--color-border)",
                 color: "var(--color-text)",

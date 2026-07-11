@@ -195,7 +195,7 @@ async def extract_policies(
             }
         )
 
-    signals = extract_signals(corpus_chapters)
+    signals = extract_signals(corpus_chapters, source_languages=[novel.source_language])
     policies = mine_policies(signals, total_chapters=len(chapters))
 
     # ---------------------------------------------------------------

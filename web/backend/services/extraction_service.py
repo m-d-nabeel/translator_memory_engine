@@ -1,15 +1,13 @@
 import json
 import logging
-from typing import Dict, List, Optional
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from web.backend.db.database import async_session
-from web.backend.db.models import Chapter, Policy, GlossaryEntry
+from sqlalchemy import select
 
 from translator_memory_engine.extract import extract_signals
-from translator_memory_engine.policy.miner import mine_policies
 from translator_memory_engine.memory.store import PolicyStore
+from translator_memory_engine.policy.miner import mine_policies
+from web.backend.db.database import async_session
+from web.backend.db.models import GlossaryEntry, Policy
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +19,13 @@ async def extract_policies_for_novel(novel_id: int):
     """
     try:
         async with async_session() as session:
+            from web.backend.db.models import Chapter, Novel
+
+            # Fetch novel for source language
+            novel_result = await session.execute(select(Novel).where(Novel.id == novel_id))
+            novel = novel_result.scalar_one_or_none()
+            source_language = novel.source_language if novel else "korean"
+
             # 1. Fetch all original chapters
             result = await session.execute(
                 select(Chapter)
@@ -53,7 +58,7 @@ async def extract_policies_for_novel(novel_id: int):
             logger.info(f"Loaded {total_chapters} original chapters for extraction.")
 
             # 2. Extract signals
-            signals = extract_signals(pipeline_chapters)
+            signals = extract_signals(pipeline_chapters, source_languages=[source_language])
             logger.info(f"Extracted {len(signals)} raw signals.")
 
             # 3. Mine policies
