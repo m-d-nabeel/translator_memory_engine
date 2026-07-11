@@ -110,6 +110,7 @@ def stylometry_delta(gen: str, orig: str) -> Dict[str, float]:
     lexical richness (TTR), contraction rate, dialog share.
     """
     from translator_memory_engine.style.analyzer import compute_deterministic_profile
+
     gen_p = compute_deterministic_profile(gen)
     orig_p = compute_deterministic_profile(orig)
     all_keys = set(gen_p) | set(orig_p)
@@ -122,4 +123,5 @@ def voice_richness_score(text: str) -> float:
     Combines TTR, dialog share, and normalized sentence-length variance.
     """
     from translator_memory_engine.style.analyzer import voice_richness_score as _vrs
+
     return _vrs(text)

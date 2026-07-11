@@ -76,11 +76,7 @@ def compute_deterministic_profile(text: str) -> Dict[str, float]:
     n_words = len(all_content_tokens)
 
     avg_len = sum(words_per_sent) / n_sents
-    variance = (
-        sum((w - avg_len) ** 2 for w in words_per_sent) / n_sents
-        if n_sents > 1
-        else 0.0
-    )
+    variance = sum((w - avg_len) ** 2 for w in words_per_sent) / n_sents if n_sents > 1 else 0.0
 
     token_counts = Counter(all_content_tokens)
     ttr = len(token_counts) / n_words if n_words > 0 else 0.0

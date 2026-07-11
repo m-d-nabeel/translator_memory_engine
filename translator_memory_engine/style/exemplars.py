@@ -22,8 +22,18 @@ def classify_scene_type(text: str) -> str:
     word_count = len(text.split())
 
     # Internal monologue signals
-    internal_words = ("thought", "wondered", "realized", "remembered", "felt",
-                      "knew", "pondered", "considered", "reflected", "mused")
+    internal_words = (
+        "thought",
+        "wondered",
+        "realized",
+        "remembered",
+        "felt",
+        "knew",
+        "pondered",
+        "considered",
+        "reflected",
+        "mused",
+    )
     has_internal = any(w in text_lower for w in internal_words)
 
     if has_dialogue:
@@ -67,8 +77,7 @@ class ExemplarIndex:
         self.exemplars = exemplars
         self._embeddings: Optional[np.ndarray] = None
         if exemplars and any(ex.embedding is not None for ex in exemplars):
-            vecs = [ex.embedding if ex.embedding is not None else [0.0] * 768
-                    for ex in exemplars]
+            vecs = [ex.embedding if ex.embedding is not None else [0.0] * 768 for ex in exemplars]
             self._embeddings = np.array(vecs, dtype=np.float32)
 
     def retrieve(
@@ -93,14 +102,18 @@ class ExemplarIndex:
         # Try embedding-based retrieval
         if self._embeddings is not None and embed_fn is not None:
             query_emb = np.array(embed_fn(query_text), dtype=np.float32)
-            candidate_indices = [i for i, e in enumerate(self.exemplars)
-                                 if e in candidates and e.embedding is not None]
+            candidate_indices = [
+                i
+                for i, e in enumerate(self.exemplars)
+                if e in candidates and e.embedding is not None
+            ]
             if not candidate_indices:
                 return candidates[:top_k]
 
             cands_emb = self._embeddings[candidate_indices]
-            scores = [_cosine_similarity(query_emb, cands_emb[j])
-                      for j in range(len(candidate_indices))]
+            scores = [
+                _cosine_similarity(query_emb, cands_emb[j]) for j in range(len(candidate_indices))
+            ]
             ranked = sorted(zip(scores, candidate_indices), key=lambda x: x[0], reverse=True)
             return [self.exemplars[idx] for _, idx in ranked[:top_k]]
 
@@ -135,8 +148,9 @@ class ExemplarIndex:
         """Retrieve top-k per scene type for balanced prompt diversity."""
         results: List[Exemplar] = []
         for st in SCENE_TYPES:
-            results.extend(self.retrieve(query_text, embed_fn=embed_fn,
-                                         scene_type=st, top_k=per_type))
+            results.extend(
+                self.retrieve(query_text, embed_fn=embed_fn, scene_type=st, top_k=per_type)
+            )
         return results
 
 
@@ -169,11 +183,13 @@ def build_exemplar_index(
             items.sort(key=lambda x: x[0], reverse=True)
             for _, para in items[:per_chapter]:
                 emb = embed_fn(para) if embed_fn else None
-                exemplars.append(Exemplar(
-                    text=para[:500],  # cap length
-                    scene_type=st,
-                    chapter_num=num,
-                    embedding=emb,
-                ))
+                exemplars.append(
+                    Exemplar(
+                        text=para[:500],  # cap length
+                        scene_type=st,
+                        chapter_num=num,
+                        embedding=emb,
+                    )
+                )
 
     return ExemplarIndex(exemplars)

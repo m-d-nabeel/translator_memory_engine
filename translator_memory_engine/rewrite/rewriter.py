@@ -134,7 +134,7 @@ def _strip_echo(text: str) -> str:
     marker = "CHAPTER TO REWRITE:"
     idx = out.find(marker)
     if idx != -1:
-        out = out[idx + len(marker):].strip()
+        out = out[idx + len(marker) :].strip()
     return out.strip()
 
 
@@ -167,7 +167,7 @@ def _faithfulness_prompt(output: str, novel: set) -> str:
 _STYLE_REFERENCE = [
     '"Elder, are you all right?"',
     '"You\'re overthinking it, Calron. Eat."',
-    "\"He's the one who appointed me, after all.\"",
+    '"He\'s the one who appointed me, after all."',
     "The boy's stomach growled loud enough to shame him.",
     "She didn't smile, exactly — more a baring of teeth that passed for warmth.",
 ]
@@ -314,10 +314,7 @@ def rewrite(
     prepassed_text, trace = apply_prepass(text, resolution)
 
     # Prompted (non-deterministic, non-rejected) policies for the LLM
-    prompted = [
-        p for p in matched
-        if p.applies == "prompted" and not p.llm_rejected
-    ]
+    prompted = [p for p in matched if p.applies == "prompted" and not p.llm_rejected]
 
     # Mode: supervised (reference) > unsupervised (style bank) > fallback.
     if reference_text is not None:
@@ -354,24 +351,29 @@ def rewrite(
         api_key = os.environ.get(api_key_env, "")
         if api_key:
             from openai import OpenAI
+
             client = OpenAI(api_key=api_key, base_url=base_url)
             out_parts = []
             for k, mtl_chunk in enumerate(mtl_chunks):
                 ref_chunk = ref_chunks[k] if k < len(ref_chunks) else None
                 prompt = build_prompt(
-                    mtl_chunk, prompted,
-                    reference=ref_chunk, style_profile=style_profile,
+                    mtl_chunk,
+                    prompted,
+                    reference=ref_chunk,
+                    style_profile=style_profile,
                     previous_tail=previous_tail,
                 )
                 resp = _llm_complete(
                     client,
                     model=model,
                     messages=[
-                        {"role": "system", "content":
-                         "You are a faithful post-editor of machine-translated web novels. "
-                         "You repair broken translation into natural, fluent English while "
-                         "preserving the translator's established voice and never inventing "
-                         "content."},
+                        {
+                            "role": "system",
+                            "content": "You are a faithful post-editor of machine-translated web novels. "
+                            "You repair broken translation into natural, fluent English while "
+                            "preserving the translator's established voice and never inventing "
+                            "content.",
+                        },
                         {"role": "user", "content": prompt},
                     ],
                     temperature=0.1,
@@ -397,9 +399,11 @@ def rewrite(
                 client,
                 model=model,
                 messages=[
-                    {"role": "system", "content":
-                     "You are a faithful post-editor. You ONLY remove invented names; "
-                     "you never add or alter any other content."},
+                    {
+                        "role": "system",
+                        "content": "You are a faithful post-editor. You ONLY remove invented names; "
+                        "you never add or alter any other content.",
+                    },
                     {"role": "user", "content": guard_prompt},
                 ],
                 temperature=0.1,

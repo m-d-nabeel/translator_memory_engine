@@ -41,6 +41,7 @@ def extract_signals(
     if use_ner:
         try:
             from translator_memory_engine.extract.ner import extract_ner_entities
+
             signals.extend(extract_ner_entities(chapters))
         except ImportError:
             pass  # spaCy not installed, skip NER

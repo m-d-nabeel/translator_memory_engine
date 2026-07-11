@@ -38,6 +38,7 @@ class Policy:
             layer). Fed to the LLM verification backend so it can judge the candidate
             from real usage rather than the bare string (PLAN.md §7 / §3).
     """
+
     id: str
     type: str
     trigger: str

@@ -67,9 +67,7 @@ def faithfulness_vs_source(gen: str, src: str) -> Dict[str, object]:
     src_persons = {e.text for e in sdoc.ents if e.label_ == "PERSON"}
     novel_persons = _novel(gen_persons, src)
     retained = src_persons & gen_persons
-    person_retention = (
-        round(len(retained) / len(src_persons), 4) if src_persons else None
-    )
+    person_retention = round(len(retained) / len(src_persons), 4) if src_persons else None
 
     gen_org = {e.text for e in gdoc.ents if e.label_ in ("ORG", "GPE", "LOC")}
     novel_org = _novel(gen_org, src)
@@ -79,22 +77,17 @@ def faithfulness_vs_source(gen: str, src: str) -> Dict[str, object]:
 
     gen_sents = _sentences(gdoc)
     intrusions = sum(
-        1 for s in gen_sents
-        if _content_tokens(s) and not (_content_tokens(s) & src_tokens)
+        1 for s in gen_sents if _content_tokens(s) and not (_content_tokens(s) & src_tokens)
     )
     intrusion_score = round(intrusions / len(gen_sents), 4) if gen_sents else 0.0
 
     src_sents = _sentences(sdoc)
     drops = sum(
-        1 for s in src_sents
-        if _content_tokens(s) and not (_content_tokens(s) & gen_tokens)
+        1 for s in src_sents if _content_tokens(s) and not (_content_tokens(s) & gen_tokens)
     )
     drop_score = round(drops / len(src_sents), 4) if src_sents else 0.0
 
-    coverage = (
-        round(len(gen_tokens & src_tokens) / len(src_tokens), 4)
-        if src_tokens else None
-    )
+    coverage = round(len(gen_tokens & src_tokens) / len(src_tokens), 4) if src_tokens else None
 
     return {
         "person_retention": person_retention,

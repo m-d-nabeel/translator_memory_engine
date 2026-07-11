@@ -13,8 +13,7 @@ class TestExemplar:
         assert restored.chapter_num == ex.chapter_num
 
     def test_with_embedding(self):
-        ex = Exemplar(text="hello", scene_type="dialogue", chapter_num=1,
-                      embedding=[0.1, 0.2, 0.3])
+        ex = Exemplar(text="hello", scene_type="dialogue", chapter_num=1, embedding=[0.1, 0.2, 0.3])
         d = ex.to_dict()
         assert d["embedding"] == [0.1, 0.2, 0.3]
         restored = Exemplar.from_dict(d)
@@ -69,8 +68,7 @@ class TestStyleProfile:
     def test_to_prompt_excerpts_with_cap(self):
         sp = StyleProfile(
             exemplars=[
-                Exemplar(text=f"ex{i}", scene_type="dialogue", chapter_num=1)
-                for i in range(20)
+                Exemplar(text=f"ex{i}", scene_type="dialogue", chapter_num=1) for i in range(20)
             ],
         )
         excerpts = sp.to_prompt_excerpts(max_exemplars=5)

@@ -14,9 +14,11 @@ class TestClassifySceneType:
         assert classify_scene_type(text) == "dialogue"
 
     def test_action(self):
-        text = ("He ran forward and drew his sword. She leapt over the barrier "
-                "and charged at the enemy. The warrior swung his blade and struck "
-                "the shield with a resounding clang.")
+        text = (
+            "He ran forward and drew his sword. She leapt over the barrier "
+            "and charged at the enemy. The warrior swung his blade and struck "
+            "the shield with a resounding clang."
+        )
         assert classify_scene_type(text) == "action"
 
     def test_internal(self):
@@ -57,8 +59,7 @@ class TestExemplarIndex:
     def test_balanced_retrieval(self):
         exemplars = [
             Exemplar(text=f"text {i}", scene_type=st, chapter_num=1)
-            for i, st in enumerate(["dialogue", "action", "description",
-                                     "internal", "transition"])
+            for i, st in enumerate(["dialogue", "action", "description", "internal", "transition"])
         ]
         index = ExemplarIndex(exemplars)
         result = index.retrieve_balanced("some query", per_type=1)

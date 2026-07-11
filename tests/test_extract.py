@@ -11,7 +11,9 @@ def _make_chapters():
     """Synthetic test chapters with known entities."""
     return [
         Chapter(
-            chapter=1, title="Chapter 1", paragraphs=[],
+            chapter=1,
+            title="Chapter 1",
+            paragraphs=[],
             text=(
                 "Lord Theodore Sinclair walked through the halls of the Sinclair Estate. "
                 "His knight Ian Hanover followed behind. "
@@ -21,7 +23,9 @@ def _make_chapters():
             ),
         ),
         Chapter(
-            chapter=2, title="Chapter 2", paragraphs=[],
+            chapter=2,
+            title="Chapter 2",
+            paragraphs=[],
             text=(
                 "The meal that Dominic prepared was for Lord Theodore. "
                 "Ian stood guard at the door. Sir Knight, stand down, said Theodore. "
@@ -31,7 +35,9 @@ def _make_chapters():
             ),
         ),
         Chapter(
-            chapter=3, title="Chapter 3", paragraphs=[],
+            chapter=3,
+            title="Chapter 3",
+            paragraphs=[],
             text=(
                 "After arriving, Calron visited Evergreen to see Dominic. "
                 "Lord Theodore Sinclair was in a meeting with Count Sinclair. "
@@ -85,10 +91,18 @@ class TestEntityExtraction:
 
     def test_filters_sentence_fragments(self):
         chapters = [
-            Chapter(chapter=1, title="Ch1", paragraphs=[],
-                    text="As Ian walked, he noticed something. But Dominic kept cooking."),
-            Chapter(chapter=2, title="Ch2", paragraphs=[],
-                    text="As Ian approached, Dominic smiled. Watching Dominic cook was soothing."),
+            Chapter(
+                chapter=1,
+                title="Ch1",
+                paragraphs=[],
+                text="As Ian walked, he noticed something. But Dominic kept cooking.",
+            ),
+            Chapter(
+                chapter=2,
+                title="Ch2",
+                paragraphs=[],
+                text="As Ian approached, Dominic smiled. Watching Dominic cook was soothing.",
+            ),
         ]
         signals = extract_entities(chapters, min_support=1)
         texts = {s.text for s in signals}
@@ -100,10 +114,18 @@ class TestEntityExtraction:
 class TestTerminologyExtraction:
     def test_extracts_possessive_terms(self):
         chapters = [
-            Chapter(chapter=1, title="Ch1", paragraphs=[],
-                    text="The Devil's Hand was growing in the sea. It was a rare find."),
-            Chapter(chapter=2, title="Ch2", paragraphs=[],
-                    text="They harvested the Devil's Hand for the soup."),
+            Chapter(
+                chapter=1,
+                title="Ch1",
+                paragraphs=[],
+                text="The Devil's Hand was growing in the sea. It was a rare find.",
+            ),
+            Chapter(
+                chapter=2,
+                title="Ch2",
+                paragraphs=[],
+                text="They harvested the Devil's Hand for the soup.",
+            ),
         ]
         signals = extract_terminology(chapters, min_support=2)
         texts = {s.text for s in signals}
@@ -111,10 +133,18 @@ class TestTerminologyExtraction:
 
     def test_extracts_bracketed_terms(self):
         chapters = [
-            Chapter(chapter=1, title="Ch1", paragraphs=[],
-                    text="He used the [Inner Strength] technique."),
-            Chapter(chapter=2, title="Ch2", paragraphs=[],
-                    text="The [Inner Strength] allowed him to break through."),
+            Chapter(
+                chapter=1,
+                title="Ch1",
+                paragraphs=[],
+                text="He used the [Inner Strength] technique.",
+            ),
+            Chapter(
+                chapter=2,
+                title="Ch2",
+                paragraphs=[],
+                text="The [Inner Strength] allowed him to break through.",
+            ),
         ]
         signals = extract_terminology(chapters, min_support=2)
         texts = {s.text for s in signals}
@@ -124,8 +154,12 @@ class TestTerminologyExtraction:
 class TestHonorificExtraction:
     def test_extracts_universal_titles(self):
         chapters = [
-            Chapter(chapter=1, title="Ch1", paragraphs=[],
-                    text="My Lord, the troops are ready. Sir Knight, stand at attention."),
+            Chapter(
+                chapter=1,
+                title="Ch1",
+                paragraphs=[],
+                text="My Lord, the troops are ready. Sir Knight, stand at attention.",
+            ),
         ]
         signals = extract_honorifics(chapters)
         texts = {s.text for s in signals}
@@ -134,8 +168,12 @@ class TestHonorificExtraction:
 
     def test_extracts_korean_honorifics(self):
         chapters = [
-            Chapter(chapter=1, title="Ch1", paragraphs=[],
-                    text="Hyung, let's go eat. The sunbae recommended this restaurant."),
+            Chapter(
+                chapter=1,
+                title="Ch1",
+                paragraphs=[],
+                text="Hyung, let's go eat. The sunbae recommended this restaurant.",
+            ),
         ]
         signals = extract_honorifics(chapters, source_languages=["korean"])
         texts = {s.text for s in signals}
@@ -144,8 +182,12 @@ class TestHonorificExtraction:
 
     def test_extracts_japanese_honorifics(self):
         chapters = [
-            Chapter(chapter=1, title="Ch1", paragraphs=[],
-                    text="Tanaka-san arrived at the dojo. Yamada-sensei greeted him."),
+            Chapter(
+                chapter=1,
+                title="Ch1",
+                paragraphs=[],
+                text="Tanaka-san arrived at the dojo. Yamada-sensei greeted him.",
+            ),
         ]
         signals = extract_honorifics(chapters, source_languages=["japanese"])
         texts = {s.text for s in signals}
@@ -154,8 +196,12 @@ class TestHonorificExtraction:
 
     def test_extracts_chinese_honorifics(self):
         chapters = [
-            Chapter(chapter=1, title="Ch1", paragraphs=[],
-                    text="Senior Brother led the way. The Dao Friend followed."),
+            Chapter(
+                chapter=1,
+                title="Ch1",
+                paragraphs=[],
+                text="Senior Brother led the way. The Dao Friend followed.",
+            ),
         ]
         signals = extract_honorifics(chapters, source_languages=["chinese"])
         texts = {s.text for s in signals}

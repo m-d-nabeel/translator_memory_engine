@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def _chapter_num(path: str) -> Optional[int]:
     import re
+
     m = re.search(r"(\d+)", os.path.basename(path))
     return int(m.group(1)) if m else None
 
@@ -66,6 +67,7 @@ def run_condition_a(
 ) -> str:
     """Condition A: Current baseline — hardcoded style anchor, Jaccard exemplars."""
     from translator_memory_engine.rewrite.rewriter import rewrite
+
     result = rewrite(
         mtl_text,
         policies_path=policies_path,
@@ -91,6 +93,7 @@ def run_condition_b(
 ) -> str:
     """Condition B: +Qualitative profile (LLM-analyzed register/tone/notes)."""
     from translator_memory_engine.rewrite.rewriter import rewrite
+
     result = rewrite(
         mtl_text,
         policies_path=policies_path,
@@ -179,7 +182,10 @@ def run_condition_d(
 def evaluate(gen: str, orig: str, mtl: str, canonical: List[str]) -> Dict:
     """Run all metrics on a generated chapter."""
     from translator_memory_engine.eval.align import (
-        cosine, cosine_excluding, stylometry_delta, voice_richness_score,
+        cosine,
+        cosine_excluding,
+        stylometry_delta,
+        voice_richness_score,
     )
     from translator_memory_engine.eval.faith import faithfulness_vs_reference
 
@@ -205,12 +211,18 @@ def main():
     parser.add_argument("--glossary", default=None, help="Path to glossary.json")
     parser.add_argument("--output-dir", required=True, help="Output directory")
     parser.add_argument("--config", default="config.yaml", help="Config file")
-    parser.add_argument("--chapters", nargs="+", type=int, default=[1, 39],
-                        help="Chapter numbers to test (default: 1 39)")
+    parser.add_argument(
+        "--chapters",
+        nargs="+",
+        type=int,
+        default=[1, 39],
+        help="Chapter numbers to test (default: 1 39)",
+    )
     parser.add_argument("--judge", action="store_true", help="Enable Gemini judge")
     args = parser.parse_args()
 
     import yaml
+
     with open(args.config, "r") as f:
         config = yaml.safe_load(f)
     verify_cfg = config.get("extraction", {}).get("verification", {})
@@ -239,6 +251,7 @@ def main():
     embed_fn = None
     try:
         from fastembed import TextEmbedding
+
         _emb_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
 
         def _embed_fn(text: str) -> list:
@@ -256,6 +269,7 @@ def main():
 
     # Build style profile for condition B
     from translator_memory_engine.memory.style_bank import build_style_bank
+
     raw_profile = build_style_bank(ref_chapters)
     stats_line = raw_profile[-1] if raw_profile and raw_profile[-1].startswith("Measured") else None
     bank_excerpts = [e for e in raw_profile if e != stats_line]
@@ -273,6 +287,7 @@ def main():
         )
         from openai import OpenAI
         from dotenv import load_dotenv
+
         load_dotenv()
         api_key = os.environ.get(api_key_env, "")
         if api_key:
@@ -299,17 +314,22 @@ def main():
         mtl_text = mtl_index[ch_num]
         orig_text = orig_index.get(ch_num)
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Chapter {ch_num}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         ch_results = {}
 
         # Condition A: Baseline
         print(f"  Running condition A (baseline)...")
         gen_a = run_condition_a(
-            mtl_text, orig_text, args.policies, glossary,
-            model, base_url, api_key_env,
+            mtl_text,
+            orig_text,
+            args.policies,
+            glossary,
+            model,
+            base_url,
+            api_key_env,
         )
         ch_results["A"] = {
             "output": gen_a,
@@ -320,8 +340,14 @@ def main():
         # Condition B: +Qualitative
         print(f"  Running condition B (+qualitative)...")
         gen_b = run_condition_b(
-            mtl_text, orig_text, args.policies, glossary,
-            model, base_url, api_key_env, style_profile_b,
+            mtl_text,
+            orig_text,
+            args.policies,
+            glossary,
+            model,
+            base_url,
+            api_key_env,
+            style_profile_b,
         )
         ch_results["B"] = {
             "output": gen_b,
@@ -332,8 +358,15 @@ def main():
         # Condition C: +Exemplars
         print(f"  Running condition C (+exemplars)...")
         gen_c = run_condition_c(
-            mtl_text, orig_text, args.policies, glossary,
-            model, base_url, api_key_env, exemplar_index, embed_fn,
+            mtl_text,
+            orig_text,
+            args.policies,
+            glossary,
+            model,
+            base_url,
+            api_key_env,
+            exemplar_index,
+            embed_fn,
         )
         ch_results["C"] = {
             "output": gen_c,
@@ -344,9 +377,17 @@ def main():
         # Condition D: +Tendencies + Stylometry
         print(f"  Running condition D (+tendencies + stylometry)...")
         gen_d = run_condition_d(
-            mtl_text, orig_text, args.policies, glossary,
-            model, base_url, api_key_env, exemplar_index, embed_fn,
-            tendencies, diagnostics,
+            mtl_text,
+            orig_text,
+            args.policies,
+            glossary,
+            model,
+            base_url,
+            api_key_env,
+            exemplar_index,
+            embed_fn,
+            tendencies,
+            diagnostics,
         )
         ch_results["D"] = {
             "output": gen_d,
@@ -373,7 +414,9 @@ def main():
                 "cosine_delta": m.get("cosine_delta"),
                 "cosine_norm_delta": round(
                     m.get("cosine_norm_gen_orig", 0) - m.get("cosine_norm_mtl_orig", 0), 4
-                ) if m.get("cosine_norm_gen_orig") is not None else None,
+                )
+                if m.get("cosine_norm_gen_orig") is not None
+                else None,
                 "novel_persons": m.get("faith", {}).get("novel_person_count", 0),
                 "intrusion": m.get("faith", {}).get("intrusion_score", 0),
                 "voice_richness_gen": m.get("voice_richness_gen"),
@@ -385,10 +428,12 @@ def main():
     print(f"\nSummary written to: {summary_path}")
 
     # Print comparison table
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"COMPARISON TABLE")
-    print(f"{'='*80}")
-    print(f"{'Ch':>4} {'Cond':>5} {'CosΔ':>8} {'NormΔ':>8} {'NovelP':>7} {'Intr':>6} {'VR_gen':>7} {'VR_orig':>7}")
+    print(f"{'=' * 80}")
+    print(
+        f"{'Ch':>4} {'Cond':>5} {'CosΔ':>8} {'NormΔ':>8} {'NovelP':>7} {'Intr':>6} {'VR_gen':>7} {'VR_orig':>7}"
+    )
     print(f"-" * 80)
     for ch_num in sorted(results.keys()):
         for cond in ["A", "B", "C", "D"]:
@@ -402,7 +447,9 @@ def main():
             vr_gen = m.get("voice_richness_gen", "N/A")
             vr_orig = m.get("voice_richness_orig", "N/A")
             cos_str = f"{cos_d:+.4f}" if isinstance(cos_d, float) else cos_d
-            print(f"{ch_num:>4} {cond:>5} {cos_str:>8} {norm_d:>8} {novel:>7} {intr:>6} {vr_gen:>7} {vr_orig:>7}")
+            print(
+                f"{ch_num:>4} {cond:>5} {cos_str:>8} {norm_d:>8} {novel:>7} {intr:>6} {vr_gen:>7} {vr_orig:>7}"
+            )
 
 
 if __name__ == "__main__":

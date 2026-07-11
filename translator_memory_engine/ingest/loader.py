@@ -6,14 +6,14 @@ from typing import List, Optional
 
 from translator_memory_engine.models import Chapter
 
-CHAPTER_MARKER = re.compile(r'(?i)^\\s*(chapter|ch)\\.?\\s*\\d+')
+CHAPTER_MARKER = re.compile(r"(?i)^\\s*(chapter|ch)\\.?\\s*\\d+")
 STRIP_PATTERNS = [
-    re.compile(r'(?i)translator\'?s?\s*notes?.*', re.DOTALL),
-    re.compile(r'(?i)editor\'?s?\s*notes?.*', re.DOTALL),
+    re.compile(r"(?i)translator\'?s?\s*notes?.*", re.DOTALL),
+    re.compile(r"(?i)editor\'?s?\s*notes?.*", re.DOTALL),
 ]
 
 # Pattern to extract the chapter number from a chapter header
-_CHAPTER_NUM = re.compile(r'(?i)(?:chapter|ch)\.?\s*(\d+)')
+_CHAPTER_NUM = re.compile(r"(?i)(?:chapter|ch)\.?\s*(\d+)")
 
 
 class _TextExtractor(HTMLParser):
@@ -82,8 +82,14 @@ def _load_txt(path: str, marker: re.Pattern, strip_patterns: List[re.Pattern]) -
         if m:
             title = m.group(0).strip()
         chapter_num = _extract_chapter_number(chunk, fallback=i)
-        chapters.append(Chapter(chapter=chapter_num, title=title, text=chunk,
-                                paragraphs=[p for p in chunk.split("\n") if p.strip()]))
+        chapters.append(
+            Chapter(
+                chapter=chapter_num,
+                title=title,
+                text=chunk,
+                paragraphs=[p for p in chunk.split("\n") if p.strip()],
+            )
+        )
     return chapters
 
 
@@ -105,13 +111,20 @@ def _load_epub(path: str, marker: re.Pattern, strip_patterns: List[re.Pattern]) 
         if m:
             title = m.group(0).strip()
         chapter_num = _extract_chapter_number(chunk, fallback=i)
-        chapters.append(Chapter(chapter=chapter_num, title=title, text=chunk,
-                                paragraphs=[p for p in chunk.split("\n") if p.strip()]))
+        chapters.append(
+            Chapter(
+                chapter=chapter_num,
+                title=title,
+                text=chunk,
+                paragraphs=[p for p in chunk.split("\n") if p.strip()],
+            )
+        )
     return chapters
 
 
-def load_corpus(input_dir: str, chapter_marker: str,
-                strip_patterns: Optional[List[str]] = None) -> List[Chapter]:
+def load_corpus(
+    input_dir: str, chapter_marker: str, strip_patterns: Optional[List[str]] = None
+) -> List[Chapter]:
     marker = re.compile(chapter_marker)
     strips = [re.compile(p) for p in (strip_patterns or [])]
     chapters: List[Chapter] = []

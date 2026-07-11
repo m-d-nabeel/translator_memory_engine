@@ -54,14 +54,16 @@ class TestScoring:
 
     def test_confidence_basic(self):
         scores = {"frequency": 0.5, "consistency": 1.0, "context": 1.0}
-        conf = compute_confidence(scores, base=0.5, per_occurrence=0.03,
-                                  occurrence_count=10, cap=0.99)
+        conf = compute_confidence(
+            scores, base=0.5, per_occurrence=0.03, occurrence_count=10, cap=0.99
+        )
         assert 0.5 < conf <= 0.99
 
     def test_confidence_cap(self):
         scores = {"frequency": 1.0, "consistency": 1.0, "context": 1.0}
-        conf = compute_confidence(scores, base=0.5, per_occurrence=0.1,
-                                  occurrence_count=100, cap=0.99)
+        conf = compute_confidence(
+            scores, base=0.5, per_occurrence=0.1, occurrence_count=100, cap=0.99
+        )
         assert conf == 0.99
 
     def test_consistency_penalizes(self):
@@ -77,23 +79,36 @@ class TestMiner:
         """Signals simulating 'Dominic' appearing across 5 chapters."""
         signals = []
         for ch in range(1, 6):
-            signals.append(Signal(
-                text="Dominic", chapter=ch, type="entity",
-                context=f"Dominic did something in chapter {ch}.",
-                extractor="entity.single_cap",
-            ))
+            signals.append(
+                Signal(
+                    text="Dominic",
+                    chapter=ch,
+                    type="entity",
+                    context=f"Dominic did something in chapter {ch}.",
+                    extractor="entity.single_cap",
+                )
+            )
         # Add a variant
-        signals.append(Signal(
-            text="dominic", chapter=1, type="entity",
-            context="dominic was there.", extractor="entity.single_cap",
-        ))
+        signals.append(
+            Signal(
+                text="dominic",
+                chapter=1,
+                type="entity",
+                context="dominic was there.",
+                extractor="entity.single_cap",
+            )
+        )
         # Add another entity with fewer appearances
         for ch in [1, 3]:
-            signals.append(Signal(
-                text="Ian", chapter=ch, type="entity",
-                context=f"Ian was in chapter {ch}.",
-                extractor="entity.single_cap",
-            ))
+            signals.append(
+                Signal(
+                    text="Ian",
+                    chapter=ch,
+                    type="entity",
+                    context=f"Ian was in chapter {ch}.",
+                    extractor="entity.single_cap",
+                )
+            )
         return signals
 
     def test_produces_policies(self):
@@ -118,8 +133,9 @@ class TestMiner:
 
     def test_assigns_deterministic_mode(self):
         signals = self._make_signals()
-        policies = mine_policies(signals, total_chapters=10, min_support=1,
-                                 deterministic_threshold=0.7)
+        policies = mine_policies(
+            signals, total_chapters=10, min_support=1, deterministic_threshold=0.7
+        )
         for p in policies:
             if p.confidence >= 0.7:
                 assert p.applies == "deterministic"
@@ -146,30 +162,39 @@ class TestRegressionFixes:
         signals = []
         for ch, texts in texts_by_chapter.items():
             for t in texts:
-                signals.append(Signal(
-                    text=t, chapter=ch, type="entity",
-                    context=f"{t} appeared.", extractor="ner.spacy",
-                ))
+                signals.append(
+                    Signal(
+                        text=t,
+                        chapter=ch,
+                        type="entity",
+                        context=f"{t} appeared.",
+                        extractor="ner.spacy",
+                    )
+                )
         return signals
 
     def test_ner_generic_nouns_dropped(self):
         # spaCy NER mislabels common nouns as entities; the rules backend must drop them.
-        signals = self._signals({
-            1: ["Earth", "Rice", "Magic"],
-            2: ["Earth", "Cook", "Village"],
-            3: ["Wizard", "Rice"],
-        })
+        signals = self._signals(
+            {
+                1: ["Earth", "Rice", "Magic"],
+                2: ["Earth", "Cook", "Village"],
+                3: ["Wizard", "Rice"],
+            }
+        )
         policies = mine_policies(signals, total_chapters=5, min_support=2)
         triggers = {p.trigger for p in policies}
         assert not (triggers & {"Earth", "Rice", "Magic", "Cook", "Village", "Wizard"})
 
     def test_word_order_variants_merged(self):
         # "Sinclair Count" and "Count Sinclair" are the same entity in different word order.
-        signals = self._signals({
-            1: ["Count Sinclair", "Sinclair Count"],
-            2: ["Count Sinclair"],
-            3: ["Count Sinclair", "Sinclair Count"],
-        })
+        signals = self._signals(
+            {
+                1: ["Count Sinclair", "Sinclair Count"],
+                2: ["Count Sinclair"],
+                3: ["Count Sinclair", "Sinclair Count"],
+            }
+        )
         policies = mine_policies(signals, total_chapters=5, min_support=2)
         triggers = {p.trigger for p in policies}
         assert "Sinclair Count" not in triggers
@@ -178,10 +203,12 @@ class TestRegressionFixes:
     def test_title_prefix_not_penalized_as_canonical(self):
         # "Count Sinclair" must beat the word-order variant "Sinclair Count" as canonical,
         # even though "Count" is in the stop-word list (it is a legitimate title prefix).
-        signals = self._signals({
-            1: ["Count Sinclair"] * 5 + ["Sinclair Count"],
-            2: ["Count Sinclair"] * 5,
-        })
+        signals = self._signals(
+            {
+                1: ["Count Sinclair"] * 5 + ["Sinclair Count"],
+                2: ["Count Sinclair"] * 5,
+            }
+        )
         policies = mine_policies(signals, total_chapters=5, min_support=2)
         sinclair = [p for p in policies if p.trigger == "Count Sinclair"]
         assert sinclair, "Count Sinclair should be the canonical form"
@@ -189,11 +216,13 @@ class TestRegressionFixes:
 
     def test_bare_surname_flagged_for_review(self):
         # "Sinclair" alone is a redundant subset of "Count Sinclair" -> flag, don't drop blindly.
-        signals = self._signals({
-            1: ["Count Sinclair", "Sinclair"],
-            2: ["Count Sinclair", "Sinclair"],
-            3: ["Count Sinclair"],
-        })
+        signals = self._signals(
+            {
+                1: ["Count Sinclair", "Sinclair"],
+                2: ["Count Sinclair", "Sinclair"],
+                3: ["Count Sinclair"],
+            }
+        )
         policies = mine_policies(signals, total_chapters=5, min_support=2)
         sinclair_bare = [p for p in policies if p.trigger == "Sinclair"]
         assert sinclair_bare
@@ -202,10 +231,12 @@ class TestRegressionFixes:
 
     def test_fragment_alias_dropped(self):
         # "Behind Dominic" is a sentence fragment, not a name variant of "Chief Dominic".
-        signals = self._signals({
-            1: ["Chief Dominic", "Behind Dominic"],
-            2: ["Chief Dominic"],
-        })
+        signals = self._signals(
+            {
+                1: ["Chief Dominic", "Behind Dominic"],
+                2: ["Chief Dominic"],
+            }
+        )
         policies = mine_policies(signals, total_chapters=5, min_support=2)
         chief = [p for p in policies if p.trigger == "Chief Dominic"]
         assert chief
@@ -217,13 +248,15 @@ class TestRegressionFixes:
         # are distinct clusters (edit distance > 0.3) and get flagged/dropped,
         # but the standalone name CALRON must still survive as its own policy.
         # Regression guard: never drop the person just because fragments exist.
-        signals = self._signals({
-            1: ["Calron"] * 3 + ["Hearing Calron", "Ignoring Calron"],
-            2: ["Calron"] * 3 + ["Hearing Calron"],
-            3: ["Calron"] * 3 + ["Ignoring Calron"],
-            4: ["Calron"] * 3,
-            5: ["Calron"] * 3,
-        })
+        signals = self._signals(
+            {
+                1: ["Calron"] * 3 + ["Hearing Calron", "Ignoring Calron"],
+                2: ["Calron"] * 3 + ["Hearing Calron"],
+                3: ["Calron"] * 3 + ["Ignoring Calron"],
+                4: ["Calron"] * 3,
+                5: ["Calron"] * 3,
+            }
+        )
         policies = mine_policies(signals, total_chapters=5, min_support=2)
         triggers = {p.trigger for p in policies}
         assert "Calron" in triggers, "The real character name Calron must never be lost"

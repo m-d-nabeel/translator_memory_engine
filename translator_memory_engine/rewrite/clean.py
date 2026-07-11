@@ -36,10 +36,7 @@ def clean_mtl_artifacts(text: str) -> str:
     corpus used for extraction — the gold text must stay pristine.
     """
     # Drop whole lines that are just a watermark marker.
-    lines = [
-        ln for ln in text.split("\n")
-        if not _WATERMARK.search(ln)
-    ]
+    lines = [ln for ln in text.split("\n") if not _WATERMARK.search(ln)]
     cleaned = "\n".join(lines)
     # Also catch any inline watermark fragment that survived (e.g. mid-line).
     cleaned = _WATERMARK.sub("", cleaned)

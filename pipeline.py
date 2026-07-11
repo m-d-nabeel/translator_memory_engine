@@ -79,7 +79,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
     ingest_cfg = config.get("ingest", {})
     chapters = load_corpus(
         args.corpus_dir,
-        chapter_marker=ingest_cfg.get("chapter_marker", r'(?i)^\s*(chapter|ch)\.?\s*\d+'),
+        chapter_marker=ingest_cfg.get("chapter_marker", r"(?i)^\s*(chapter|ch)\.?\s*\d+"),
         strip_patterns=ingest_cfg.get("strip_patterns"),
     )
 
@@ -88,7 +88,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
         print("  No chapter markers found. Treating each file as one chapter.")
         chapters = load_corpus(
             args.corpus_dir,
-            chapter_marker=r'^#\s+Chapter\s+\d+',  # Try markdown-style headers
+            chapter_marker=r"^#\s+Chapter\s+\d+",  # Try markdown-style headers
             strip_patterns=ingest_cfg.get("strip_patterns"),
         )
 
@@ -149,8 +149,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
         # backend, but ONLY for policies flagged for review (ambiguous / low
         # confidence). Obvious entities don't need their sentences sent (PLAN.md §3).
         context_map = {
-            p.trigger: " | ".join(p.contexts[:3])
-            for p in policies if p.contexts and p.needs_review
+            p.trigger: " | ".join(p.contexts[:3]) for p in policies if p.contexts and p.needs_review
         }
         policies = verifier.verify_policies(
             policies,
@@ -161,9 +160,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
         # example sentences AND related/overlapping policies so it can resolve
         # them (MERGE/KEEP/DROP/RETYPE) without a human in the loop.
         if verify_backend == "llm":
-            needs_review_before = sum(
-                1 for p in policies if getattr(p, "needs_review", False)
-            )
+            needs_review_before = sum(1 for p in policies if getattr(p, "needs_review", False))
             policies = verifier.review_ambiguous(
                 policies,
                 context_map=context_map,
@@ -178,7 +175,8 @@ def cmd_extract(args: argparse.Namespace) -> None:
     policy_type_counts = Counter(p.type for p in policies)
     applies_counts = Counter(p.applies for p in policies)
     review_count = sum(
-        1 for p in policies
+        1
+        for p in policies
         if getattr(p, "needs_review", False) and not getattr(p, "llm_rejected", False)
     )
     rejected_count = sum(1 for p in policies if getattr(p, "llm_rejected", False))
@@ -194,7 +192,9 @@ def cmd_extract(args: argparse.Namespace) -> None:
         print(f"  Avg confidence: {avg_conf:.3f}")
         print(f"  Low confidence (<0.6): {low_conf}")
         print(f"  Flagged for review:   {review_count}")
-        print(f"  LLM-rejected (DROP):  {rejected_count}  (retained for review, excluded from glossary)")
+        print(
+            f"  LLM-rejected (DROP):  {rejected_count}  (retained for review, excluded from glossary)"
+        )
 
     # --- Step 4: Store ---
     store = PolicyStore()
@@ -213,9 +213,9 @@ def cmd_extract(args: argparse.Namespace) -> None:
     print(f"  Glossary written to: {glossary_path}")
 
     # --- Summary ---
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("M0 Extraction Summary")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"  Chapters:           {len(chapters)}")
     print(f"  Signals:            {len(signals)}")
     print(f"  Policies:           {len(policies)}")
@@ -227,7 +227,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
         print(f"  Avg confidence:     {avg_conf:.3f}")
         print(f"  Low confidence:     {low_conf}")
     print(f"  Output:             {output_dir}/")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 def cmd_rewrite(args: argparse.Namespace) -> None:
@@ -254,14 +254,18 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
             build_style_bank,
             retrieve_style_excerpts,
         )
+
         ref_chapters = _read_text_chapters(args.reference)
         raw_profile = build_style_bank(ref_chapters)
-        stats_line = raw_profile[-1] if raw_profile and raw_profile[-1].startswith("Measured") else None
+        stats_line = (
+            raw_profile[-1] if raw_profile and raw_profile[-1].startswith("Measured") else None
+        )
         bank_excerpts = [e for e in raw_profile if e != stats_line]
 
         # Build exemplar index for embedding-based retrieval (fastembed if available)
         try:
             from fastembed import TextEmbedding
+
             _emb_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
 
             def _embed_fn(text: str) -> list:
@@ -273,14 +277,18 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
                 ref_nums,
                 embed_fn=_embed_fn,
             )
-            print(f"  Exemplar index: {len(exemplar_index.exemplars)} exemplars "
-                  f"(embedding-based retrieval)")
+            print(
+                f"  Exemplar index: {len(exemplar_index.exemplars)} exemplars "
+                f"(embedding-based retrieval)"
+            )
         except ImportError:
             print("  fastembed not available, using Jaccard fallback for exemplars")
             exemplar_index = None
 
-        print(f"  Reference dir: {args.reference} "
-              f"({len(reference_index)} originals, style bank={len(bank_excerpts)} excerpts)")
+        print(
+            f"  Reference dir: {args.reference} "
+            f"({len(reference_index)} originals, style bank={len(bank_excerpts)} excerpts)"
+        )
 
     # Load glossary for entity shielding
     glossary: Optional[List[Dict]] = None
@@ -305,7 +313,9 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     print(f"Rewriting {len(files)} MTL file(s) using {args.policies}")
-    print(f"  LLM rewrite: {'on' if (args.llm or args.reference or bank_excerpts) else 'off (pre-pass only)'}")
+    print(
+        f"  LLM rewrite: {'on' if (args.llm or args.reference or bank_excerpts) else 'off (pre-pass only)'}"
+    )
 
     from translator_memory_engine.memory.style_bank import retrieve_style_excerpts
 
@@ -326,15 +336,22 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
         if reference_text is None and bank_excerpts:
             if exemplar_index is not None:
                 chapter_style = retrieve_style_excerpts(
-                    text, bank_excerpts, k=8,
-                    exemplar_index=exemplar_index, embed_fn=_embed_fn,
+                    text,
+                    bank_excerpts,
+                    k=8,
+                    exemplar_index=exemplar_index,
+                    embed_fn=_embed_fn,
                 )
             else:
                 chapter_style = retrieve_style_excerpts(text, bank_excerpts, k=8)
             if stats_line:
                 chapter_style = chapter_style + [stats_line]
 
-        mode = "supervised_reference" if reference_text else ("unsupervised_stylebank" if chapter_style else "fallback")
+        mode = (
+            "supervised_reference"
+            if reference_text
+            else ("unsupervised_stylebank" if chapter_style else "fallback")
+        )
         use_llm = args.llm or (reference_text is not None) or (chapter_style is not None)
 
         result = rewrite_pass(
@@ -368,18 +385,20 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
 
         total_trace += result["deterministic_count"]
         total_conflicts += len(result["conflicts"])
-        print(f"  {base} [{mode}]: prepass_edits={result['deterministic_count']}, "
-              f"prompted={result['prompted_count']}, conflicts={len(result['conflicts'])} "
-              f"-> {out_path}")
+        print(
+            f"  {base} [{mode}]: prepass_edits={result['deterministic_count']}, "
+            f"prompted={result['prompted_count']}, conflicts={len(result['conflicts'])} "
+            f"-> {out_path}"
+        )
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("M1 Rewrite Summary")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"  Files rewritten:     {len(files)}")
     print(f"  Deterministic edits: {total_trace}")
     print(f"  Conflicts resolved:  {total_conflicts}")
     print(f"  Output:              {args.output}/")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 def cmd_align(args: argparse.Namespace) -> None:
@@ -405,14 +424,17 @@ def cmd_align(args: argparse.Namespace) -> None:
     canonical: List[str] = []
     if args.reference:
         from translator_memory_engine.memory.style_bank import build_style_bank
+
         style_profile = build_style_bank(_read_text_chapters(args.reference))
     if args.glossary and os.path.exists(args.glossary):
         with open(args.glossary, "r", encoding="utf-8") as f:
             glossary = json.load(f)
         canonical = [e["canonical"] for e in glossary if "canonical" in e]
 
-    print(f"Aligning {len(generated_index)} generated chapters "
-          f"(paired originals: {len(original_index)}, mtl: {len(mtl_index)})")
+    print(
+        f"Aligning {len(generated_index)} generated chapters "
+        f"(paired originals: {len(original_index)}, mtl: {len(mtl_index)})"
+    )
 
     rows = []
     paired = 0
@@ -443,6 +465,7 @@ def cmd_align(args: argparse.Namespace) -> None:
         if args.judge:
             src = orig if orig is not None else mtl
             from translator_memory_engine.eval.judge import judge_chapter
+
             res["judge"] = judge_chapter(gen, src)
         rows.append(res)
         faith = res.get("faith", {})
@@ -451,30 +474,48 @@ def cmd_align(args: argparse.Namespace) -> None:
         vr_str = f"vr_gen={vr_gen:.3f}"
         if vr_orig is not None:
             vr_str += f" vr_orig={vr_orig:.3f}"
-        print(f"  ch{num:>3} [tier{res['tier']}] novel_persons={faith.get('novel_person_count')} "
-              f"intr={faith.get('intrusion_score')} drop={faith.get('drop_score')} "
-              f"| {vr_str}  "
-              + "  ".join(f"{k}={v}" for k, v in res.items()
-                         if k not in ("chapter", "tier", "faith", "judge",
-                                      "stylometry_delta", "voice_richness_gen",
-                                      "voice_richness_orig", "voice_richness_mtl")))
+        print(
+            f"  ch{num:>3} [tier{res['tier']}] novel_persons={faith.get('novel_person_count')} "
+            f"intr={faith.get('intrusion_score')} drop={faith.get('drop_score')} "
+            f"| {vr_str}  "
+            + "  ".join(
+                f"{k}={v}"
+                for k, v in res.items()
+                if k
+                not in (
+                    "chapter",
+                    "tier",
+                    "faith",
+                    "judge",
+                    "stylometry_delta",
+                    "voice_richness_gen",
+                    "voice_richness_orig",
+                    "voice_richness_mtl",
+                )
+            )
+        )
 
     # Summary
     if paired:
         avg_delta = sum(r["delta_vs_mtl"] for r in rows if r["tier"] == 1) / paired
         wins = sum(1 for r in rows if r["tier"] == 1 and r["delta_vs_mtl"] > 0)
         avg_norm_delta = (
-            sum(r["sim_gen_orig_norm"] - r["sim_mtl_orig_norm"] for r in rows if r["tier"] == 1) / paired
+            sum(r["sim_gen_orig_norm"] - r["sim_mtl_orig_norm"] for r in rows if r["tier"] == 1)
+            / paired
         )
         avg_novel = sum(r["faith"]["novel_person_count"] for r in rows if r["tier"] == 1) / paired
         avg_vr_gen = sum(r.get("voice_richness_gen", 0) for r in rows if r["tier"] == 1) / paired
         avg_vr_orig = sum(r.get("voice_richness_orig", 0) for r in rows if r["tier"] == 1) / paired
         avg_vr_mtl = sum(r.get("voice_richness_mtl", 0) for r in rows if r["tier"] == 1) / paired
-        print(f"\nTier-1 (paired, n={paired}): avg delta vs MTL = {avg_delta:+.4f}, "
-              f"closer in {wins}/{paired}; name-norm delta = {avg_norm_delta:+.4f}; "
-              f"avg novel persons = {avg_novel:.2f}")
-        print(f"  Voice richness: gen={avg_vr_gen:.3f}, orig={avg_vr_orig:.3f}, "
-              f"mtl={avg_vr_mtl:.3f}, delta_gen_orig={avg_vr_gen - avg_vr_orig:+.3f}")
+        print(
+            f"\nTier-1 (paired, n={paired}): avg delta vs MTL = {avg_delta:+.4f}, "
+            f"closer in {wins}/{paired}; name-norm delta = {avg_norm_delta:+.4f}; "
+            f"avg novel persons = {avg_novel:.2f}"
+        )
+        print(
+            f"  Voice richness: gen={avg_vr_gen:.3f}, orig={avg_vr_orig:.3f}, "
+            f"mtl={avg_vr_mtl:.3f}, delta_gen_orig={avg_vr_gen - avg_vr_orig:+.3f}"
+        )
         # Stylometry delta summary
         all_sdelta_keys: set = set()
         for r in rows:
@@ -483,20 +524,27 @@ def cmd_align(args: argparse.Namespace) -> None:
         if all_sdelta_keys:
             parts = []
             for k in sorted(all_sdelta_keys):
-                vals = [r["stylometry_delta"].get(k, 0) for r in rows
-                        if r["tier"] == 1 and "stylometry_delta" in r]
+                vals = [
+                    r["stylometry_delta"].get(k, 0)
+                    for r in rows
+                    if r["tier"] == 1 and "stylometry_delta" in r
+                ]
                 avg = sum(vals) / len(vals) if vals else 0
                 parts.append(f"{k}={avg:.3f}")
             print(f"  Stylometry delta: {'; '.join(parts)}")
     if unpaired:
-        adh = [r["name_adherence"] for r in rows if r["tier"] == 2 and r["name_adherence"] is not None]
+        adh = [
+            r["name_adherence"] for r in rows if r["tier"] == 2 and r["name_adherence"] is not None
+        ]
         avg_adh = (sum(adh) / len(adh)) if adh else None
         avg_novel = sum(r["faith"]["novel_person_count"] for r in rows if r["tier"] == 2) / unpaired
         avg_intr = sum(r["faith"]["intrusion_score"] for r in rows if r["tier"] == 2) / unpaired
         avg_vr_gen = sum(r.get("voice_richness_gen", 0) for r in rows if r["tier"] == 2) / unpaired
-        print(f"Tier-2 (unpaired, n={unpaired}): avg name adherence = "
-              f"{avg_adh if avg_adh is None else round(avg_adh, 4)}; "
-              f"avg novel persons = {avg_novel:.2f}; avg intrusion = {avg_intr:.2f}")
+        print(
+            f"Tier-2 (unpaired, n={unpaired}): avg name adherence = "
+            f"{avg_adh if avg_adh is None else round(avg_adh, 4)}; "
+            f"avg novel persons = {avg_novel:.2f}; avg intrusion = {avg_intr:.2f}"
+        )
         print(f"  Voice richness: gen={avg_vr_gen:.3f}")
 
     if args.report:
@@ -521,12 +569,14 @@ def main() -> None:
         help="Directory containing good-translation chapter files (txt/epub)",
     )
     extract_parser.add_argument(
-        "--config", "-c",
+        "--config",
+        "-c",
         default="config.yaml",
         help="Path to config file (default: config.yaml)",
     )
     extract_parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         default="outputs",
         help="Output directory (default: outputs/)",
     )
@@ -553,17 +603,20 @@ def main() -> None:
         help="MTL chapter file or directory of chapter files (txt)",
     )
     rewrite_parser.add_argument(
-        "--policies", "-p",
+        "--policies",
+        "-p",
         default="outputs/policies.jsonl",
         help="Path to mined policies.jsonl (default: outputs/policies.jsonl)",
     )
     rewrite_parser.add_argument(
-        "--config", "-c",
+        "--config",
+        "-c",
         default="config.yaml",
         help="Path to config file (default: config.yaml)",
     )
     rewrite_parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         default="outputs",
         help="Output directory (default: outputs/)",
     )
@@ -574,17 +627,19 @@ def main() -> None:
         help="Call the LLM to rewrite the pre-passed text (else pre-pass only)",
     )
     rewrite_parser.add_argument(
-        "--reference", "-r",
+        "--reference",
+        "-r",
         default=None,
         help="Directory of published original chapters. Chapters are matched by "
-             "number; ones without an original fall back to the learned style bank "
-             "(unsupervised mode). Forces the LLM on.",
+        "number; ones without an original fall back to the learned style bank "
+        "(unsupervised mode). Forces the LLM on.",
     )
     rewrite_parser.add_argument(
-        "--glossary", "-g",
+        "--glossary",
+        "-g",
         default=None,
         help="Path to glossary.json. When provided, glossary entries are shielded "
-             "(replaced with placeholders) during LLM rewrite to prevent name mangling.",
+        "(replaced with placeholders) during LLM rewrite to prevent name mangling.",
     )
 
     # align command (M2 evaluation, D11-independent)
@@ -597,27 +652,32 @@ def main() -> None:
         help="Directory of generated (repaired) chapter files (.txt)",
     )
     align_parser.add_argument(
-        "--original", "-g",
+        "--original",
+        "-g",
         default=None,
         help="Directory of published original chapters (Tier-1 paired eval)",
     )
     align_parser.add_argument(
-        "--mtl", "-m",
+        "--mtl",
+        "-m",
         default=None,
         help="Directory of raw MTL chapters (benchmark vs generated)",
     )
     align_parser.add_argument(
-        "--reference", "-r",
+        "--reference",
+        "-r",
         default=None,
         help="Directory of good-translation chapters (builds the style bank for Tier-2)",
     )
     align_parser.add_argument(
-        "--glossary", "-p",
+        "--glossary",
+        "-p",
         default=None,
         help="Path to glossary.json (canonical names for Tier-2 adherence)",
     )
     align_parser.add_argument(
-        "--report", "-o",
+        "--report",
+        "-o",
         default=None,
         help="Write the per-chapter alignment rows as JSON to this path",
     )
@@ -626,7 +686,7 @@ def main() -> None:
         action="store_true",
         default=False,
         help="Enable the independent Gemini judge (different model family) to score "
-             "faithfulness/fluency 0-5 on each chapter. Off by default (costs API calls).",
+        "faithfulness/fluency 0-5 on each chapter. Off by default (costs API calls).",
     )
 
     args = parser.parse_args()

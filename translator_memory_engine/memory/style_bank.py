@@ -127,7 +127,8 @@ _STOP = set(
 
 _ONOM = re.compile(
     r"\b(pak|thud|crash|bang|boom|splat|whack|smack|gasp|huff|snarl|growl|clang|"
-    r"screech|squelch|thwack|whoosh|ugh|argh|grr|hmm|pfft|clack|creak)\b", re.I
+    r"screech|squelch|thwack|whoosh|ugh|argh|grr|hmm|pfft|clack|creak)\b",
+    re.I,
 )
 
 
