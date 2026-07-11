@@ -194,25 +194,16 @@ Per-chapter rewrite:
 
 ## Data Layout
 
-### Default template structure
-
 ```
 data/
-  originals/          # Place original translations here (.txt or .epub)
-  mtl/                # Place MTL chapters to rewrite here
-  output/             # Rewritten chapters will be saved here
-  policies/           # Extracted policies will be saved here
-  known_errors.json   # MTL error corrections (Korean → English)
+  originals/          # Original translations (gitignored, add your own)
+  mtl/                # MTL chapters to rewrite (gitignored, add your own)
+  output/             # Rewritten chapters (gitignored, auto-generated)
+  policies/           # Extracted policies (gitignored, auto-generated)
+  known_errors.json   # MTL error corrections (tracked in git)
 ```
 
-### Test dataset
-
-```
-test-dataset/
-  feasting-lord-in-another-world/          # Original translations (ch 1-39)
-  feasting-lord-in-another-world-input/    # MTL chapters (ch 1-5, 039-041)
-  feasting-lord-in-another-world-output/   # Generated output
-```
+**Note:** The data files are gitignored to keep the repository clean. The directory structure is preserved with `.gitkeep` files. To use the engine, place your data in the appropriate directories.
 
 ## Project Structure
 
@@ -228,8 +219,12 @@ translator_memory_engine/
   ingest/             # Corpus loading (txt, epub)
 pipeline.py           # CLI entry point
 scripts/              # Experiment scripts
-data/                 # Known errors, template directories
-outputs/              # Generated outputs (gitignored)
+data/                 # Data directory (gitignored except known_errors.json)
+  originals/          # Original translations
+  mtl/                # MTL chapters to rewrite
+  output/             # Rewritten chapters
+  policies/           # Extracted policies
+  known_errors.json   # MTL error corrections
 ```
 
 ## Development
