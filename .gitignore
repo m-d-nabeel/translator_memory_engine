@@ -24,3 +24,4 @@ data/policies/*
 *.db
 !data/known_errors.json
 !data/*/.gitkeep
+logs/
