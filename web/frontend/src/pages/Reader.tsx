@@ -126,8 +126,13 @@ export function Reader() {
         chapterData?.status === "failed" ||
         chapter?.status === "completed" ||
         chapter?.status === "failed";
-      if (isDone && Date.now() - processingTriggeredAt > 2000) {
-        setProcessingTriggeredAt(null);
+      if (isDone) {
+        const elapsed = Date.now() - processingTriggeredAt;
+        const delay = Math.max(0, 2000 - elapsed);
+        const timer = setTimeout(() => {
+          setProcessingTriggeredAt(null);
+        }, delay);
+        return () => clearTimeout(timer);
       }
     }
   }, [chapterData?.status, chapter?.status, processingTriggeredAt]);
