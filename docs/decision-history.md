@@ -396,3 +396,20 @@ The known error dictionary provides the missing context.
 - **Rejected Story Memory/Graphs:** Too brittle; novel world states are too fluid for rigid graph databases without massive hallucination risks.
 - **Rejected Context-Dependent Resolution & Pattern Mining:** Solving speaker attribution deterministically is an unsolved NLP problem; automated LLM pattern mining yields low-quality rules. Let the LLM handle context at runtime and let users curate stylistic rules manually.
 - **Accepted:** We will only pursue (1) Manual Language Memory Example Banks (allowing users to save style snippets in the UI to inject into prompts) and (2) Modular Entity Validators (cheap regex/string checks to ensure canonical names survived the LLM rewrite). Low-Confidence UI management was also removed from the plan because it has already been fully implemented.
+
+---
+
+## D17 — Entity Resolution Architecture & Rejected Approaches (Critical Engineering Review)
+
+**Context:** During automated character lore extraction across 100+ chapters, the engine produced fragmented duplicate records for identical characters (`Perot` vs `Wizard Perot` vs `Perrot`; `Dominic` vs `Village Chief`). We evaluated options for coreference resolution and alias clustering across long-form narratives.
+**Decision:** We conducted a rigorous Critical Engineering Review (`Option A` vs `Option B` vs `Option C` + Contextual Evidence Snippets) and established our Entity Resolution architecture while rejecting high-risk online approaches.
+
+- **Rejected Option A (In-Flight Online Context Registry):** We rejected injecting the global list of known characters (`50–150+ entries`) into `extract_chapter_lore` for every chapter. Why:
+  1. **Quadratic Token Bloat:** $O(N_{\text{chapters}} \times N_{\text{entities}})$ context bloating causes massive API costs and attention degradation.
+  2. **Order-Dependent Drift & Hallucinations:** Online extraction forces immediate merge decisions based on limited context, risking false-positive merges (`Count Sinclair` vs `Count Noella` or `Laki's Father` vs `Dominic`) that become permanently tangled in the database.
+- **Rejected Brute-Force Pairwise LLM Deduplication ($O(N^2)$):** We rejected running pairwise LLM comparisons across all extracted entities without pre-filtering.
+- **Accepted Hybrid Entity Resolution Pipeline (`Evidence -> Inference -> Policy`):**
+  - **Stage 1 (Manual UI Merge Foundation):** `POST /api/v1/novels/{id}/policies/merge` + `Link / Merge Alias 🔗` UI action (`LoreTab.tsx`). Atomically merges `GlossaryEntry` and `Policy`, combines `match_forms` / `aliases`, and marks absorbed duplicate rows `llm_rejected=True` (`verifier.py:438` pattern).
+  - **Stage 2C (Evidence Extraction at Source):** Update `extract_chapter_lore` (`lore.py`) prompt to require `introduction_context` (a 1-2 sentence verbatim quote introducing or showing the character in action right during extraction). Add `evidence_contexts` column (`Text`) to `GlossaryEntry` and cap `Policy.contexts` at 5 sentences.
+  - **Stage 2A & 2B (Semantic Blocking + Interactive Verification Modal):** Upgrade `_cluster_variants` (`miner.py`) to check **Substring Containment** (`Wizard Perot` contains `Perot`) + **Token Intersection** ($\ge 4$ chars) alongside normalized Levenshtein edit distance ($\le 0.3$). Add a `Detect Duplicates` modal (`LoreTab.tsx`) displaying candidate clusters side-by-side with verbatim `evidence_contexts` quotes so human verification takes seconds (`[Approve Merge] / [Dismiss]`).
+  - **Stage 3 (Contextual Title Rendering):** Structure `context_relations` inside `Policy` so the translation shielding engine (`shield_entities`) knows when to render `Village Chief` vs `Dominic` based on speaker context.
