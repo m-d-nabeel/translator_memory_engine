@@ -8,7 +8,7 @@ from logging.handlers import RotatingFileHandler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from web.backend.api import chapters, jobs, novels, policies
+from web.backend.api import chapters, jobs, novels, policies, style
 from web.backend.config import settings
 from web.backend.db.database import init_db
 
@@ -49,6 +49,7 @@ app.add_middleware(
 app.include_router(novels.router)
 app.include_router(chapters.router)
 app.include_router(policies.router)
+app.include_router(style.router)
 app.include_router(jobs.router)
 
 

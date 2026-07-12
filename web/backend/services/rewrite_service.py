@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from web.backend.config import settings
 from web.backend.db.converters import db_glossary_to_list, db_policies_to_list
-from web.backend.db.models import Chapter, GlossaryEntry, Novel, Policy, ProcessingJob
+from web.backend.db.models import Chapter, GlossaryEntry, Novel, Policy, ProcessingJob, StyleSnippet
 
 logger = logging.getLogger(__name__)
 
@@ -83,9 +83,14 @@ async def rewrite_chapter(
         glossary_data = db_glossary_to_list(db_glossary)
         glossary_count = len(glossary_data)
 
+        snippets_result = await db.execute(
+            select(StyleSnippet).where(StyleSnippet.novel_id == chapter.novel_id)
+        )
+        style_profile = [s.text for s in snippets_result.scalars().all()]
+
         logs.append(
-            f"{_ts()} Memory Engine loaded: {policy_count} active AI policies "
-            f"& {glossary_count} glossary terms indexed from SQLite DB."
+            f"{_ts()} Memory Engine loaded: {policy_count} active AI policies, "
+            f"{glossary_count} glossary terms, and {len(style_profile)} style snippets indexed from SQLite DB."
         )
 
         # The LLM is enabled when the caller requests it AND there are
@@ -105,16 +110,27 @@ async def rewrite_chapter(
             base_url=settings.LLM_BASE_URL,
             api_key_env=settings.LLM_API_KEY_ENV,
             do_llm=do_llm_flag,
+            style_profile=style_profile if style_profile else None,
             glossary=glossary_data,
         )
 
         det_count = result.get("deterministic_count", 0)
         prm_count = result.get("prompted_count", 0)
         mode = result.get("mode", "unknown")
+        trace = result.get("trace", [])
 
         logs.append(
             f"{_ts()} Deterministic pre-pass complete: {det_count} exact term/entity rules matched & enforced."
         )
+
+        # Run Entity Consistency Validator
+        from translator_memory_engine.validate.entity import validate_entity_consistency
+        warnings = validate_entity_consistency(result.get("rewritten_text") or "", trace)
+        if warnings:
+            chapter.warnings = json.dumps(warnings)
+            logs.append(f"{_ts()} Validation warnings: {len(warnings)} entity consistency issues detected.")
+        else:
+            chapter.warnings = None
         if do_llm_flag:
             logs.append(
                 f"{_ts()} Contextual LLM rewrite complete: {prm_count} semantic context "

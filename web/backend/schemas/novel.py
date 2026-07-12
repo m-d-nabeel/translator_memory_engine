@@ -66,6 +66,7 @@ class ChapterResponse(BaseModel):
     refined_text: str | None
     status: str
     error_message: str | None
+    warnings: str | None
     processing_time_ms: int | None
     created_at: datetime.datetime
 
@@ -78,6 +79,7 @@ class ChapterRead(BaseModel):
     raw_text: str
     refined_text: str | None
     status: str
+    source_type: str
 
     model_config = {"from_attributes": True}
 
@@ -91,6 +93,7 @@ class ChapterStatusResponse(BaseModel):
     source_type: str
     status: str
     error_message: str | None
+    warnings: str | None
     processing_time_ms: int | None
 
     model_config = {"from_attributes": True}
@@ -162,3 +165,23 @@ class PolicyUpdate(BaseModel):
     trigger: str | None = None
     replacement: str | None = None
     note: str | None = None
+
+
+class StyleSnippetCreate(BaseModel):
+    text: str
+    note: str | None = None
+
+
+class StyleSnippetUpdate(BaseModel):
+    text: str | None = None
+    note: str | None = None
+
+
+class StyleSnippetResponse(BaseModel):
+    id: int
+    novel_id: int
+    text: str
+    note: str | None
+    created_at: datetime.datetime
+
+    model_config = {"from_attributes": True}

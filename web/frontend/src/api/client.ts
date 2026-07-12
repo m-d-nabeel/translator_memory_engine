@@ -33,6 +33,7 @@ export interface Chapter {
   refined_text: string | null;
   status: string;
   error_message: string | null;
+  warnings: string | null;
   processing_time_ms: number | null;
   created_at: string;
 }
@@ -43,6 +44,7 @@ export interface ChapterRead {
   raw_text: string;
   refined_text: string | null;
   status: string;
+  source_type: string;
 }
 
 export interface ReadableChapter {
@@ -79,6 +81,14 @@ export interface GlossaryEntry {
   aliases: string;
   entity_type: string | null;
   confidence: number | null;
+  created_at: string;
+}
+
+export interface StyleSnippet {
+  id: number;
+  novel_id: number;
+  text: string;
+  note: string | null;
   created_at: string;
 }
 
@@ -185,4 +195,28 @@ export const api = {
     request<ProcessingJob[]>(`/jobs/chapter/${chapterId}`),
   listNovelJobs: (novelId: number) =>
     request<ProcessingJob[]>(`/jobs/novel/${novelId}`),
+
+  listStyleSnippets: (novelId: number) =>
+    request<StyleSnippet[]>(`/novels/${novelId}/style-snippets`),
+  createStyleSnippet: (
+    novelId: number,
+    data: { text: string; note?: string },
+  ) =>
+    request<StyleSnippet>(`/novels/${novelId}/style-snippets`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateStyleSnippet: (
+    novelId: number,
+    snippetId: number,
+    data: { text?: string; note?: string },
+  ) =>
+    request<StyleSnippet>(`/novels/${novelId}/style-snippets/${snippetId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteStyleSnippet: (novelId: number, snippetId: number) =>
+    request<{ status: string }>(`/novels/${novelId}/style-snippets/${snippetId}`, {
+      method: "DELETE",
+    }),
 };

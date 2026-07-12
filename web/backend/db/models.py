@@ -44,6 +44,7 @@ class Chapter(Base):
     refined_text = Column(Text, nullable=True)
     status = Column(String, nullable=False, default="unprocessed")
     error_message = Column(Text, nullable=True)
+    warnings = Column(Text, nullable=True)  # JSON array
     processing_time_ms = Column(Integer, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
 
@@ -92,6 +93,18 @@ class GlossaryEntry(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
 
     novel = relationship("Novel", back_populates="glossary_entries")
+
+
+class StyleSnippet(Base):
+    __tablename__ = "style_snippets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    novel_id = Column(Integer, ForeignKey("novels.id", ondelete="CASCADE"), nullable=False)
+    text = Column(Text, nullable=False)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+
+    novel = relationship("Novel")
 
 
 class ProcessingJob(Base):

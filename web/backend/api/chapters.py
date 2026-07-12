@@ -121,8 +121,6 @@ async def chapter_neighbors(novel_id: int, chapter_id: int, db: AsyncSession = D
         .where(
             Chapter.novel_id == novel_id,
             Chapter.chapter_number < current.chapter_number,
-            Chapter.source_type == current.source_type,
-            Chapter.refined_text.isnot(None),
         )
         .order_by(Chapter.chapter_number.desc())
         .limit(1)
@@ -134,8 +132,6 @@ async def chapter_neighbors(novel_id: int, chapter_id: int, db: AsyncSession = D
         .where(
             Chapter.novel_id == novel_id,
             Chapter.chapter_number > current.chapter_number,
-            Chapter.source_type == current.source_type,
-            Chapter.refined_text.isnot(None),
         )
         .order_by(Chapter.chapter_number.asc())
         .limit(1)
@@ -230,4 +226,5 @@ async def read_chapter(chapter_id: int, db: AsyncSession = Depends(get_db)):
         raw_text=chapter.raw_text,
         refined_text=chapter.refined_text,
         status=chapter.status,
+        source_type=chapter.source_type,
     )
