@@ -456,6 +456,7 @@ async def extract_policies(
     import logging
 
     from openai import OpenAI
+    from starlette.concurrency import run_in_threadpool
 
     from translator_memory_engine.extract import extract_signals
     from translator_memory_engine.policy.miner import mine_policies
@@ -471,7 +472,7 @@ async def extract_policies(
             }
         )
 
-    signals = extract_signals(corpus_chapters, source_languages=[novel.source_language])
+    signals = await run_in_threadpool(extract_signals, corpus_chapters, [novel.source_language])
 
     # Setup LLM client for semantic verification
     try:
@@ -480,7 +481,8 @@ async def extract_policies(
         logger.warning(f"Could not instantiate OpenAI client for semantic verification: {e}")
         llm_client = None
 
-    policies = mine_policies(
+    policies = await run_in_threadpool(
+        mine_policies,
         signals,
         total_chapters=len(chapters),
         llm_client=llm_client,

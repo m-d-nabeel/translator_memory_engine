@@ -3,6 +3,7 @@ import logging
 
 from openai import OpenAI
 from sqlalchemy import select
+from starlette.concurrency import run_in_threadpool
 
 from translator_memory_engine.extract import extract_signals
 from translator_memory_engine.memory.store import PolicyStore
@@ -71,8 +72,8 @@ async def extract_policies_for_novel(novel_id: int):
             total_chapters = len(pipeline_chapters)
             logger.info(f"Loaded {total_chapters} original chapters for extraction.")
 
-            # 2. Extract signals
-            signals = extract_signals(pipeline_chapters, source_languages=[source_language])
+            # 2. Extract signals (Run in thread to prevent blocking event loop)
+            signals = await run_in_threadpool(extract_signals, pipeline_chapters, [source_language])
             logger.info(f"Extracted {len(signals)} raw signals.")
 
             # Setup LLM client for semantic verification
@@ -84,8 +85,9 @@ async def extract_policies_for_novel(novel_id: int):
                 logger.warning(f"Could not instantiate OpenAI client for semantic verification: {e}")
                 llm_client = None
 
-            # 3. Mine policies
-            policies = mine_policies(
+            # 3. Mine policies (Run in thread to prevent blocking event loop on sync HTTP calls)
+            policies = await run_in_threadpool(
+                mine_policies,
                 signals,
                 total_chapters=total_chapters,
                 min_support=2,
