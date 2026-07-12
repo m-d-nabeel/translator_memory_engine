@@ -12,6 +12,7 @@ deterministic edit for explainability.
 The LLM call reuses the OpenAI-compatible client (same backend as verification).
 """
 
+import json
 import logging
 import os
 import re
@@ -45,17 +46,18 @@ class GroqRotatingClient:
     Cycles through all keys up to ``max_rounds`` times before giving up.
     """
 
-    def __init__(self, keys: List[str], base_url: str, max_rounds: int = 3):
+    def __init__(self, keys: List[str], base_url: Optional[str] = None, max_rounds: int = 2):
         from openai import OpenAI
 
-        self._clients = [OpenAI(api_key=k, base_url=base_url) for k in keys]
+        client_kwargs: Dict[str, Any] = {"base_url": base_url} if base_url else {}
+        self._clients = [OpenAI(api_key=k, **client_kwargs) for k in keys]
         self._idx = 0
         self._max_rounds = max_rounds
         self._num_keys = len(keys)
 
     def chat_completions_create(self, **kwargs):
         """Call chat.completions.create, rotating keys on rate-limit errors."""
-        last_err = None
+        last_err: Optional[Exception] = None
         for _ in range(self._num_keys * self._max_rounds):
             try:
                 return self._clients[self._idx].chat.completions.create(**kwargs)
@@ -64,7 +66,9 @@ class GroqRotatingClient:
                 logger.warning(f"Rate limit on key #{self._idx + 1}, rotating to next key...")
                 self._idx = (self._idx + 1) % self._num_keys
                 time.sleep(5)
-        raise last_err
+        if last_err is not None:
+            raise last_err
+        raise RuntimeError("Groq rate limit retries exhausted or zero retries configured.")
 
 
 def _get_groq_keys(api_key_env: str = "LLM_API_KEY") -> List[str]:
@@ -96,8 +100,6 @@ _KNOWN_ERRORS_PATH = os.path.join(
 def _load_known_errors() -> List[Dict]:
     """Load known MTL error corrections from JSON."""
     try:
-        import json
-
         with open(_KNOWN_ERRORS_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
@@ -248,15 +250,15 @@ def _align_mtl_entities(
             ],
             temperature=0.0,
         )
-        raw = resp.choices[0].message.content.strip()
+        raw = (resp.choices[0].message.content or "").strip()
         # Strip markdown code fences if present
         raw = re.sub(r"^```[a-zA-Z]*\s*", "", raw)
         raw = re.sub(r"```\s*$", "", raw)
-        import json
-
         mapping = json.loads(raw)
+        if not isinstance(mapping, dict):
+            return {}
         # Only return valid mappings (non-null, non-identical)
-        return {k: v for k, v in mapping.items() if v and k != v}
+        return {str(k): str(v) for k, v in mapping.items() if v and k != v}
     except Exception:
         return {}
 
@@ -271,7 +273,7 @@ def _llm_complete(client, retries: int = 5, backoff: float = 15.0, **kwargs):
     if isinstance(client, GroqRotatingClient):
         return client.chat_completions_create(**kwargs)
 
-    last = None
+    last: Optional[Exception] = None
     for attempt in range(retries):
         try:
             return client.chat.completions.create(**kwargs)
@@ -280,7 +282,9 @@ def _llm_complete(client, retries: int = 5, backoff: float = 15.0, **kwargs):
             if attempt == retries - 1:
                 break
             time.sleep(backoff * (attempt + 1))
-    raise last
+    if last is not None:
+        raise last
+    raise RuntimeError("LLM completion retries exhausted or zero retries configured.")
 
 
 def _split_paragraphs(text: str) -> List[str]:
@@ -437,8 +441,11 @@ _FALLBACK_RULES = """Repair rules:
   Before preserving any sentence or exclamation verbatim, verify its Discourse Coherence against the immediate scene:
   1. Conversational Logic: If a standalone noun, exclamation, or idiom violates the conversational or emotional logic of the scene (e.g. an unrelated economic/technical noun during a physical confrontation, or a bizarre non-sequitur), recognize it as a deceptive MTL homograph/idiom artifact and repair it so it makes natural sense inside the scene's context.
   2. Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses" or bending "her own arm" while attacking an enemy), correct the pronoun logic ("so that you would come to your senses" / "bent his arm") to restore clear narrative causality.
+  3. Speaker Attribution & Sentence Ownership (Dialogue Disentanglement): Korean pro-drop grammar and MTL paragraph merging frequently cause severe sentence ownership distortions in dialogue:
+     - Merged Dialogue Turns: If two distinct characters' dialogue lines are merged into a single quotation block in the MTL (e.g., "Okay, there may be a white pigment that I don't know about. But as a dwarf, I've tried baking with all the white pigments I know..." where the first half is spoken by a human protagonist and the second half by a dwarf), you MUST disentangle and separate them into distinct dialogue turns with clear speaker attributions so sentence ownership is unmistakably clear.
+     - Misattributed Pronouns & Subjects: If a dialogue line or inner thought attributes an identity, race, or profession to the wrong speaker due to MTL pronoun dropping (e.g., a human protagonist saying "as a dwarf I tried..." or "he replied" when the person speaking is "I"), correct the pronoun and speaker attribution ("I responded, 'Okay...' Stonehammer interjected, 'But as a dwarf, I've tried...'") to ensure every sentence belongs to its rightful speaker.
 - Do NOT invent new plot events or characters. Output ONLY the repaired chapter text.
-- PRESERVE ALL PARAGRAPH BREAKS EXACTLY. Do not merge short paragraphs into blocks. Output the same number of paragraphs."""
+- PRESERVE ALL PARAGRAPH BREAKS EXACTLY across narrative paragraphs. Do not merge short paragraphs into blocks. You are permitted to split a merged dialogue paragraph when separating distinct speakers for sentence ownership clarity."""
 
 
 def build_prompt(
@@ -496,11 +503,14 @@ Repair rules:
   Machine translations frequently output grammatically valid English words that make zero logical sense inside the scene. Before preserving any sentence verbatim, verify its Discourse Coherence against the immediate scene:
   1. Conversational Logic: If a noun, exclamation, or idiom violates the conversational or emotional logic of the scene (e.g. an unrelated economic noun during a physical confrontation, or a bizarre non-sequitur), recognize it as a deceptive artifact and repair it to match (B)'s phrasing.
   2. Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses"), correct the pronoun logic to restore clear narrative causality.
+  3. Speaker Attribution & Sentence Ownership (Dialogue Disentanglement): Korean pro-drop grammar and MTL paragraph merging frequently cause severe sentence ownership distortions in dialogue:
+     - Merged Dialogue Turns: If two distinct characters' dialogue lines are merged into a single quotation block in the MTL, disentangle and separate them into distinct dialogue turns with correct speaker attributions matching (B) so sentence ownership is unmistakably clear.
+     - Misattributed Pronouns & Subjects: If a dialogue line or inner thought attributes an identity, race, or profession to the wrong speaker due to MTL pronoun dropping, correct the pronoun and speaker attribution so every sentence belongs to its rightful speaker.
 - Do NOT invent events, characters, or details absent from both (A) and (B).
-- Do NOT add speaker attributions ("he said") if neither (A) nor (B) has them.
+- Do NOT add unnecessary speaker attributions unless required to clarify ambiguous sentence ownership or disentangle merged dialogue turns.
 - Do NOT summarize, condense, or skip content. Reproduce ALL scenes and beats from (A).
 - Output ONLY the repaired chapter text. No headers, scaffolding, or code fences.
-- PRESERVE ALL PARAGRAPH BREAKS EXACTLY. Do not merge short paragraphs into blocks. Output the same number of paragraphs.
+- PRESERVE ALL PARAGRAPH BREAKS EXACTLY across narrative paragraphs. Do not merge short paragraphs into blocks. You are permitted to split a merged dialogue paragraph when separating distinct speakers for sentence ownership clarity.
 
 === (A) MACHINE TRANSLATION TO REPAIR ===
 {prepassed_text}

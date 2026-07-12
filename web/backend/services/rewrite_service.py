@@ -122,7 +122,7 @@ async def rewrite_chapter(
         logs.append(
             f"{_ts()} Deterministic pre-pass complete: {det_count} exact term/entity rules matched & enforced."
         )
-        
+
         # Run Entity Consistency Validator
         from translator_memory_engine.validate.entity import validate_entity_consistency
         warnings = validate_entity_consistency(result.get("rewritten_text") or "", trace)

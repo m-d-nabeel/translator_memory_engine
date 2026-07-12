@@ -152,6 +152,14 @@ class TestPromptModes:
         assert "voice" in prompt.lower()
         assert "PUBLISHED TRANSLATION" not in prompt
 
+    def test_prompt_includes_speaker_attribution_and_dialogue_disentanglement(self):
+        p = _policy("Dominic", ["Dominic"], applies="prompted")
+        prompt_ref = build_prompt("MTL text", [p], reference="ORIGINAL TEXT")
+        prompt_fallback = build_prompt("MTL text", [p])
+        assert "Speaker Attribution & Sentence Ownership (Dialogue Disentanglement)" in prompt_ref
+        assert "Speaker Attribution & Sentence Ownership (Dialogue Disentanglement)" in prompt_fallback
+
+
 
 class TestRewriteModeSelection:
     def test_reference_forces_mode_even_without_llm_flag(self, tmp_path):
