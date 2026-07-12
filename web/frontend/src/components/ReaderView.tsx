@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { Sparkles } from "lucide-react";
 import {
   type ReaderFont,
@@ -30,12 +30,15 @@ export function ReaderView({
   const [isStreaming, setIsStreaming] = useState(false);
   const prevTextRef = useRef(text);
   const isFirstRender = useRef(true);
+  const prevProcessingRef = useRef(isProcessing);
 
   // Split by double line break or single line break with indents/blank lines
-  const targetParagraphs = text
-    .split(/\r?\n(?:\s*\r?\n)+|\r?\n/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
+  const targetParagraphs = useMemo(() => {
+    return text
+      .split(/\r?\n(?:\s*\r?\n)+|\r?\n/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+  }, [text]);
 
   useEffect(() => {
     // If text hasn't changed, or it's the first render, just show it immediately
@@ -45,8 +48,11 @@ export function ReaderView({
       return;
     }
 
-    // If text actually changed and we are no longer processing, stream it!
-    if (prevTextRef.current !== text && !isProcessing) {
+    // Did we just finish processing? (prev was true, now false, AND text changed)
+    const justFinishedProcessing =
+      prevProcessingRef.current && !isProcessing && prevTextRef.current !== text;
+
+    if (justFinishedProcessing) {
       setIsStreaming(true);
       setDisplayedParagraphs([]);
       let currentIdx = 0;
@@ -54,7 +60,6 @@ export function ReaderView({
       const interval = setInterval(() => {
         if (currentIdx < targetParagraphs.length) {
           setDisplayedParagraphs((prev) => {
-            // Avoid duplicates just in case
             if (prev.length === targetParagraphs.length) return prev;
             return [...prev, targetParagraphs[currentIdx]];
           });
@@ -74,10 +79,18 @@ export function ReaderView({
           prevTextRef.current = text;
           clearInterval(interval);
         }
-      }, 100); // 100ms per paragraph = fast stream
+      }, 100);
 
+      prevProcessingRef.current = isProcessing;
       return () => clearInterval(interval);
+    } else if (prevTextRef.current !== text || displayedParagraphs.length === 0) {
+      // Normal tab switch or fallback: instantly show text
+      setDisplayedParagraphs(targetParagraphs);
+      setIsStreaming(false);
+      prevTextRef.current = text;
     }
+
+    prevProcessingRef.current = isProcessing;
   }, [text, isProcessing, targetParagraphs]);
 
   const fontStyle =
