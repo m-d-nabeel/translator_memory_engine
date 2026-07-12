@@ -46,7 +46,9 @@ class GroqRotatingClient:
     Cycles through all keys up to ``max_rounds`` times before giving up.
     """
 
-    def __init__(self, keys: List[str], base_url: Optional[str] = None, max_rounds: int = 2):
+    def __init__(
+        self, keys: List[str], base_url: Optional[str] = None, max_rounds: int = 2
+    ):
         from openai import OpenAI
 
         client_kwargs: Dict[str, Any] = {"base_url": base_url} if base_url else {}
@@ -63,12 +65,16 @@ class GroqRotatingClient:
                 return self._clients[self._idx].chat.completions.create(**kwargs)
             except RateLimitError as e:
                 last_err = e
-                logger.warning(f"Rate limit on key #{self._idx + 1}, rotating to next key...")
+                logger.warning(
+                    f"Rate limit on key #{self._idx + 1}, rotating to next key..."
+                )
                 self._idx = (self._idx + 1) % self._num_keys
                 time.sleep(5)
         if last_err is not None:
             raise last_err
-        raise RuntimeError("Groq rate limit retries exhausted or zero retries configured.")
+        raise RuntimeError(
+            "Groq rate limit retries exhausted or zero retries configured."
+        )
 
 
 def _get_groq_keys(api_key_env: str = "LLM_API_KEY") -> List[str]:
@@ -81,10 +87,18 @@ def _get_groq_keys(api_key_env: str = "LLM_API_KEY") -> List[str]:
     load_dotenv(override=True)
     primary = os.environ.get(api_key_env, "")
     if not primary and api_key_env != "LLM_API_KEY":
-        primary = os.environ.get("GROQ_API_KEY", "") or os.environ.get("LLM_API_KEY", "")
+        primary = os.environ.get("GROQ_API_KEY", "") or os.environ.get(
+            "LLM_API_KEY", ""
+        )
     if primary:
         extra_keys = sorted(
-            [k for k in os.environ if k.startswith("GROQ_API_KEY") and os.environ[k] and os.environ[k] != primary]
+            [
+                k
+                for k in os.environ
+                if k.startswith("GROQ_API_KEY")
+                and os.environ[k]
+                and os.environ[k] != primary
+            ]
         )
         extras = [os.environ[k] for k in extra_keys]
         return [primary] + extras
@@ -95,7 +109,9 @@ def _get_groq_keys(api_key_env: str = "LLM_API_KEY") -> List[str]:
 # Known MTL error corrections (data/known_errors.json)
 # ---------------------------------------------------------------------------
 
-_KNOWN_ERRORS_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "known_errors.json")
+_KNOWN_ERRORS_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "data", "known_errors.json"
+)
 
 
 def _load_known_errors() -> List[Dict]:
@@ -107,7 +123,9 @@ def _load_known_errors() -> List[Dict]:
         return []
 
 
-def scan_known_errors(text: str, known_errors: Optional[List[Dict]] = None) -> List[Dict]:
+def scan_known_errors(
+    text: str, known_errors: Optional[List[Dict]] = None
+) -> List[Dict]:
     """Scan MTL text for known error phrases and return matches.
 
     Returns a list of dicts with keys: id, mtl_phrase, correct_translation,
@@ -115,14 +133,18 @@ def scan_known_errors(text: str, known_errors: Optional[List[Dict]] = None) -> L
     """
     if known_errors is None:
         known_errors = _load_known_errors()
-        logger.debug(f"Loaded {len(known_errors)} known errors from {_KNOWN_ERRORS_PATH}")
+        logger.debug(
+            f"Loaded {len(known_errors)} known errors from {_KNOWN_ERRORS_PATH}"
+        )
 
     matches = []
     for error in known_errors:
         phrase = error.get("mtl_phrase", "")
         if phrase and re.search(re.escape(phrase), text, re.IGNORECASE):
             matches.append(error)
-            logger.debug(f"Known error detected: '{phrase}' → '{error.get('correct_translation', '?')}'")
+            logger.debug(
+                f"Known error detected: '{phrase}' → '{error.get('correct_translation', '?')}'"
+            )
     if matches:
         logger.info(f"Detected {len(matches)} known MTL errors for correction")
     return matches
@@ -139,7 +161,9 @@ def format_known_errors_for_prompt(matches: List[Dict]) -> str:
         correct = m.get("correct_translation", "")
         korean = m.get("korean_source", "")
         context = m.get("context", "")
-        lines.append(f'  - "{phrase}" → "{correct}" (Source term: {korean}) — {context}')
+        lines.append(
+            f'  - "{phrase}" → "{correct}" (Source term: {korean}) — {context}'
+        )
     return "\n".join(lines)
 
 
@@ -205,7 +229,9 @@ def _align_mtl_entities(
         _spacy_nlp = spacy.load("en_core_web_sm")
     except Exception:
         return {}
-    doc = _spacy_nlp(mtl_text)  # parse full chapter so late-introduced entities are caught
+    doc = _spacy_nlp(
+        mtl_text
+    )  # parse full chapter so late-introduced entities are caught
     mtl_entities = set()
     for ent in doc.ents:
         if ent.label_ in ("PERSON", "ORG", "GPE", "LOC"):
@@ -288,11 +314,12 @@ def _llm_complete(client, retries: int = 5, backoff: float = 15.0, **kwargs):
 
 def _normalize_newlines(text: str) -> str:
     """Normalize newlines so that solitary single newlines are converted to double newlines,
-    ensuring that chunks and the frontend treat every intended line break as a distinct paragraph."""
+    ensuring that chunks and the frontend treat every intended line break as a distinct paragraph.
+    """
     # Convert \r\n to \n
-    text = text.replace('\r\n', '\n')
+    text = text.replace("\r\n", "\n")
     # Replace single \n with \n\n, but leave \n\n (or more) alone
-    return re.sub(r'(?<!\n)\n(?!\n)', '\n\n', text)
+    return re.sub(r"(?<!\n)\n(?!\n)", "\n\n", text)
 
 
 def _split_paragraphs(text: str) -> List[str]:
@@ -452,8 +479,13 @@ _FALLBACK_RULES = """Repair rules:
   3. Speaker Attribution & Sentence Ownership (Dialogue Disentanglement): Korean pro-drop grammar and MTL paragraph merging frequently cause severe sentence ownership distortions in dialogue:
      - Merged Dialogue Turns: If two distinct characters' dialogue lines are merged into a single quotation block in the MTL (e.g., "Okay, there may be a white pigment that I don't know about. But as a dwarf, I've tried baking with all the white pigments I know..." where the first half is spoken by a human protagonist and the second half by a dwarf), you MUST disentangle and separate them into distinct dialogue turns with clear speaker attributions so sentence ownership is unmistakably clear.
      - Misattributed Pronouns & Subjects: If a dialogue line or inner thought attributes an identity, race, or profession to the wrong speaker due to MTL pronoun dropping (e.g., a human protagonist saying "as a dwarf I tried..." or "he replied" when the person speaking is "I"), correct the pronoun and speaker attribution ("I responded, 'Okay...' Stonehammer interjected, 'But as a dwarf, I've tried...'") to ensure every sentence belongs to its rightful speaker.
-- Do NOT invent new plot events or characters. Output ONLY the repaired chapter text.
-- PRESERVE ALL PARAGRAPH BREAKS EXACTLY across narrative paragraphs. Do not merge short paragraphs into blocks. You are permitted to split a merged dialogue paragraph when separating distinct speakers for sentence ownership clarity."""
+- Faithfully reproduce the original plot events and characters without adding external details.
+
+<Format>
+- Output only the repaired chapter text without conversational filler.
+- Replicate the exact paragraph spacing of the Machine Translation. Keep every distinct dialogue turn and action tag on its own separate line.
+- You may separate merged dialogue turns into new paragraphs for clarity, but you should never merge existing paragraphs together into blocks.
+</Format>"""
 
 
 def build_prompt(
@@ -495,9 +527,13 @@ def build_prompt(
             action = {}
         render_as = action.get("render_as", p.trigger)
         if p.type == "honorific":
-            lines.append(f'- Always render "{p.trigger}" as the honorific "{render_as}".')
+            lines.append(
+                f'- Always render "{p.trigger}" as the honorific "{render_as}".'
+            )
         elif p.type == "terminology":
-            lines.append(f'- Use the terminology "{render_as}" (not variants of "{p.trigger}").')
+            lines.append(
+                f'- Use the terminology "{render_as}" (not variants of "{p.trigger}").'
+            )
         else:
             lines.append(f'- Render "{p.trigger}" as "{render_as}".')
     instructions = "\n".join(lines) if lines else "  (no prompted policies)"
@@ -520,10 +556,14 @@ def build_prompt(
                     aliases = []
             if canon:
                 gender = meta.get("gender", "") if isinstance(meta, dict) else ""
-                identity = meta.get("race_or_identity", "") if isinstance(meta, dict) else ""
+                identity = (
+                    meta.get("race_or_identity", "") if isinstance(meta, dict) else ""
+                )
                 speech = meta.get("speech_style", "") if isinstance(meta, dict) else ""
 
-                alias_prefix = f"[Aliases/Titles: {', '.join(aliases)}]" if aliases else ""
+                alias_prefix = (
+                    f"[Aliases/Titles: {', '.join(aliases)}]" if aliases else ""
+                )
                 meta_parts = []
                 if gender:
                     meta_parts.append(f"({gender})")
@@ -573,11 +613,14 @@ Repair rules:
   3. Speaker Attribution & Sentence Ownership (Dialogue Disentanglement): Korean pro-drop grammar and MTL paragraph merging frequently cause severe sentence ownership distortions in dialogue:
      - Merged Dialogue Turns: If two distinct characters' dialogue lines are merged into a single quotation block in the MTL, disentangle and separate them into distinct dialogue turns with correct speaker attributions matching (B) so sentence ownership is unmistakably clear.
      - Misattributed Pronouns & Subjects: If a dialogue line or inner thought attributes an identity, race, or profession to the wrong speaker due to MTL pronoun dropping, correct the pronoun and speaker attribution so every sentence belongs to its rightful speaker.
-- Do NOT invent events, characters, or details absent from both (A) and (B).
-- Do NOT add unnecessary speaker attributions unless required to clarify ambiguous sentence ownership or disentangle merged dialogue turns.
-- Do NOT summarize, condense, or skip content. Reproduce ALL scenes and beats from (A).
-- Output ONLY the repaired chapter text. No headers, scaffolding, or code fences.
-- PRESERVE ALL PARAGRAPH BREAKS EXACTLY across narrative paragraphs. Do not merge short paragraphs into blocks. You are permitted to split a merged dialogue paragraph when separating distinct speakers for sentence ownership clarity.
+- Maintain exact scene pacing by reproducing all beats from (A).
+- Faithfully reproduce the original plot events and characters without adding external details.
+
+<Format>
+- Output only the repaired chapter text without headers, scaffolding, or code fences.
+- Replicate the exact paragraph spacing of the Machine Translation. Keep every distinct dialogue turn and action tag on its own separate line.
+- You may separate merged dialogue turns into new paragraphs for clarity, but you should never merge existing paragraphs together into blocks.
+</Format>
 
 === (A) MACHINE TRANSLATION TO REPAIR ===
 {prepassed_text}
@@ -681,11 +724,16 @@ def rewrite(
             _client = GroqRotatingClient(keys, base_url)
             alias_map = _align_mtl_entities(text, glossary, _client, model)
             if alias_map:
-                logger.debug(f"Discovered {len(alias_map)} aliases: {list(alias_map.keys())[:5]}")
+                logger.debug(
+                    f"Discovered {len(alias_map)} aliases: {list(alias_map.keys())[:5]}"
+                )
                 # Inject discovered aliases into policy match lists in memory
                 for p in policy_list:
                     for mtl_form, canonical in alias_map.items():
-                        if p.trigger.lower() == canonical.lower() or canonical.lower() in [a.lower() for a in p.match]:
+                        if (
+                            p.trigger.lower() == canonical.lower()
+                            or canonical.lower() in [a.lower() for a in p.match]
+                        ):
                             if mtl_form not in p.match:
                                 p.match.append(mtl_form)
 
@@ -758,7 +806,11 @@ def rewrite(
                 if glossary:
                     active_canonicals = set()
                     if restore_map:
-                        active_canonicals.update(canon for ph, canon in restore_map.items() if ph in mtl_chunk)
+                        active_canonicals.update(
+                            canon
+                            for ph, canon in restore_map.items()
+                            if ph in mtl_chunk
+                        )
                     for entry in glossary:
                         canon = entry.get("canonical", "")
                         aliases = entry.get("aliases", [])
@@ -767,7 +819,9 @@ def rewrite(
                                 aliases = json.loads(aliases)
                             except Exception:
                                 aliases = []
-                        if canon in active_canonicals or any(a and a.lower() in mtl_chunk.lower() for a in aliases):
+                        if canon in active_canonicals or any(
+                            a and a.lower() in mtl_chunk.lower() for a in aliases
+                        ):
                             active_cast_entries.append(entry)
 
                 prompt = build_prompt(
@@ -814,7 +868,9 @@ def rewrite(
     if client is not None and reference_text is not None:
         novel = _novel_entities(rewritten_text, reference_text, whitelist=canon)
         if novel:
-            logger.warning(f"Faithfulness guard: {len(novel)} novel entities detected: {novel}")
+            logger.warning(
+                f"Faithfulness guard: {len(novel)} novel entities detected: {novel}"
+            )
             guard_prompt = _faithfulness_prompt(rewritten_text, novel)
             resp = _llm_complete(
                 client,
