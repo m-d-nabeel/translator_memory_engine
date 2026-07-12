@@ -26,10 +26,8 @@ export function ReaderView({
   maxWidth = "normal",
   isProcessing = false,
 }: ReaderViewProps) {
-  const [displayedParagraphs, setDisplayedParagraphs] = useState<string[]>([]);
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamCount, setStreamCount] = useState<number | null>(null);
   const prevTextRef = useRef(text);
-  const isFirstRender = useRef(true);
   const prevProcessingRef = useRef(isProcessing);
 
   // Split by double line break or single line break with indents/blank lines
@@ -40,58 +38,36 @@ export function ReaderView({
       .filter((p) => p.length > 0);
   }, [text]);
 
+  // Effect 1: Detect transitions (e.g. finished processing vs normal tab switch)
   useEffect(() => {
-    // If text hasn't changed, or it's the first render, just show it immediately
-    if (prevTextRef.current === text && isFirstRender.current) {
-      setDisplayedParagraphs(targetParagraphs);
-      isFirstRender.current = false;
-      return;
-    }
-
-    // Did we just finish processing? (prev was true, now false, AND text changed)
     const justFinishedProcessing =
       prevProcessingRef.current && !isProcessing && prevTextRef.current !== text;
 
     if (justFinishedProcessing) {
-      setIsStreaming(true);
-      setDisplayedParagraphs([]);
-      let currentIdx = 0;
-
-      const interval = setInterval(() => {
-        if (currentIdx < targetParagraphs.length) {
-          setDisplayedParagraphs((prev) => {
-            if (prev.length === targetParagraphs.length) return prev;
-            return [...prev, targetParagraphs[currentIdx]];
-          });
-          currentIdx++;
-          // Smooth scroll to keep the newest text in view if the user is at the bottom
-          if (
-            window.innerHeight + window.scrollY >=
-            document.body.offsetHeight - 500
-          ) {
-            window.scrollTo({
-              top: document.body.scrollHeight,
-              behavior: "smooth",
-            });
-          }
-        } else {
-          setIsStreaming(false);
-          prevTextRef.current = text;
-          clearInterval(interval);
-        }
-      }, 100);
-
-      prevProcessingRef.current = isProcessing;
-      return () => clearInterval(interval);
-    } else if (prevTextRef.current !== text || displayedParagraphs.length === 0) {
-      // Normal tab switch or fallback: instantly show text
-      setDisplayedParagraphs(targetParagraphs);
-      setIsStreaming(false);
-      prevTextRef.current = text;
+      setStreamCount(1); // Start streaming
+    } else if (prevTextRef.current !== text) {
+      setStreamCount(null); // Normal tab switch, no streaming
     }
 
     prevProcessingRef.current = isProcessing;
-  }, [text, isProcessing, targetParagraphs]);
+    prevTextRef.current = text;
+  }, [text, isProcessing]);
+
+  // Effect 2: Run the stream if active
+  useEffect(() => {
+    if (streamCount !== null && streamCount < targetParagraphs.length) {
+      const timer = setTimeout(() => {
+        setStreamCount((s) => (s !== null ? s + 1 : null));
+      }, 50); // fast stream
+      return () => clearTimeout(timer);
+    } else if (streamCount !== null && streamCount >= targetParagraphs.length) {
+      setStreamCount(null); // Stream finished
+    }
+  }, [streamCount, targetParagraphs.length]);
+
+  const displayedParagraphs =
+    streamCount !== null ? targetParagraphs.slice(0, streamCount) : targetParagraphs;
+  const isStreaming = streamCount !== null;
 
   const fontStyle =
     {
