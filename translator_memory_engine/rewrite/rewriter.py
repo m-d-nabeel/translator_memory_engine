@@ -150,21 +150,24 @@ def scan_known_errors(
     return matches
 
 
-def format_known_errors_for_prompt(matches: List[Dict]) -> str:
-    """Format matched known errors as prompt instructions."""
-    if not matches:
-        return ""
+def apply_known_errors(text: str, known_errors: Optional[List[Dict]] = None) -> str:
+    """Deterministically replace known errors with their correct translations."""
+    if known_errors is None:
+        known_errors = _load_known_errors()
 
-    lines = ["KNOWN MTL ERROR CORRECTIONS (apply these):"]
-    for m in matches:
-        phrase = m.get("mtl_phrase", "")
-        correct = m.get("correct_translation", "")
-        korean = m.get("korean_source", "")
-        context = m.get("context", "")
-        lines.append(
-            f'  - "{phrase}" → "{correct}" (Source term: {korean}) — {context}'
-        )
-    return "\n".join(lines)
+    out_text = text
+    for error in known_errors:
+        phrase = error.get("mtl_phrase", "")
+        correct = error.get("correct_translation", "")
+        if phrase and correct:
+            # Replace exact phrase (case-insensitive) with the correct translation
+            out_text = re.sub(
+                re.escape(phrase),
+                correct,
+                out_text,
+                flags=re.IGNORECASE,
+            )
+    return out_text
 
 
 def _load_policies(source: Any) -> List[Policy]:
@@ -478,7 +481,7 @@ _FALLBACK_RULES = """<Rules>
    - Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses" or bending "her own arm" while attacking an enemy), correct the pronoun logic ("so that you would come to your senses" / "bent his arm") to restore clear narrative causality.
    - Speaker Attribution & Sentence Ownership: If distinct characters' dialogue lines are merged into a single quotation block, disentangle them into distinct dialogue turns. If a dialogue line attributes an identity to the wrong speaker due to MTL pronoun dropping, correct the pronoun and speaker attribution to ensure every sentence belongs to its rightful speaker.
    - Inverted Negation & Contradictions: Korean double-negatives frequently cause MTL to flip positive/negative states (e.g. outputting "shouldn't" instead of "should", or "couldn't" instead of "could"). CRITICAL: If a sentence contradicts the physical or conversational logic of the scene (like a thug making an illogical taunt), flip the negation to restore the correct meaning!
-3. Faithfully reproduce the original plot events, but you have full freedom to rephrase and restructure sentences for literary quality.
+3. Faithfully reproduce the original plot events, but you have full freedom to rephrase sentences for literary quality. DO NOT merge distinct paragraphs into blocks.
 </Rules>
 
 <Format>
@@ -509,9 +512,6 @@ def build_prompt(
         previous_tail: Last 1-2 paragraphs of the previous chapter, for
             cross-chapter continuity (pronoun consistency, scene flow).
     """
-    # Scan for known MTL errors and inject corrections
-    known_errors = scan_known_errors(prepassed_text)
-    known_errors_block = format_known_errors_for_prompt(known_errors)
 
     lines = []
     for p in prompted_policies:
@@ -598,11 +598,6 @@ def build_prompt(
             )
 
     if reference:
-        known_errors_section = (
-            f"\n<KnownErrors>\n{known_errors_block}\n</KnownErrors>\n"
-            if known_errors_block
-            else ""
-        )
         system_prompt = (
             "You are an expert translator and editor for a high-quality, professionally published fantasy web-novel.\n"
             "Your task is to rewrite a rough Machine Translation (A) so it reads like the target Published Translation (B).\n"
@@ -612,7 +607,7 @@ def build_prompt(
         user_prompt = f"""{tail_block}{cast_block}
 <TranslatorPolicies>
 {instructions}
-</TranslatorPolicies>{known_errors_section}
+</TranslatorPolicies>
 <Rules>
 1. ELEVATE THE PROSE: Do not just copy-paste! Rewrite the Machine Translation (A) so it READS LIKE the Published Translation (B). Match its phrasing, voice, tone, rhythm, and emotional weight as closely as possible.
 2. RESOLVE DISCOURSE & NARRATIVE COHERENCE ANOMALIES (DECEPTIVE MTL ARTIFACTS):
@@ -621,7 +616,7 @@ def build_prompt(
    - Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses"), correct the pronoun logic to restore clear narrative causality.
    - Speaker Attribution & Sentence Ownership: Disentangle merged dialogue turns into distinct turns with correct speaker attributions matching (B). Correct any misattributed pronouns so every sentence belongs to its rightful speaker.
    - Inverted Negation & Contradictions: If the MTL outputs a flipped negation (e.g. "shouldn't" instead of "should") that contradicts the obvious logical intent of the speaker, flip the negation to restore the correct meaning.
-3. Maintain exact scene pacing by reproducing all beats from (A), but you have full freedom to rephrase sentences for literary quality to match (B).
+3. Maintain exact scene pacing by reproducing all beats from (A), but you have full freedom to rephrase sentences for literary quality to match (B). DO NOT merge distinct paragraphs into blocks.
 </Rules>
 
 <Format>
@@ -638,11 +633,6 @@ def build_prompt(
         return system_prompt, user_prompt
 
     if style_profile:
-        known_errors_section = (
-            f"\n<KnownErrors>\n{known_errors_block}\n</KnownErrors>\n"
-            if known_errors_block
-            else ""
-        )
         profile_txt = "\n".join(f"- {ex}" for ex in style_profile)
         system_prompt = (
             "You are an expert translator and editor for a high-quality, professionally published fantasy web-novel.\n"
@@ -658,7 +648,7 @@ The following quotes are from DIFFERENT chapters by the SAME translator. Use the
 
 <TranslatorPolicies>
 {instructions}
-</TranslatorPolicies>{known_errors_section}
+</TranslatorPolicies>
 
 {_FALLBACK_RULES}
 
@@ -667,11 +657,6 @@ The following quotes are from DIFFERENT chapters by the SAME translator. Use the
         return system_prompt, user_prompt
 
     # Fallback (unsupervised, no style bank)
-    known_errors_section = (
-        f"\n<KnownErrors>\n{known_errors_block}\n</KnownErrors>\n"
-        if known_errors_block
-        else ""
-    )
     system_prompt = (
         "You are an expert translator and editor for a high-quality, professionally published fantasy web-novel.\n"
         "Your task is to rewrite a rough Machine Translation into fluent, natural English prose.\n"
@@ -681,7 +666,7 @@ The following quotes are from DIFFERENT chapters by the SAME translator. Use the
     user_prompt = f"""{tail_block}{cast_block}
 <TranslatorPolicies>
 {instructions}
-</TranslatorPolicies>{known_errors_section}
+</TranslatorPolicies>
 
 {_FALLBACK_RULES}
 
@@ -770,6 +755,10 @@ def rewrite(
     resolution = resolve(text, matched)
     prepassed_text, trace = apply_prepass(text, resolution)
     logger.debug(f"Pre-pass applied {len(trace)} deterministic edits")
+
+    # Deterministic heuristic application of known errors
+    prepassed_text = apply_known_errors(prepassed_text)
+    logger.debug("Applied known errors heuristically")
 
     # Prompted (non-deterministic, non-rejected) policies for the LLM
     prompted = [p for p in matched if p.applies == "prompted" and not p.llm_rejected]
