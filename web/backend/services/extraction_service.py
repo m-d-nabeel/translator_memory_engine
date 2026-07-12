@@ -107,6 +107,7 @@ async def extract_policies_for_novel(novel_id: int):
                     needs_review="true" if getattr(p, "needs_review", False) else "false",
                     llm_rejected="true" if getattr(p, "llm_rejected", False) else "false",
                     contexts=json.dumps(getattr(p, "contexts", [])),
+                    metadata_json=json.dumps(p.metadata) if getattr(p, "metadata", None) else None,
                 )
                 session.add(db_policy)
 
@@ -118,6 +119,7 @@ async def extract_policies_for_novel(novel_id: int):
                     aliases=json.dumps(entry.get("aliases", [])),
                     entity_type=entry.get("type"),
                     confidence=entry.get("confidence"),
+                    metadata_json=json.dumps(entry.get("metadata")) if entry.get("metadata") else None,
                 )
                 session.add(db_entry)
 

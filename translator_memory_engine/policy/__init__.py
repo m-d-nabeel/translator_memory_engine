@@ -53,6 +53,7 @@ class Policy:
     needs_review: bool = False
     llm_rejected: bool = False
     contexts: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

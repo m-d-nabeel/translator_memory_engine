@@ -454,6 +454,7 @@ def build_prompt(
     reference: Optional[str] = None,
     style_profile: Optional[List[str]] = None,
     previous_tail: Optional[str] = None,
+    active_cast_entries: Optional[List[Dict]] = None,
 ) -> str:
     """Build the LLM rewrite prompt.
 
@@ -490,10 +491,42 @@ def build_prompt(
             f"{previous_tail}\n\n"
         )
 
+    cast_block = ""
+    if active_cast_entries:
+        cast_lines = []
+        for entry in active_cast_entries:
+            canon = entry.get("canonical", "")
+            meta = entry.get("metadata", {})
+            if canon and meta:
+                gender = meta.get("gender", "")
+                identity = meta.get("race_or_identity", "")
+                speech = meta.get("speech_style", "")
+                
+                parts = []
+                if gender:
+                    parts.append(f"({gender})")
+                if identity:
+                    parts.append(f"{identity}")
+                if speech:
+                    parts.append(f"{speech}")
+                
+                desc = ", ".join(parts)
+                if desc:
+                    cast_lines.append(f"- {canon} {desc}")
+        
+        if cast_lines:
+            cast_str = "\n".join(cast_lines)
+            cast_block = (
+                "\n=== ACTIVE SCENE CAST (For pronoun & dialogue accuracy) ===\n"
+                "Use this cast information ONLY for pronoun resolution and dialogue attribution. "
+                "Do NOT inject their background or identity into the narrative.\n"
+                f"{cast_str}\n"
+            )
+
     if reference:
         known_errors_section = f"\n{known_errors_block}\n" if known_errors_block else ""
         return f"""You are POST-EDITING a machine-translated web-novel chapter toward a published human translation of the SAME passage.
-{tail_block}
+{tail_block}{cast_block}
 Apply the following translator policies consistently:
 {instructions}
 {known_errors_section}
@@ -522,7 +555,7 @@ Repair rules:
         known_errors_section = f"\n{known_errors_block}\n" if known_errors_block else ""
         profile_txt = "\n".join(f"- {ex}" for ex in style_profile)
         return f"""You are repairing a machine-translated web-novel chapter into fluent, natural English. There is NO published translation for this chapter.
-{tail_block}
+{tail_block}{cast_block}
 ### VOICE REFERENCE EXCERPTS (DO NOT COPY OR INSERT THESE LINES)
 The following quotes are from DIFFERENT chapters by the SAME translator. Use them ONLY as stylistic inspiration for tone, rhythm, and vocabulary. DO NOT copy, insert, or weave any of these lines, characters, or dialogue into the current chapter:
 {profile_txt}
@@ -539,7 +572,7 @@ CHAPTER TO REWRITE:
     profile_txt = "\n".join(f"- {ex}" for ex in _STYLE_REFERENCE)
     known_errors_section = f"\n{known_errors_block}\n" if known_errors_block else ""
     return f"""You are aggressively repairing a machine-translated web novel chapter into fluent, natural English.
-{tail_block}
+{tail_block}{cast_block}
 Apply the following translator policies consistently:
 {instructions}
 {known_errors_section}
@@ -686,12 +719,24 @@ def rewrite(
                 else:
                     context_tail = mtl_chunks[k - 1][-800:]
 
+                # Find active cast from placeholders
+                active_cast_entries = []
+                if glossary and restore_map:
+                    active_canonicals = {
+                        canon for ph, canon in restore_map.items() if ph in mtl_chunk
+                    }
+                    if active_canonicals:
+                        for entry in glossary:
+                            if entry.get("canonical") in active_canonicals and entry.get("metadata"):
+                                active_cast_entries.append(entry)
+
                 prompt = build_prompt(
                     mtl_chunk,
                     prompted,
                     reference=ref_chunk,
                     style_profile=style_profile,
                     previous_tail=context_tail,
+                    active_cast_entries=active_cast_entries,
                 )
                 logger.debug(f"Prompt length: {len(prompt)} chars")
                 resp = _llm_complete(

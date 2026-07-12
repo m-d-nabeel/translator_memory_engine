@@ -114,8 +114,8 @@ class PolicyStore:
                     """INSERT OR REPLACE INTO policies
                        (novel_id, policy_id, type, trigger, match_forms, action,
                         confidence, evidence_chapters, applies, scores, category,
-                        note, needs_review, llm_rejected, contexts)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        note, needs_review, llm_rejected, contexts, metadata_json)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         novel_id,
                         policy.id,
@@ -133,6 +133,9 @@ class PolicyStore:
                         str(policy.llm_rejected).lower(),
                         json.dumps(policy.contexts, ensure_ascii=False)
                         if policy.contexts
+                        else None,
+                        json.dumps(policy.metadata, ensure_ascii=False)
+                        if policy.metadata
                         else None,
                     ),
                 )
@@ -153,7 +156,7 @@ class PolicyStore:
             cursor = conn.execute(
                 "SELECT policy_id, type, trigger, match_forms, action, "
                 "confidence, evidence_chapters, applies, scores, category, "
-                "note, needs_review, llm_rejected, contexts "
+                "note, needs_review, llm_rejected, contexts, metadata_json "
                 "FROM policies WHERE novel_id = ?",
                 (novel_id,),
             )
@@ -173,6 +176,7 @@ class PolicyStore:
                     needs_review,
                     llm_rejected,
                     contexts_json,
+                    metadata_json,
                 ) = row
                 policy = Policy(
                     id=policy_id,
@@ -189,6 +193,7 @@ class PolicyStore:
                     needs_review=(needs_review or "false").lower() == "true",
                     llm_rejected=(llm_rejected or "false").lower() == "true",
                     contexts=json.loads(contexts_json) if contexts_json else [],
+                    metadata=json.loads(metadata_json) if metadata_json else {},
                 )
                 self.add(policy)
         finally:

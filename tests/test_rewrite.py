@@ -158,6 +158,22 @@ class TestPromptModes:
         prompt_fallback = build_prompt("MTL text", [p])
         assert "Speaker Attribution & Sentence Ownership (Dialogue Disentanglement)" in prompt_ref
         assert "Speaker Attribution & Sentence Ownership (Dialogue Disentanglement)" in prompt_fallback
+    def test_prompt_includes_active_cast(self):
+        p = _policy("Dominic", ["Dominic"], applies="prompted")
+        active_cast = [
+            {
+                "canonical": "Dominic",
+                "metadata": {
+                    "gender": "male",
+                    "race_or_identity": "Human",
+                    "speech_style": "Polite"
+                }
+            }
+        ]
+        prompt = build_prompt("MTL text", [p], active_cast_entries=active_cast)
+        assert "ACTIVE SCENE CAST" in prompt
+        assert "- Dominic (male), Human, Polite" in prompt
+        assert "Do NOT inject their background" in prompt
 
 
 
