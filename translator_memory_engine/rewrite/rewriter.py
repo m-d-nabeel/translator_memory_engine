@@ -470,14 +470,15 @@ _STYLE_REFERENCE = [
 # only fix broken MTL, and preserve the translator's voice/metaphors/onomatopoeia.
 # Never invent. (8B models love to echo the scaffolding — see _strip_echo.)
 _FALLBACK_RULES = """<Rules>
-1. RESOLVE DISCOURSE & NARRATIVE COHERENCE ANOMALIES (DECEPTIVE MTL ARTIFACTS):
+1. ELEVATE THE PROSE: Do not just copy-paste or make minute changes! You must completely rewrite the text into fluent, natural English prose. Inject emotional weight, vivid vocabulary, and natural rhythm to make it read like a professionally published fantasy novel. Replace dry, clinical phrasing with engaging literary prose.
+2. RESOLVE DISCOURSE & NARRATIVE COHERENCE ANOMALIES (DECEPTIVE MTL ARTIFACTS):
    Machine translations frequently output grammatically valid English words that make zero logical sense inside the scene (due to homograph dictionary lookups, flipped pronouns, or literalized idioms).
    Before preserving any sentence or exclamation verbatim, verify its Discourse Coherence against the immediate scene:
    - Conversational Logic: If a standalone noun, exclamation, or idiom violates the conversational or emotional logic of the scene (e.g. an unrelated economic/technical noun during a physical confrontation, or a bizarre non-sequitur), recognize it as a deceptive MTL homograph/idiom artifact and repair it so it makes natural sense inside the scene's context.
    - Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses" or bending "her own arm" while attacking an enemy), correct the pronoun logic ("so that you would come to your senses" / "bent his arm") to restore clear narrative causality.
    - Speaker Attribution & Sentence Ownership: If distinct characters' dialogue lines are merged into a single quotation block, disentangle them into distinct dialogue turns. If a dialogue line attributes an identity to the wrong speaker due to MTL pronoun dropping, correct the pronoun and speaker attribution to ensure every sentence belongs to its rightful speaker.
-   - Inverted Negation & Contradictions: Korean double-negatives frequently cause MTL to flip positive/negative states (e.g. outputting "shouldn't" instead of "should", or "couldn't" instead of "could"). If a character's dialogue or action directly contradicts their obvious intent in the scene, flip the negation to restore the correct logical meaning.
-2. Faithfully reproduce the original plot events and characters without adding external details.
+   - Inverted Negation & Contradictions: Korean double-negatives frequently cause MTL to flip positive/negative states (e.g. outputting "shouldn't" instead of "should", or "couldn't" instead of "could"). CRITICAL: If a sentence contradicts the physical or conversational logic of the scene (like a thug making an illogical taunt), flip the negation to restore the correct meaning!
+3. Faithfully reproduce the original plot events, but you have full freedom to rephrase and restructure sentences for literary quality.
 </Rules>
 
 <Format>
@@ -613,14 +614,14 @@ def build_prompt(
 {instructions}
 </TranslatorPolicies>{known_errors_section}
 <Rules>
-1. RESOLVE DISCOURSE & NARRATIVE COHERENCE ANOMALIES (DECEPTIVE MTL ARTIFACTS):
+1. ELEVATE THE PROSE: Do not just copy-paste! Rewrite the Machine Translation (A) so it READS LIKE the Published Translation (B). Match its phrasing, voice, tone, rhythm, and emotional weight as closely as possible.
+2. RESOLVE DISCOURSE & NARRATIVE COHERENCE ANOMALIES (DECEPTIVE MTL ARTIFACTS):
    Machine translations frequently output grammatically valid English words that make zero logical sense inside the scene. Before preserving any sentence verbatim, verify its Discourse Coherence against the immediate scene:
    - Conversational Logic: If a noun, exclamation, or idiom violates the conversational or emotional logic of the scene (e.g. an unrelated economic noun during a physical confrontation, or a bizarre non-sequitur), recognize it as a deceptive artifact and repair it to match (B)'s phrasing.
    - Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses"), correct the pronoun logic to restore clear narrative causality.
    - Speaker Attribution & Sentence Ownership: Disentangle merged dialogue turns into distinct turns with correct speaker attributions matching (B). Correct any misattributed pronouns so every sentence belongs to its rightful speaker.
    - Inverted Negation & Contradictions: If the MTL outputs a flipped negation (e.g. "shouldn't" instead of "should") that contradicts the obvious logical intent of the speaker, flip the negation to restore the correct meaning.
-2. Maintain exact scene pacing by reproducing all beats from (A).
-3. Faithfully reproduce the original plot events and characters without adding external details.
+3. Maintain exact scene pacing by reproducing all beats from (A), but you have full freedom to rephrase sentences for literary quality to match (B).
 </Rules>
 
 <Format>
