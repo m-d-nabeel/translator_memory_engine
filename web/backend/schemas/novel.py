@@ -143,6 +143,7 @@ class GlossaryMetadataUpdate(BaseModel):
 class MergeGlossaryRequest(BaseModel):
     target_id: int
     source_ids: list[int]
+    deterministic_ids: list[int] | None = None
 
 class DuplicateClusterResponse(BaseModel):
     cluster_id: str

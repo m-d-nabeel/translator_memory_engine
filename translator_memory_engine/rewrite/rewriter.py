@@ -498,29 +498,48 @@ def build_prompt(
         for entry in active_cast_entries:
             canon = entry.get("canonical", "")
             meta = entry.get("metadata", {})
-            if canon and meta:
-                gender = meta.get("gender", "")
-                identity = meta.get("race_or_identity", "")
-                speech = meta.get("speech_style", "")
+            aliases = entry.get("aliases", [])
+            if isinstance(aliases, str):
+                try:
+                    aliases = json.loads(aliases)
+                except Exception:
+                    aliases = []
+            if canon:
+                gender = meta.get("gender", "") if isinstance(meta, dict) else ""
+                identity = meta.get("race_or_identity", "") if isinstance(meta, dict) else ""
+                speech = meta.get("speech_style", "") if isinstance(meta, dict) else ""
 
-                parts = []
+                alias_prefix = f"[Aliases/Titles: {', '.join(aliases)}]" if aliases else ""
+                meta_parts = []
                 if gender:
-                    parts.append(f"({gender})")
+                    meta_parts.append(f"({gender})")
                 if identity:
-                    parts.append(f"{identity}")
+                    meta_parts.append(f"{identity}")
                 if speech:
-                    parts.append(f"{speech}")
+                    meta_parts.append(f"{speech}")
 
-                desc = ", ".join(parts)
+                meta_str = ", ".join(meta_parts)
+                if alias_prefix and meta_str:
+                    desc = f"{alias_prefix} {meta_str}"
+                elif alias_prefix:
+                    desc = alias_prefix
+                elif meta_str:
+                    desc = meta_str
+                else:
+                    desc = ""
+
                 if desc:
                     cast_lines.append(f"- {canon} {desc}")
+                else:
+                    cast_lines.append(f"- {canon}")
 
         if cast_lines:
             cast_str = "\n".join(cast_lines)
             cast_block = (
                 "\n=== ACTIVE SCENE CAST (For pronoun & dialogue accuracy) ===\n"
-                "Use this cast information ONLY for pronoun resolution and dialogue attribution. "
-                "Do NOT inject their background or identity into the narrative.\n"
+                "Use this cast information ONLY for pronoun resolution, dialogue attribution, and recognizing character continuity across their Aliases/Titles. "
+                "Do NOT inject their background or identity into the narrative. "
+                "Do NOT force-replace natural social titles or honorifics with proper names in dialogue if the title is natural to the scene.\n"
                 f"{cast_str}\n"
             )
 
@@ -720,16 +739,24 @@ def rewrite(
                 else:
                     context_tail = mtl_chunks[k - 1][-800:]
 
-                # Find active cast from placeholders
+                # Find active cast from placeholders and known aliases/titles
                 active_cast_entries = []
-                if glossary and restore_map:
-                    active_canonicals = {
-                        canon for ph, canon in restore_map.items() if ph in mtl_chunk
-                    }
-                    if active_canonicals:
-                        for entry in glossary:
-                            if entry.get("canonical") in active_canonicals and entry.get("metadata"):
-                                active_cast_entries.append(entry)
+                if glossary:
+                    active_canonicals = set()
+                    if restore_map:
+                        active_canonicals.update(
+                            canon for ph, canon in restore_map.items() if ph in mtl_chunk
+                        )
+                    for entry in glossary:
+                        canon = entry.get("canonical", "")
+                        aliases = entry.get("aliases", [])
+                        if isinstance(aliases, str):
+                            try:
+                                aliases = json.loads(aliases)
+                            except Exception:
+                                aliases = []
+                        if canon in active_canonicals or any(a and a.lower() in mtl_chunk.lower() for a in aliases):
+                            active_cast_entries.append(entry)
 
                 prompt = build_prompt(
                     mtl_chunk,

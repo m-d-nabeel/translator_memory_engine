@@ -132,6 +132,7 @@ async def merge_glossary_entries(
         except Exception:
             pass
 
+    deterministic_aliases = {target.canonical}
     for src_id in merge_in.source_ids:
         if src_id == merge_in.target_id:
             continue
@@ -140,6 +141,9 @@ async def merge_glossary_entries(
             continue
 
         target_aliases.add(src.canonical)
+        if merge_in.deterministic_ids is not None and src_id in merge_in.deterministic_ids:
+            deterministic_aliases.add(src.canonical)
+
         if src.aliases:
             try:
                 for a in json.loads(src.aliases):
@@ -175,15 +179,32 @@ async def merge_glossary_entries(
 
         await db.delete(src)
 
+    def _is_spelling_or_typo_variant(form: str, canon: str) -> bool:
+        if form == canon:
+            return True
+        k1, k2 = _normalize(form), _normalize(canon)
+        if set(k1.split()) == set(k2.split()) and len(k1.split()) > 0:
+            return True
+        if _normalized_edit_distance(k1, k2) <= 0.3 and min(len(k1), len(k2)) >= 4:
+            return True
+        return False
+
     aliases_list = sorted(list(target_aliases - {target.canonical}))
-    all_match_forms = sorted(list(target_aliases))
+    if merge_in.deterministic_ids is not None:
+        deterministic_match_forms = sorted(list(deterministic_aliases))
+    else:
+        deterministic_match_forms = sorted(list({
+            alias for alias in target_aliases if _is_spelling_or_typo_variant(alias, target.canonical)
+        }))
+    if not deterministic_match_forms:
+        deterministic_match_forms = [target.canonical]
 
     target.aliases = json.dumps(aliases_list)
     target.evidence_contexts = json.dumps(target_evidence) if target_evidence else None
     target.metadata_json = json.dumps(target_meta) if target_meta else None
 
     if target_policy:
-        target_policy.match_forms = json.dumps(all_match_forms)
+        target_policy.match_forms = json.dumps(deterministic_match_forms)
         target_policy.contexts = json.dumps(target_evidence) if target_evidence else None
         target_policy.metadata_json = target.metadata_json
 
@@ -201,8 +222,24 @@ async def get_glossary_duplicates(novel_id: int, db: AsyncSession = Depends(get_
     )
     entries = result.scalars().all()
 
+    TITLE_STOPWORDS = {
+        "count", "countess", "lord", "lady", "sir", "madam", "chief", "elder", "master",
+        "saint", "king", "queen", "prince", "princess", "captain", "general", "brother",
+        "sister", "patriarch", "matriarch", "young", "old", "senior", "junior", "wizard",
+        "apprentice", "guard", "soldier", "village", "city", "town", "castle", "palace",
+        "sect", "clan", "family", "house", "mountain", "river", "forest", "valley", "lake",
+        "sword", "blade", "demon", "divine", "holy", "dark", "light", "grand", "great",
+        "high", "supreme", "emperor", "empress", "duke", "duchess", "baron", "baroness",
+        "marquis", "the", "and", "of", "in", "at", "to", "for", "with"
+    }
+
     def _tokens(key: str) -> set[str]:
         return set(_normalize(key).split())
+
+    def _core_tokens(key: str) -> set[str]:
+        t = _tokens(key)
+        core = {tok for tok in t if tok not in TITLE_STOPWORDS and len(tok) >= 2}
+        return core if core else t
 
     clusters: list[DuplicateClusterResponse] = []
     visited: set[int] = set()
@@ -212,6 +249,7 @@ async def get_glossary_duplicates(novel_id: int, db: AsyncSession = Depends(get_
             continue
         k1 = _normalize(e1.canonical)
         t1 = _tokens(k1)
+        t1_core = _core_tokens(k1)
         cluster_cands = []
         cluster_reasons = []
 
@@ -221,16 +259,21 @@ async def get_glossary_duplicates(novel_id: int, db: AsyncSession = Depends(get_
                 continue
             k2 = _normalize(e2.canonical)
             t2 = _tokens(k2)
+            t2_core = _core_tokens(k2)
 
             match_reason = None
             if t1 == t2 and len(t1) > 0:
                 match_reason = "Identical tokens in different word order"
+            elif t1_core == t2_core and len(t1_core) > 0:
+                match_reason = "Identical core name (shared entity with different title/prefix)"
             elif (k1 in k2 or k2 in k1) and min(len(k1), len(k2)) >= 4:
-                match_reason = f"Substring overlap ({e1.canonical} / {e2.canonical})"
+                shorter_tokens = t1 if len(k1) <= len(k2) else t2
+                if any(tok not in TITLE_STOPWORDS for tok in shorter_tokens):
+                    match_reason = f"Substring overlap ({e1.canonical} / {e2.canonical})"
             else:
-                shared = t1 & t2
-                if any(len(tok) >= 4 for tok in shared) and len(t1) > 1 and len(t2) > 1:
-                    match_reason = "Shared descriptive role/title tokens"
+                shared_core = t1_core & t2_core
+                if any(len(tok) >= 4 for tok in shared_core) and len(t1_core) >= 1 and len(t2_core) >= 1:
+                    match_reason = f"Shared core name tokens ({', '.join(sorted(shared_core))})"
                 elif _normalized_edit_distance(k1, k2) <= 0.3 and min(len(k1), len(k2)) >= 4:
                     match_reason = "Near-duplicate spelling (Levenshtein distance <= 0.3)"
 

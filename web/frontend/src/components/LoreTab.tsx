@@ -1,7 +1,185 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { User, Edit2, Check, X, AlertTriangle, Eye, ArrowRight, Sparkles, RefreshCw, CheckSquare, Square, ChevronDown, BookOpen, Lock, Unlock, GitMerge, Link2, Quote, Search } from "lucide-react";
 import { api, type GlossaryEntry } from "../api/client";
+
+interface DuplicateClusterItemProps {
+  cluster: {
+    cluster_id: string;
+    target: GlossaryEntry;
+    candidates: GlossaryEntry[];
+    reason: string;
+  };
+  mergeMutation: any;
+}
+
+function DuplicateClusterItem({ cluster, mergeMutation }: DuplicateClusterItemProps) {
+  const allMembers = useMemo(() => [cluster.target, ...cluster.candidates], [cluster]);
+  const [targetId, setTargetId] = useState<number>(cluster.target.id);
+  const targetEntry = useMemo(() => allMembers.find(m => m.id === targetId) || cluster.target, [allMembers, targetId]);
+  const otherCandidates = useMemo(() => allMembers.filter(m => m.id !== targetId), [allMembers, targetId]);
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<number[]>(() => cluster.candidates.map(c => c.id));
+  const [deterministicIds, setDeterministicIds] = useState<number[]>(() => {
+    return cluster.candidates.filter(c => {
+      const k1 = c.canonical.toLowerCase().trim();
+      const k2 = cluster.target.canonical.toLowerCase().trim();
+      if (k1 === k2) return true;
+      const w1 = k1.split(/\s+/).sort().join(" ");
+      const w2 = k2.split(/\s+/).sort().join(" ");
+      return w1 === w2 || (Math.abs(k1.length - k2.length) <= 3 && k1[0] === k2[0] && k1.split(/\s+/).length === k2.split(/\s+/).length);
+    }).map(c => c.id);
+  });
+
+  const targetQuotes = useMemo(() => {
+    try { return JSON.parse(targetEntry.evidence_contexts || "[]"); } catch { return []; }
+  }, [targetEntry]);
+
+  return (
+    <div className="rounded-2xl border p-4 shadow-sm" style={{ backgroundColor: "var(--color-box-bg)", borderColor: "var(--color-border)" }}>
+      <div className="flex items-start justify-between flex-wrap gap-2 mb-3">
+        <div>
+          <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border" style={{ borderColor: "var(--color-accent)", color: "var(--color-accent)" }}>
+            Candidate Cluster
+          </span>
+          <span className="text-xs font-medium ml-2 opacity-80">Reason: {cluster.reason}</span>
+        </div>
+        <button
+          disabled={mergeMutation.isPending || selectedCandidateIds.length === 0}
+          onClick={() => mergeMutation.mutate({
+            targetId: targetEntry.id,
+            sourceIds: selectedCandidateIds,
+            deterministicIds: deterministicIds.filter(id => selectedCandidateIds.includes(id))
+          })}
+          className="px-4 py-1.5 rounded-xl text-xs font-bold text-white shadow-sm transition-transform hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+          style={{ background: "linear-gradient(135deg, var(--color-accent) 0%, #ea580c 100%)" }}
+        >
+          <GitMerge className="w-3.5 h-3.5" />
+          <span>Merge ({selectedCandidateIds.length}) into "{targetEntry.canonical}"</span>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+        <div className="p-3 rounded-xl border flex flex-col justify-between" style={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-success)" }}>
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-xs font-bold uppercase flex items-center gap-1" style={{ color: "var(--color-success)" }}>
+                <Check className="w-3.5 h-3.5" /> Root Canonical: {targetEntry.canonical}
+              </div>
+              <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded bg-[var(--color-success)]/15 text-[var(--color-success)]">
+                Target Root
+              </span>
+            </div>
+            <p className="text-xs opacity-80 mt-1">{targetEntry.metadata_json ? JSON.parse(targetEntry.metadata_json).race_or_identity || "" : ""}</p>
+            {targetQuotes.length > 0 && (
+              <blockquote className="mt-2 border-l-2 pl-2 text-xs italic opacity-90 border-[var(--color-success)]">
+                "{targetQuotes[0]}"
+              </blockquote>
+            )}
+          </div>
+          <div className="mt-3 pt-2 border-t text-[11px] opacity-70 border-dashed" style={{ borderColor: "var(--color-border)" }}>
+            Select any candidate on the right and click "Make Root" if you want another profile as canonical.
+          </div>
+        </div>
+
+        <div className="p-3 rounded-xl border space-y-2 max-h-80 overflow-y-auto" style={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-border)" }}>
+          <div className="flex items-center justify-between border-b pb-1.5" style={{ borderColor: "var(--color-border)" }}>
+            <span className="text-xs font-bold uppercase" style={{ color: "var(--color-text-muted)" }}>
+              Candidates to Absorb ({selectedCandidateIds.length}/{otherCandidates.length})
+            </span>
+            <div className="flex items-center gap-2 text-[11px]">
+              <button
+                type="button"
+                onClick={() => setSelectedCandidateIds(otherCandidates.map(c => c.id))}
+                className="hover:underline text-[var(--color-accent)] cursor-pointer"
+              >
+                Select All
+              </button>
+              <span className="opacity-30">|</span>
+              <button
+                type="button"
+                onClick={() => setSelectedCandidateIds([])}
+                className="hover:underline text-[var(--color-accent)] cursor-pointer"
+              >
+                Deselect All
+              </button>
+            </div>
+          </div>
+
+          {otherCandidates.map((c) => {
+            const cQuotes = (() => {
+              try { return JSON.parse(c.evidence_contexts || "[]"); } catch { return []; }
+            })();
+            const isChecked = selectedCandidateIds.includes(c.id);
+            return (
+              <div key={c.id} className="p-2 rounded-lg border transition-colors flex flex-col gap-1" style={{ borderColor: isChecked ? "var(--color-accent)" : "var(--color-border)", backgroundColor: isChecked ? "var(--color-accent)/5" : "transparent" }}>
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedCandidateIds([...selectedCandidateIds, c.id]);
+                        } else {
+                          setSelectedCandidateIds(selectedCandidateIds.filter(id => id !== c.id));
+                        }
+                      }}
+                      className="rounded accent-[var(--color-accent)] cursor-pointer"
+                    />
+                    <span className="font-bold text-xs">{c.canonical}</span>
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    {isChecked && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const isDet = deterministicIds.includes(c.id);
+                          if (isDet) {
+                            setDeterministicIds(deterministicIds.filter(id => id !== c.id));
+                          } else {
+                            setDeterministicIds([...deterministicIds, c.id]);
+                          }
+                        }}
+                        className="px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer flex items-center gap-1"
+                        style={{
+                          borderColor: deterministicIds.includes(c.id) ? "var(--color-accent)" : "var(--color-border)",
+                          backgroundColor: deterministicIds.includes(c.id) ? "var(--color-accent)/15" : "var(--color-surface)",
+                          color: deterministicIds.includes(c.id) ? "var(--color-accent)" : "var(--color-text-muted)"
+                        }}
+                        title={deterministicIds.includes(c.id) ? "String Replacement: Will be replaced by prepass before LLM (Click to switch to LLM Context Only)" : "LLM Context Only: Kept in dialogue as title/alias (Click to switch to String Replacement)"}
+                      >
+                        {deterministicIds.includes(c.id) ? "🔤 Deterministic Replace" : "🧠 LLM Context Only"}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newTarget = c;
+                        setTargetId(newTarget.id);
+                        const remaining = allMembers.filter(m => m.id !== newTarget.id);
+                        setSelectedCandidateIds(remaining.map(m => m.id));
+                      }}
+                      className="px-2 py-0.5 rounded text-[10px] font-semibold border hover:opacity-80 transition-opacity cursor-pointer flex items-center gap-1"
+                      style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+                      title="Make this character the root canonical entry for this cluster"
+                    >
+                      <Check className="w-3 h-3" /> Make Root
+                    </button>
+                  </div>
+                </div>
+                {cQuotes.length > 0 && (
+                  <blockquote className="ml-5 border-l-2 pl-2 text-[11px] italic opacity-80 border-[var(--color-border)]">
+                    "{cQuotes[0]}"
+                  </blockquote>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface LoreTabProps {
   novelId: number;
@@ -44,8 +222,8 @@ export function LoreTab({ novelId }: LoreTabProps) {
   });
 
   const mergeMutation = useMutation({
-    mutationFn: ({ targetId, sourceIds }: { targetId: number; sourceIds: number[] }) =>
-      api.mergeGlossaryEntries(novelId, targetId, sourceIds),
+    mutationFn: ({ targetId, sourceIds, deterministicIds }: { targetId: number; sourceIds: number[]; deterministicIds?: number[] }) =>
+      api.mergeGlossaryEntries(novelId, targetId, sourceIds, deterministicIds),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["glossary", novelId] });
       queryClient.invalidateQueries({ queryKey: ["glossaryDuplicates", novelId] });
@@ -874,67 +1052,9 @@ export function LoreTab({ novelId }: LoreTabProps) {
                   <span className="text-xs opacity-70 mt-1">All character names are unique according to semantic blocking rules.</span>
                 </div>
               ) : (
-                duplicates.map((cluster) => {
-                  const targetQuotes = (() => {
-                    try { return JSON.parse(cluster.target.evidence_contexts || "[]"); } catch { return []; }
-                  })();
-                  return (
-                    <div key={cluster.cluster_id} className="rounded-2xl border p-4 shadow-sm" style={{ backgroundColor: "var(--color-box-bg)", borderColor: "var(--color-border)" }}>
-                      <div className="flex items-start justify-between flex-wrap gap-2 mb-3">
-                        <div>
-                          <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border" style={{ borderColor: "var(--color-accent)", color: "var(--color-accent)" }}>
-                            Candidate Cluster
-                          </span>
-                          <span className="text-xs font-medium ml-2 opacity-80">Reason: {cluster.reason}</span>
-                        </div>
-                        <button
-                          disabled={mergeMutation.isPending}
-                          onClick={() => mergeMutation.mutate({ targetId: cluster.target.id, sourceIds: cluster.candidates.map((c) => c.id) })}
-                          className="px-4 py-1.5 rounded-xl text-xs font-bold text-white shadow-sm transition-transform hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
-                          style={{ background: "linear-gradient(135deg, var(--color-accent) 0%, #ea580c 100%)" }}
-                        >
-                          <GitMerge className="w-3.5 h-3.5" />
-                          <span>Merge into "{cluster.target.canonical}"</span>
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                        <div className="p-3 rounded-xl border" style={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-success)" }}>
-                          <div className="text-xs font-bold uppercase mb-1 flex items-center gap-1" style={{ color: "var(--color-success)" }}>
-                            <Check className="w-3.5 h-3.5" /> Target Canonical: {cluster.target.canonical}
-                          </div>
-                          <p className="text-xs opacity-80 mt-1">{cluster.target.metadata_json ? JSON.parse(cluster.target.metadata_json).race_or_identity || "" : ""}</p>
-                          {targetQuotes.length > 0 && (
-                            <blockquote className="mt-2 border-l-2 pl-2 text-xs italic opacity-90 border-[var(--color-success)]">
-                              "{targetQuotes[0]}"
-                            </blockquote>
-                          )}
-                        </div>
-
-                        <div className="p-3 rounded-xl border space-y-2" style={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-border)" }}>
-                          <div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--color-text-muted)" }}>
-                            Candidates to Absorb ({cluster.candidates.length})
-                          </div>
-                          {cluster.candidates.map((c) => {
-                            const cQuotes = (() => {
-                              try { return JSON.parse(c.evidence_contexts || "[]"); } catch { return []; }
-                            })();
-                            return (
-                              <div key={c.id} className="text-xs border-t pt-1.5" style={{ borderColor: "var(--color-border)" }}>
-                                <span className="font-bold">{c.canonical}</span>
-                                {cQuotes.length > 0 && (
-                                  <blockquote className="mt-1 border-l-2 pl-2 text-[11px] italic opacity-80 border-[var(--color-border)]">
-                                    "{cQuotes[0]}"
-                                  </blockquote>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
+                duplicates.map((cluster) => (
+                  <DuplicateClusterItem key={cluster.cluster_id} cluster={cluster} mergeMutation={mergeMutation} />
+                ))
               )}
             </div>
 

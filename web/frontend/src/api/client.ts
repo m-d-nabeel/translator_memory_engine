@@ -222,10 +222,10 @@ export const api = {
     request<GlossaryEntry[]>(`/novels/${novelId}/glossary`),
   listGlossaryDuplicates: (novelId: number) =>
     request<DuplicateCluster[]>(`/novels/${novelId}/glossary/duplicates`),
-  mergeGlossaryEntries: (novelId: number, targetId: number, sourceIds: number[]) =>
+  mergeGlossaryEntries: (novelId: number, targetId: number, sourceIds: number[], deterministicIds?: number[]) =>
     request<GlossaryEntry>(`/novels/${novelId}/glossary/merge`, {
       method: "POST",
-      body: JSON.stringify({ target_id: targetId, source_ids: sourceIds }),
+      body: JSON.stringify({ target_id: targetId, source_ids: sourceIds, deterministic_ids: deterministicIds }),
     }),
 
   listChapterJobs: (chapterId: number) =>
