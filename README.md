@@ -288,3 +288,37 @@ The `data/known_errors.json` file maps MTL errors to their Korean source and cor
 - `cried and ate mustard` → "gritting their teeth"
 - `suck honey` → "flattering"
 - `head case` → "idiot"
+
+## Web Application
+
+The Translator Memory Engine also includes a full-stack web application to visually manage novels, policies, glossary terms, and AI rewriting jobs.
+
+### Backend (FastAPI)
+
+The backend is built with FastAPI and uses a local SQLite database (`engine.db`).
+
+**To start the backend server:**
+
+```bash
+uv run uvicorn web.backend.app:app --reload --port 8000
+```
+
+**To seed the database with initial test data (optional):**
+
+```bash
+uv run python -m web.backend.seed
+```
+
+### Frontend (React + Vite)
+
+The frontend is a modern React application built with Vite and TailwindCSS.
+
+**To start the frontend development server:**
+
+```bash
+cd web/frontend
+pnpm install
+pnpm dev
+```
+
+The frontend will run on `http://localhost:5173` and automatically connect to the backend at `http://localhost:8000`.

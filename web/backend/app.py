@@ -10,9 +10,17 @@ from web.backend.api import chapters, jobs, novels, policies
 from web.backend.config import settings
 from web.backend.db.database import init_db
 
+import os
+from logging.handlers import RotatingFileHandler
+
+os.makedirs("logs", exist_ok=True)
+file_handler = RotatingFileHandler("logs/app.log", maxBytes=5 * 1024 * 1024, backupCount=5)
+console_handler = logging.StreamHandler()
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    handlers=[file_handler, console_handler]
 )
 
 

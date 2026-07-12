@@ -153,6 +153,27 @@ export const api = {
 
   listPolicies: (novelId: number) =>
     request<Policy[]>(`/novels/${novelId}/policies`),
+  createPolicy: (
+    novelId: number,
+    data: { trigger: string; replacement: string; note?: string },
+  ) =>
+    request<Policy>(`/novels/${novelId}/policies`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updatePolicy: (
+    novelId: number,
+    policyId: number,
+    data: { trigger?: string; replacement?: string; note?: string },
+  ) =>
+    request<Policy>(`/novels/${novelId}/policies/${policyId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deletePolicy: (novelId: number, policyId: number) =>
+    request<{ status: string }>(`/novels/${novelId}/policies/${policyId}`, {
+      method: "DELETE",
+    }),
   extractPolicies: (novelId: number) =>
     request<{ status: string }>(`/novels/${novelId}/extract`, {
       method: "POST",

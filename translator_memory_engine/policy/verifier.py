@@ -36,6 +36,7 @@ class PassthroughVerifier:
         policies: List[Policy],
         context_map: Optional[Dict[str, str]] = None,
         audit_path: Optional[str] = None,
+        source_language: str = "Korean",
     ) -> List[Policy]:
         return policies
 
@@ -44,6 +45,7 @@ class PassthroughVerifier:
         policies: List[Policy],
         context_map: Optional[Dict[str, str]] = None,
         audit_path: Optional[str] = None,
+        source_language: str = "Korean",
     ) -> List[Policy]:
         return policies
 
@@ -88,7 +90,10 @@ class LLMVerifier:
         return self._client
 
     def _build_prompt(
-        self, batch: List[Policy], context_map: Optional[Dict[str, str]] = None
+        self,
+        batch: List[Policy],
+        context_map: Optional[Dict[str, str]] = None,
+        source_language: str = "Korean",
     ) -> str:
         """Build a verification prompt for a batch of policy candidates.
 
@@ -115,7 +120,7 @@ class LLMVerifier:
 
         candidates_text = "\n".join(candidates)
 
-        return f"""You are verifying named entity extraction results from a translated Korean web novel.
+        return f"""You are verifying named entity extraction results from an English translation of a {source_language} web novel.
 
 For each candidate below, classify it as:
 - KEEP: This is a genuine character name, place name, organization, item, or consistent term that a translator would standardize.
@@ -192,6 +197,7 @@ Example:
         policies: List[Policy],
         context_map: Optional[Dict[str, str]] = None,
         audit_path: Optional[str] = None,
+        source_language: str = "Korean",
     ) -> List[Policy]:
         """Verify a list of policies using the LLM.
 
@@ -231,7 +237,9 @@ Example:
         # Process in batches
         for i in range(0, len(policies), self.batch_size):
             batch = policies[i : i + self.batch_size]
-            prompt = self._build_prompt(batch, context_map=built_context)
+            prompt = self._build_prompt(
+                batch, context_map=built_context, source_language=source_language
+            )
 
             try:
                 response_text = self._call_llm(prompt)
@@ -306,6 +314,7 @@ Example:
         policies: List[Policy],
         context_map: Optional[Dict[str, str]] = None,
         audit_path: Optional[str] = None,
+        source_language: str = "Korean",
     ) -> List[Policy]:
         """Refined LLM review of ambiguous (needs_review) policies.
 
@@ -354,7 +363,9 @@ Example:
         audit: List[Dict[str, Any]] = []
         for i in range(0, len(candidates), self.batch_size):
             batch = candidates[i : i + self.batch_size]
-            prompt = self._build_review_prompt(batch, related_cache, context_map)
+            prompt = self._build_review_prompt(
+                batch, related_cache, context_map, source_language=source_language
+            )
             try:
                 resp = self._call_llm(prompt)
                 results = self._parse_response(resp)
@@ -468,6 +479,7 @@ Example:
         batch: List[Policy],
         related_cache: Dict[str, List[Dict[str, Any]]],
         context_map: Optional[Dict[str, str]] = None,
+        source_language: str = "Korean",
     ) -> str:
         items = []
         for p in batch:
@@ -486,7 +498,7 @@ Example:
                 f"confidence={p.confidence}{ctx_str}{rel_str}"
             )
         items_text = "\n".join(items)
-        return f"""You are resolving AMBIGUOUS candidate policies from a translated novel. Each was flagged because it is low-confidence or overlaps another policy.
+        return f"""You are resolving AMBIGUOUS candidate policies from an English translation of a {source_language} web novel. Each was flagged because it is low-confidence or overlaps another policy.
 
 For each candidate you are given its example sentences (real usage) and its RELATED policies (others that may be the SAME entity or a different one).
 

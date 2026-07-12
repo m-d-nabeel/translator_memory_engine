@@ -88,7 +88,7 @@ export function EngineInspectorModal({
     if (autoScroll && terminalEndRef.current) {
       terminalEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [logs, activeJob, autoScroll]);
+  }, [jobSummary.logs, activeJob, autoScroll]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
@@ -240,7 +240,8 @@ export function EngineInspectorModal({
                 if (job.result_summary) {
                   try {
                     summary = JSON.parse(job.result_summary);
-                  } catch (e) {}
+                  } catch {
+                  }
                 }
 
                 return (

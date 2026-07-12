@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { ReaderView } from "../components/ReaderView";
 import { ReaderSettingsDrawer } from "../components/ReaderSettingsDrawer";
@@ -13,6 +13,7 @@ import {
   Sliders,
   Split,
   Sparkles,
+  RefreshCw,
 } from "lucide-react";
 
 type ViewMode = "refined" | "mtl" | "original";
@@ -22,6 +23,15 @@ export function Reader() {
   const navigate = useNavigate();
   const id = parseInt(chapterId!, 10);
   const settings = useReaderSettings();
+  const queryClient = useQueryClient();
+
+  const reprocessMutation = useMutation({
+    mutationFn: (doLlm: boolean) => api.reprocessChapter(id, doLlm),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["read", id] });
+      queryClient.invalidateQueries({ queryKey: ["chapterStatus", id] });
+    },
+  });
 
   const [viewMode, setViewMode] = useState<ViewMode>("refined");
   const [splitMode, setSplitMode] = useState(false);
@@ -32,12 +42,22 @@ export function Reader() {
   const { data: chapter, isLoading } = useQuery({
     queryKey: ["read", id],
     queryFn: () => api.readChapter(id),
+    refetchInterval: (query) =>
+      query.state.data?.status === "processing" ||
+      query.state.data?.status === "pending"
+        ? 2000
+        : false,
   });
 
   const { data: chapterData } = useQuery({
     queryKey: ["chapterStatus", id],
     queryFn: () => api.chapterStatus(id),
     enabled: !isNaN(id),
+    refetchInterval: (query) =>
+      query.state.data?.status === "processing" ||
+      query.state.data?.status === "pending"
+        ? 2000
+        : false,
   });
 
   const { data: novel } = useQuery({
@@ -180,28 +200,7 @@ export function Reader() {
     );
   }
 
-  if (chapter.status === "processing" || chapter.status === "pending") {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[var(--color-bg)] text-[var(--color-text)] p-6">
-        <div className="w-10 h-10 rounded-full border-2 border-t-[var(--color-accent)] border-white/20 animate-spin" />
-        <div className="text-center">
-          <h3 className="text-base font-bold font-outfit">
-            AI Memory Engine is Refining Chapter {chapter.chapter_number}
-          </h3>
-          <p className="text-xs text-[var(--color-text-muted)] mt-1 max-w-sm">
-            Applying terminology policies, polishing tone, and ensuring
-            consistency across the series...
-          </p>
-        </div>
-        <button
-          onClick={() => navigate(`/novels/${chapterData?.novel_id || ""}`)}
-          className="px-5 py-2.5 rounded-xl border bg-[var(--color-surface)] text-xs font-bold cursor-pointer transition-transform hover:scale-105"
-        >
-          &larr; Return to Studio
-        </button>
-      </div>
-    );
-  }
+  // We handle processing states inside the ReaderView now so the user can see the old text while waiting
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--color-bg)] text-[var(--color-text)] transition-colors duration-200">
@@ -295,6 +294,30 @@ export function Reader() {
 
           {/* Right Action Tools */}
           <div className="flex items-center gap-1.5 shrink-0">
+            {/* Reprocess Button */}
+            <button
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Reprocess this chapter? It will run through the latest rules again.",
+                  )
+                ) {
+                  reprocessMutation.mutate(true);
+                }
+              }}
+              title="Reprocess Chapter"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer hover:bg-white/5"
+              style={{
+                borderColor: "var(--color-border)",
+                color: "var(--color-text)",
+              }}
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${reprocessMutation.isPending ? "animate-spin" : ""}`}
+              />
+              <span className="hidden sm:inline">Reprocess</span>
+            </button>
+
             {/* Split Compare Button (Desktop / Tablet) */}
             {(hasRefined || hasOriginal) && (
               <button
@@ -415,6 +438,9 @@ export function Reader() {
               lineHeight={settings.lineHeight}
               paraMode={settings.paraMode}
               maxWidth={splitMode ? "full" : settings.maxWidth}
+              isProcessing={
+                chapter.status === "processing" || chapter.status === "pending"
+              }
             />
           </div>
 

@@ -138,7 +138,7 @@ def format_known_errors_for_prompt(matches: List[Dict]) -> str:
         correct = m.get("correct_translation", "")
         korean = m.get("korean_source", "")
         context = m.get("context", "")
-        lines.append(f'  - "{phrase}" → "{correct}" (Korean: {korean}) — {context}')
+        lines.append(f'  - "{phrase}" → "{correct}" (Source term: {korean}) — {context}')
     return "\n".join(lines)
 
 
@@ -437,7 +437,8 @@ _FALLBACK_RULES = """Repair rules:
   Before preserving any sentence or exclamation verbatim, verify its Discourse Coherence against the immediate scene:
   1. Conversational Logic: If a standalone noun, exclamation, or idiom violates the conversational or emotional logic of the scene (e.g. an unrelated economic/technical noun during a physical confrontation, or a bizarre non-sequitur), recognize it as a deceptive MTL homograph/idiom artifact and repair it so it makes natural sense inside the scene's context.
   2. Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses" or bending "her own arm" while attacking an enemy), correct the pronoun logic ("so that you would come to your senses" / "bent his arm") to restore clear narrative causality.
-- Do NOT invent new plot events or characters. Output ONLY the repaired chapter text."""
+- Do NOT invent new plot events or characters. Output ONLY the repaired chapter text.
+- PRESERVE ALL PARAGRAPH BREAKS EXACTLY. Do not merge short paragraphs into blocks. Output the same number of paragraphs."""
 
 
 def build_prompt(
@@ -478,7 +479,7 @@ def build_prompt(
     tail_block = ""
     if previous_tail:
         tail_block = (
-            "\n=== PREVIOUS CHAPTER TAIL (for continuity — do NOT reproduce) ===\n"
+            "\n=== PREVIOUS PASSAGE CONTEXT (for continuity — do NOT reproduce) ===\n"
             f"{previous_tail}\n\n"
         )
 
@@ -499,6 +500,7 @@ Repair rules:
 - Do NOT add speaker attributions ("he said") if neither (A) nor (B) has them.
 - Do NOT summarize, condense, or skip content. Reproduce ALL scenes and beats from (A).
 - Output ONLY the repaired chapter text. No headers, scaffolding, or code fences.
+- PRESERVE ALL PARAGRAPH BREAKS EXACTLY. Do not merge short paragraphs into blocks. Output the same number of paragraphs.
 
 === (A) MACHINE TRANSLATION TO REPAIR ===
 {prepassed_text}
@@ -667,12 +669,19 @@ def rewrite(
             for k, mtl_chunk in enumerate(mtl_chunks):
                 logger.debug(f"Processing chunk {k + 1}/{len(mtl_chunks)}...")
                 ref_chunk = ref_chunks[k] if k < len(ref_chunks) else None
+
+                # Context continuity between chunks
+                if k == 0:
+                    context_tail = previous_tail
+                else:
+                    context_tail = mtl_chunks[k - 1][-800:]
+
                 prompt = build_prompt(
                     mtl_chunk,
                     prompted,
                     reference=ref_chunk,
                     style_profile=style_profile,
-                    previous_tail=previous_tail if k == 0 else None,
+                    previous_tail=context_tail,
                 )
                 logger.debug(f"Prompt length: {len(prompt)} chars")
                 resp = _llm_complete(

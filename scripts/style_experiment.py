@@ -121,7 +121,6 @@ def run_condition_c(
 ) -> str:
     """Condition C: +Exemplars (embedding-based scene-matched exemplars)."""
     from translator_memory_engine.rewrite.rewriter import rewrite
-    from translator_memory_engine.memory.style_bank import retrieve_style_excerpts
 
     # Retrieve top exemplars using embedding similarity
     exemplars = exemplar_index.retrieve_balanced(mtl_text, embed_fn=embed_fn, per_type=3)
@@ -281,12 +280,13 @@ def main():
     tendencies: Dict[str, str] = {}
     diagnostics: Dict[str, float] = {}
     if 1 in orig_index and 1 in mtl_index:
+        from dotenv import load_dotenv
+        from openai import OpenAI
+
         from translator_memory_engine.style.analyzer import (
             compute_deterministic_profile,
             extract_tendencies,
         )
-        from openai import OpenAI
-        from dotenv import load_dotenv
 
         load_dotenv()
         api_key = os.environ.get(api_key_env, "")
@@ -321,7 +321,7 @@ def main():
         ch_results = {}
 
         # Condition A: Baseline
-        print(f"  Running condition A (baseline)...")
+        print("  Running condition A (baseline)...")
         gen_a = run_condition_a(
             mtl_text,
             orig_text,
@@ -338,7 +338,7 @@ def main():
         print(f"    cosine_delta={ch_results['A']['metrics'].get('cosine_delta', 'N/A')}")
 
         # Condition B: +Qualitative
-        print(f"  Running condition B (+qualitative)...")
+        print("  Running condition B (+qualitative)...")
         gen_b = run_condition_b(
             mtl_text,
             orig_text,
@@ -356,7 +356,7 @@ def main():
         print(f"    cosine_delta={ch_results['B']['metrics'].get('cosine_delta', 'N/A')}")
 
         # Condition C: +Exemplars
-        print(f"  Running condition C (+exemplars)...")
+        print("  Running condition C (+exemplars)...")
         gen_c = run_condition_c(
             mtl_text,
             orig_text,
@@ -375,7 +375,7 @@ def main():
         print(f"    cosine_delta={ch_results['C']['metrics'].get('cosine_delta', 'N/A')}")
 
         # Condition D: +Tendencies + Stylometry
-        print(f"  Running condition D (+tendencies + stylometry)...")
+        print("  Running condition D (+tendencies + stylometry)...")
         gen_d = run_condition_d(
             mtl_text,
             orig_text,
@@ -429,12 +429,12 @@ def main():
 
     # Print comparison table
     print(f"\n{'=' * 80}")
-    print(f"COMPARISON TABLE")
+    print("COMPARISON TABLE")
     print(f"{'=' * 80}")
     print(
         f"{'Ch':>4} {'Cond':>5} {'CosΔ':>8} {'NormΔ':>8} {'NovelP':>7} {'Intr':>6} {'VR_gen':>7} {'VR_orig':>7}"
     )
-    print(f"-" * 80)
+    print("-" * 80)
     for ch_num in sorted(results.keys()):
         for cond in ["A", "B", "C", "D"]:
             m = results[ch_num][cond]["metrics"]

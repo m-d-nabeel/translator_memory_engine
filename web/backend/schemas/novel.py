@@ -150,3 +150,15 @@ class JobStatus(BaseModel):
     chapter_number: int | None = None
     started_at: datetime.datetime | None
     completed_at: datetime.datetime | None
+
+
+class PolicyCreate(BaseModel):
+    trigger: str
+    replacement: str
+    note: str | None = None
+
+
+class PolicyUpdate(BaseModel):
+    trigger: str | None = None
+    replacement: str | None = None
+    note: str | None = None

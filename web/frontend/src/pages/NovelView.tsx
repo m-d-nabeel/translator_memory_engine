@@ -178,16 +178,26 @@ export function NovelView() {
     .sort((a, b) => (sortOrder === "desc" ? b - a : a - b));
 
   const filteredChapterNums = allSortedNums.filter((chNum) => {
+    if (chapterSearch && !String(chNum).includes(chapterSearch)) return false;
+
+    if (statusFilter === "all") return true;
+
     const entries = grouped[chNum];
     const mtl = entries.find((e) => e.source_type === "mtl");
-    if (!mtl) return true;
 
-    if (chapterSearch && !String(chNum).includes(chapterSearch)) return false;
+    // If we are filtering by a specific status, but this chapter doesn't have an MTL version, hide it.
+    if (!mtl) return false;
+
     if (statusFilter === "completed" && mtl.status !== "completed")
       return false;
-    if (statusFilter === "processing" && mtl.status !== "processing")
+    if (
+      statusFilter === "processing" &&
+      mtl.status !== "processing" &&
+      mtl.status !== "pending"
+    )
       return false;
     if (statusFilter === "failed" && mtl.status !== "failed") return false;
+
     return true;
   });
 
@@ -620,13 +630,17 @@ export function NovelView() {
                                         ? "var(--color-box-bg)"
                                         : mtl.status === "failed"
                                           ? "var(--color-box-bg)"
-                                          : "var(--color-warning-subtle)",
+                                          : mtl.status === "processing"
+                                            ? "var(--color-warning-subtle)"
+                                            : "rgba(0,0,0,0.2)",
                                     color:
                                       mtl.status === "completed"
                                         ? "var(--color-success)"
                                         : mtl.status === "failed"
                                           ? "var(--color-error)"
-                                          : "var(--color-warning)",
+                                          : mtl.status === "processing"
+                                            ? "var(--color-warning)"
+                                            : "var(--color-text-muted)",
                                     borderColor: "var(--color-border)",
                                   }}
                                 >
@@ -634,7 +648,9 @@ export function NovelView() {
                                     ? "Refined ✨"
                                     : mtl.status === "failed"
                                       ? "Failed"
-                                      : "Processing..."}
+                                      : mtl.status === "processing"
+                                        ? "Processing..."
+                                        : "Pending"}
                                 </span>
                               )}
                             </div>

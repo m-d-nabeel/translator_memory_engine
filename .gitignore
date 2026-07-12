@@ -21,6 +21,7 @@ data/originals/*.txt
 data/mtl/*.txt
 data/output/*
 data/policies/*
-data/translator_memory.db
+*.db
 !data/known_errors.json
 !data/*/.gitkeep
+logs/
