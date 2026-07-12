@@ -17,9 +17,11 @@ async def extract_policies_for_novel(novel_id: int):
     Background task to re-extract policies and glossary entries
     from the original chapters stored in the database.
     """
+    job_id = None
     try:
         async with async_session() as session:
-            from web.backend.db.models import Chapter, Novel
+            from web.backend.db.models import Chapter, Novel, ProcessingJob
+            from datetime import datetime
 
             # Fetch novel for source language
             novel_result = await session.execute(select(Novel).where(Novel.id == novel_id))
@@ -40,6 +42,18 @@ async def extract_policies_for_novel(novel_id: int):
                     f"No original chapters found for novel {novel_id}. Cannot extract policies."
                 )
                 return
+
+            first_ch = original_chapters[0]
+            job = ProcessingJob(
+                chapter_id=first_ch.id,
+                job_type="extract_policies",
+                status="running",
+                started_at=datetime.utcnow(),
+            )
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+            job_id = job.id
 
             from translator_memory_engine.models import Chapter as PipelineChapter
 
@@ -123,6 +137,14 @@ async def extract_policies_for_novel(novel_id: int):
                 )
                 session.add(db_entry)
 
+            if job_id:
+                job_result = await session.execute(select(ProcessingJob).where(ProcessingJob.id == job_id))
+                job = job_result.scalar_one_or_none()
+                if job:
+                    job.status = "completed"
+                    job.completed_at = datetime.utcnow()
+                    job.result_summary = json.dumps({"policies": len(policies), "glossary": len(glossary)})
+
             await session.commit()
             logger.info(
                 f"Successfully saved {len(policies)} policies and {len(glossary)} glossary entries for novel {novel_id}."
@@ -130,3 +152,17 @@ async def extract_policies_for_novel(novel_id: int):
 
     except Exception as e:
         logger.error(f"Error during policy extraction for novel {novel_id}: {e}", exc_info=True)
+        if job_id:
+            try:
+                async with async_session() as session:
+                    from web.backend.db.models import ProcessingJob
+                    from datetime import datetime
+                    job_result = await session.execute(select(ProcessingJob).where(ProcessingJob.id == job_id))
+                    job = job_result.scalar_one_or_none()
+                    if job:
+                        job.status = "failed"
+                        job.completed_at = datetime.utcnow()
+                        job.error_message = str(e)
+                    await session.commit()
+            except Exception as err:
+                logger.error(f"Failed to mark extraction job as failed: {err}")

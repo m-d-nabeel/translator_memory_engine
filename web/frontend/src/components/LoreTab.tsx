@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { User, Edit2, Check, X, AlertTriangle, Eye, ArrowRight, Sparkles, RefreshCw, CheckSquare, Square, ChevronDown, BookOpen, Lock, Unlock, GitMerge, Link2, Quote, Search } from "lucide-react";
 import { api, type GlossaryEntry } from "../api/client";
@@ -190,10 +191,10 @@ export function LoreTab({ novelId }: LoreTabProps) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({ gender: "", race_or_identity: "", speech_style: "" });
   const [extractingMsg, setExtractingMsg] = useState<string | null>(null);
-  const [onlyOgTl, setOnlyOgTl] = useState<boolean>(true);
+  const [onlyOgTl, setOnlyOgTl] = useLocalStorageState<boolean>(`tme-lore-onlyOgTl-${novelId}`, true);
   const [selectedChapterIds, setSelectedChapterIds] = useState<number[]>([]);
   const [showChapterPicker, setShowChapterPicker] = useState<boolean>(false);
-  const [bypassReview, setBypassReview] = useState<boolean>(false);
+  const [bypassReview, setBypassReview] = useLocalStorageState<boolean>("tme-lore-bypassReview", false);
 
   const [showDuplicatesModal, setShowDuplicatesModal] = useState<boolean>(false);
   const [linkingTarget, setLinkingTarget] = useState<GlossaryEntry | null>(null);
@@ -267,6 +268,18 @@ export function LoreTab({ novelId }: LoreTabProps) {
       setShowChapterPicker(false);
     },
   });
+
+  const { data: activeJobs } = useQuery({
+    queryKey: ["jobsNovel", novelId],
+    queryFn: () => api.listNovelJobs(novelId),
+    refetchInterval: (query) => {
+      const jobs = query.state.data || [];
+      const hasRunning = jobs.some(j => j.status === "running" || j.status === "queued");
+      return hasRunning || extractLoreMutation.isPending ? 1500 : false;
+    }
+  });
+
+  const isExtractingLore = extractLoreMutation.isPending || (activeJobs || []).some(j => j.job_type === "extract_lore" && (j.status === "running" || j.status === "queued"));
 
   const updateMetaMutation = useMutation({
     mutationFn: ({
@@ -448,20 +461,20 @@ export function LoreTab({ novelId }: LoreTabProps) {
 
             <button
               onClick={() => extractLoreMutation.mutate({ onlyOgTl, chapterIds: selectedChapterIds.length > 0 ? selectedChapterIds : undefined, bypassReview })}
-              disabled={extractLoreMutation.isPending}
-              className="flex items-center justify-center gap-2 px-5 py-2 rounded-xl text-xs font-bold transition-transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-md text-white flex-shrink-0"
+              disabled={isExtractingLore}
+              className="flex items-center justify-center gap-2 px-5 py-2 rounded-xl text-xs font-bold transition-transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-md text-white flex-shrink-0 disabled:opacity-75"
               style={{
                 background: "linear-gradient(135deg, var(--color-accent) 0%, #ea580c 100%)",
               }}
             >
-              {extractLoreMutation.isPending ? (
+              {isExtractingLore ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
               ) : (
                 <Sparkles className="w-4 h-4" />
               )}
               <span>
-                {extractLoreMutation.isPending
-                  ? "Starting Extraction..."
+                {isExtractingLore
+                  ? "Extracting Lore... ⏳"
                   : selectedChapterIds.length > 0
                   ? `Extract Lore (${selectedChapterIds.length} Ch.)`
                   : `Extract Lore (${onlyOgTl ? "OG TL" : "All Chapters"})`}
@@ -943,20 +956,20 @@ export function LoreTab({ novelId }: LoreTabProps) {
 
             <button
               onClick={() => extractLoreMutation.mutate({ onlyOgTl, chapterIds: selectedChapterIds.length > 0 ? selectedChapterIds : undefined, bypassReview })}
-              disabled={extractLoreMutation.isPending}
-              className="px-5 py-2 rounded-xl text-xs font-bold transition-transform hover:scale-105 active:scale-95 cursor-pointer shadow-md text-white flex items-center justify-center gap-2 w-full sm:w-auto"
+              disabled={isExtractingLore}
+              className="px-5 py-2 rounded-xl text-xs font-bold transition-transform hover:scale-105 active:scale-95 cursor-pointer shadow-md text-white flex items-center justify-center gap-2 w-full sm:w-auto disabled:opacity-75"
               style={{
                 background: "linear-gradient(135deg, var(--color-accent) 0%, #ea580c 100%)",
               }}
             >
-              {extractLoreMutation.isPending ? (
+              {isExtractingLore ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
               ) : (
                 <Sparkles className="w-4 h-4" />
               )}
               <span>
-                {extractLoreMutation.isPending
-                  ? "Extracting Lore..."
+                {isExtractingLore
+                  ? "Extracting Lore... ⏳"
                   : selectedChapterIds.length > 0
                   ? `Scan & Extract Lore (${selectedChapterIds.length} Ch.)`
                   : `Scan & Extract Lore (${onlyOgTl ? "OG TL" : "All Chapters"})`}

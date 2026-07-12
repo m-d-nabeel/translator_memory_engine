@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import { Sparkles, ArrowRight, Languages, RefreshCw } from "lucide-react";
 
 interface PasteFormProps {
@@ -21,7 +22,7 @@ export function PasteForm({
   const [chapterNumber, setChapterNumber] = useState(
     String(nextSuggestedNumber),
   );
-  const [sourceType, setSourceType] = useState<"mtl" | "original">("mtl");
+  const [sourceType, setSourceType] = useLocalStorageState<"mtl" | "original">("tme-paste-sourcetype", "mtl");
   const [text, setText] = useState("");
 
   useEffect(() => {

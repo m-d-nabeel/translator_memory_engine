@@ -6,6 +6,7 @@ import { ReaderView } from "../components/ReaderView";
 import { ReaderSettingsDrawer } from "../components/ReaderSettingsDrawer";
 import { TableOfContentsDrawer } from "../components/TableOfContentsDrawer";
 import { useReaderSettings } from "../hooks/useReaderSettings";
+import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import {
   ArrowLeft,
   ArrowRight,
@@ -34,8 +35,8 @@ export function Reader() {
     },
   });
 
-  const [viewMode, setViewMode] = useState<ViewMode>("refined");
-  const [splitMode, setSplitMode] = useState(false);
+  const [viewMode, setViewMode] = useLocalStorageState<ViewMode>("tme-reader-viewMode", "refined");
+  const [splitMode, setSplitMode] = useLocalStorageState("tme-reader-splitMode", false);
   const [isControlsVisible, setIsControlsVisible] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [showToc, setShowToc] = useState(false);
