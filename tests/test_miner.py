@@ -54,16 +54,12 @@ class TestScoring:
 
     def test_confidence_basic(self):
         scores = {"frequency": 0.5, "consistency": 1.0, "context": 1.0}
-        conf = compute_confidence(
-            scores, base=0.5, per_occurrence=0.03, occurrence_count=10, cap=0.99
-        )
+        conf = compute_confidence(scores, base=0.5, per_occurrence=0.03, occurrence_count=10, cap=0.99)
         assert 0.5 < conf <= 0.99
 
     def test_confidence_cap(self):
         scores = {"frequency": 1.0, "consistency": 1.0, "context": 1.0}
-        conf = compute_confidence(
-            scores, base=0.5, per_occurrence=0.1, occurrence_count=100, cap=0.99
-        )
+        conf = compute_confidence(scores, base=0.5, per_occurrence=0.1, occurrence_count=100, cap=0.99)
         assert conf == 0.99
 
     def test_consistency_penalizes(self):
@@ -133,9 +129,7 @@ class TestMiner:
 
     def test_assigns_deterministic_mode(self):
         signals = self._make_signals()
-        policies = mine_policies(
-            signals, total_chapters=10, min_support=1, deterministic_threshold=0.7
-        )
+        policies = mine_policies(signals, total_chapters=10, min_support=1, deterministic_threshold=0.7)
         for p in policies:
             if p.confidence >= 0.7:
                 assert p.applies == "deterministic"

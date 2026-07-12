@@ -44,9 +44,7 @@ async def list_novel_jobs(novel_id: int, db: AsyncSession = Depends(get_db)):
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job(job_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(ProcessingJob)
-        .options(selectinload(ProcessingJob.chapter))
-        .where(ProcessingJob.id == job_id)
+        select(ProcessingJob).options(selectinload(ProcessingJob.chapter)).where(ProcessingJob.id == job_id)
     )
     job = result.scalar_one_or_none()
     if not job:

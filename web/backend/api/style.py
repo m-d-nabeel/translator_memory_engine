@@ -18,9 +18,7 @@ async def list_style_snippets(novel_id: int, db: AsyncSession = Depends(get_db))
 
 
 @router.post("/api/v1/novels/{novel_id}/style-snippets", response_model=StyleSnippetResponse)
-async def create_style_snippet(
-    novel_id: int, snippet_in: StyleSnippetCreate, db: AsyncSession = Depends(get_db)
-):
+async def create_style_snippet(novel_id: int, snippet_in: StyleSnippetCreate, db: AsyncSession = Depends(get_db)):
     novel = await db.get(Novel, novel_id)
     if not novel:
         raise HTTPException(status_code=404, detail="Novel not found")
@@ -36,9 +34,7 @@ async def create_style_snippet(
     return new_snippet
 
 
-@router.put(
-    "/api/v1/novels/{novel_id}/style-snippets/{snippet_id}", response_model=StyleSnippetResponse
-)
+@router.put("/api/v1/novels/{novel_id}/style-snippets/{snippet_id}", response_model=StyleSnippetResponse)
 async def update_style_snippet(
     novel_id: int, snippet_id: int, snippet_in: StyleSnippetUpdate, db: AsyncSession = Depends(get_db)
 ):

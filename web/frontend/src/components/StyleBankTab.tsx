@@ -46,7 +46,8 @@ export function StyleBankTab({ novelId }: StyleBankTabProps) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (snippetId: number) => api.deleteStyleSnippet(novelId, snippetId),
+    mutationFn: (snippetId: number) =>
+      api.deleteStyleSnippet(novelId, snippetId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["styleSnippets", novelId] });
     },
@@ -68,12 +69,19 @@ export function StyleBankTab({ novelId }: StyleBankTabProps) {
     <div className="space-y-4 animate-fade-in">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-xl font-bold flex items-center gap-2" style={{ color: "var(--color-text)" }}>
+          <h2
+            className="text-xl font-bold flex items-center gap-2"
+            style={{ color: "var(--color-text)" }}
+          >
             <Brush className="w-5 h-5 text-[var(--color-accent)]" />
             Language Memory (Style Bank)
           </h2>
-          <p className="text-sm mt-1" style={{ color: "var(--color-text-muted)" }}>
-            Provide manual excerpts to anchor the LLM's stylistic voice for this novel.
+          <p
+            className="text-sm mt-1"
+            style={{ color: "var(--color-text-muted)" }}
+          >
+            Provide manual excerpts to anchor the LLM's stylistic voice for this
+            novel.
           </p>
         </div>
         <button
@@ -82,7 +90,8 @@ export function StyleBankTab({ novelId }: StyleBankTabProps) {
           }
           className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-xs font-bold transition-transform hover:scale-105 active:scale-95 cursor-pointer shadow-sm glow-accent"
           style={{
-            background: "linear-gradient(135deg, var(--color-accent) 0%, #ea580c 100%)",
+            background:
+              "linear-gradient(135deg, var(--color-accent) 0%, #ea580c 100%)",
           }}
         >
           <Plus className="w-4 h-4" />
@@ -91,7 +100,10 @@ export function StyleBankTab({ novelId }: StyleBankTabProps) {
       </div>
 
       {isLoading ? (
-        <div className="py-16 text-center text-xs opacity-60" style={{ color: "var(--color-text-muted)" }}>
+        <div
+          className="py-16 text-center text-xs opacity-60"
+          style={{ color: "var(--color-text-muted)" }}
+        >
           Loading snippets...
         </div>
       ) : snippets && snippets.length > 0 ? (
@@ -105,18 +117,18 @@ export function StyleBankTab({ novelId }: StyleBankTabProps) {
                 borderColor: "var(--color-border)",
               }}
             >
-              <div 
+              <div
                 className="text-sm italic whitespace-pre-wrap leading-relaxed"
                 style={{ color: "var(--color-text)" }}
               >
                 "{snippet.text}"
               </div>
               {snippet.note && (
-                <div 
+                <div
                   className="text-xs border-t pt-2 mt-auto font-medium"
-                  style={{ 
+                  style={{
                     borderColor: "var(--color-border)",
-                    color: "var(--color-text-muted)" 
+                    color: "var(--color-text-muted)",
                   }}
                 >
                   {snippet.note}
@@ -154,20 +166,30 @@ export function StyleBankTab({ novelId }: StyleBankTabProps) {
           ))}
         </div>
       ) : (
-        <div 
+        <div
           className="text-center py-12 border border-dashed rounded-3xl glass-surface"
           style={{ borderColor: "var(--color-border)" }}
         >
           <Brush className="w-10 h-10 mx-auto mb-3 opacity-30 text-[var(--color-accent)]" />
-          <h3 className="text-base font-bold" style={{ color: "var(--color-text)" }}>No Style Snippets</h3>
-          <p className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>Add some examples of the translator's voice.</p>
+          <h3
+            className="text-base font-bold"
+            style={{ color: "var(--color-text)" }}
+          >
+            No Style Snippets
+          </h3>
+          <p
+            className="text-xs mt-1"
+            style={{ color: "var(--color-text-muted)" }}
+          >
+            Add some examples of the translator's voice.
+          </p>
         </div>
       )}
 
       {/* Modal */}
       {modal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fade-in">
-          <div 
+          <div
             className="w-full max-w-lg rounded-3xl border border-[var(--color-border)] p-6 shadow-2xl glass-surface animate-slide-up"
             style={{ backgroundColor: "var(--color-surface)" }}
           >
@@ -179,7 +201,8 @@ export function StyleBankTab({ novelId }: StyleBankTabProps) {
                 <div
                   className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
                   style={{
-                    background: "linear-gradient(135deg, var(--color-accent) 0%, #ea580c 100%)",
+                    background:
+                      "linear-gradient(135deg, var(--color-accent) 0%, #ea580c 100%)",
                   }}
                 >
                   <Brush className="w-5 h-5" />
@@ -189,7 +212,9 @@ export function StyleBankTab({ novelId }: StyleBankTabProps) {
                     className="text-base font-bold"
                     style={{ color: "var(--color-text)" }}
                   >
-                    {modal.mode === "add" ? "Add Style Snippet" : "Edit Style Snippet"}
+                    {modal.mode === "add"
+                      ? "Add Style Snippet"
+                      : "Edit Style Snippet"}
                   </h3>
                   <p
                     className="text-xs opacity-70"
@@ -207,14 +232,15 @@ export function StyleBankTab({ novelId }: StyleBankTabProps) {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="space-y-4">
               <div>
-                <label 
+                <label
                   className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
                   style={{ color: "var(--color-text-muted)" }}
                 >
-                  Text Excerpt (<span className="text-[var(--color-error)]">*</span>)
+                  Text Excerpt (
+                  <span className="text-[var(--color-error)]">*</span>)
                 </label>
                 <textarea
                   className="w-full rounded-xl p-3 text-sm focus:outline-none focus:ring-2 border"
@@ -230,7 +256,7 @@ export function StyleBankTab({ novelId }: StyleBankTabProps) {
                 />
               </div>
               <div>
-                <label 
+                <label
                   className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
                   style={{ color: "var(--color-text-muted)" }}
                 >
@@ -249,13 +275,16 @@ export function StyleBankTab({ novelId }: StyleBankTabProps) {
                   onChange={(e) => setModal({ ...modal, note: e.target.value })}
                 />
               </div>
-              <div className="flex justify-end gap-3 pt-6 mt-6 border-t" style={{ borderColor: "var(--color-border)" }}>
+              <div
+                className="flex justify-end gap-3 pt-6 mt-6 border-t"
+                style={{ borderColor: "var(--color-border)" }}
+              >
                 <button
                   onClick={() => setModal({ ...modal, isOpen: false })}
                   className="px-5 py-2.5 rounded-xl text-xs font-bold transition-colors hover:bg-black/5 cursor-pointer border"
-                  style={{ 
+                  style={{
                     borderColor: "var(--color-border)",
-                    color: "var(--color-text-muted)"
+                    color: "var(--color-text-muted)",
                   }}
                 >
                   Cancel
@@ -269,7 +298,8 @@ export function StyleBankTab({ novelId }: StyleBankTabProps) {
                   }
                   className="px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-lg transition-transform hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed glow-accent"
                   style={{
-                    background: "linear-gradient(135deg, var(--color-accent) 0%, #ea580c 100%)",
+                    background:
+                      "linear-gradient(135deg, var(--color-accent) 0%, #ea580c 100%)",
                   }}
                 >
                   {modal.mode === "add" ? "Save Snippet" : "Update Snippet"}

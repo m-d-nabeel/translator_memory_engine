@@ -19,7 +19,7 @@ console_handler = logging.StreamHandler()
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    handlers=[file_handler, console_handler]
+    handlers=[file_handler, console_handler],
 )
 
 

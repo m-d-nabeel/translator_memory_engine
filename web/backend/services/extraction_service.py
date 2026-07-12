@@ -20,8 +20,9 @@ async def extract_policies_for_novel(novel_id: int):
     job_id = None
     try:
         async with async_session() as session:
-            from web.backend.db.models import Chapter, Novel, ProcessingJob
             from datetime import datetime
+
+            from web.backend.db.models import Chapter, Novel, ProcessingJob
 
             # Fetch novel for source language
             novel_result = await session.execute(select(Novel).where(Novel.id == novel_id))
@@ -38,9 +39,7 @@ async def extract_policies_for_novel(novel_id: int):
             original_chapters = result.scalars().all()
 
             if not original_chapters:
-                logger.warning(
-                    f"No original chapters found for novel {novel_id}. Cannot extract policies."
-                )
+                logger.warning(f"No original chapters found for novel {novel_id}. Cannot extract policies.")
                 return
 
             first_ch = original_chapters[0]
@@ -91,9 +90,7 @@ async def extract_policies_for_novel(novel_id: int):
             # 4. Save to DB directly
             # First, clear existing policies and glossary for this novel to regenerate
             await session.execute(Policy.__table__.delete().where(Policy.novel_id == novel_id))
-            await session.execute(
-                GlossaryEntry.__table__.delete().where(GlossaryEntry.novel_id == novel_id)
-            )
+            await session.execute(GlossaryEntry.__table__.delete().where(GlossaryEntry.novel_id == novel_id))
 
             # Since the CLI uses PolicyStore which has its own sync sqlite saving,
             # we will just add them using SQLAlchemy here directly to the unified DB.
@@ -155,8 +152,10 @@ async def extract_policies_for_novel(novel_id: int):
         if job_id:
             try:
                 async with async_session() as session:
-                    from web.backend.db.models import ProcessingJob
                     from datetime import datetime
+
+                    from web.backend.db.models import ProcessingJob
+
                     job_result = await session.execute(select(ProcessingJob).where(ProcessingJob.id == job_id))
                     job = job_result.scalar_one_or_none()
                     if job:

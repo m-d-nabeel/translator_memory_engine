@@ -7,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from translator_memory_engine.policy.miner import _normalize, _normalized_edit_distance
 from web.backend.db.database import get_db
 from web.backend.db.models import GlossaryEntry, Novel, Policy
 from web.backend.schemas.novel import (
@@ -20,7 +21,6 @@ from web.backend.schemas.novel import (
     PolicyUpdate,
 )
 from web.backend.services.extraction_service import extract_policies_for_novel
-from translator_memory_engine.policy.miner import _normalize, _normalized_edit_distance
 
 router = APIRouter(tags=["policies"])
 
@@ -32,33 +32,34 @@ async def extract_policies_and_glossary(novel_id: int, background_tasks: Backgro
 
 
 @router.post("/api/v1/novels/{novel_id}/extract-lore")
-async def extract_lore_endpoint(novel_id: int, background_tasks: BackgroundTasks, req: ExtractLoreRequest | None = None):
+async def extract_lore_endpoint(
+    novel_id: int, background_tasks: BackgroundTasks, req: ExtractLoreRequest | None = None
+):
     from web.backend.db.database import async_session
     from web.backend.services.rewrite_service import extract_lore_for_chapters
+
     chapter_ids = req.chapter_ids if req else None
     only_og_tl = req.only_og_tl if req else False
     bypass_review = req.bypass_review if req else False
-    background_tasks.add_task(extract_lore_for_chapters, novel_id, chapter_ids, async_session, only_og_tl, bypass_review)
+    background_tasks.add_task(
+        extract_lore_for_chapters, novel_id, chapter_ids, async_session, only_og_tl, bypass_review
+    )
     return {"status": "Lore extraction started in background."}
-
 
 
 @router.get("/api/v1/novels/{novel_id}/policies", response_model=list[PolicyResponse])
 async def list_policies(novel_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Policy).where(Policy.novel_id == novel_id).order_by(Policy.confidence.desc())
-    )
+    result = await db.execute(select(Policy).where(Policy.novel_id == novel_id).order_by(Policy.confidence.desc()))
     return result.scalars().all()
 
 
 @router.get("/api/v1/novels/{novel_id}/glossary", response_model=list[GlossaryResponse])
 async def list_glossary(novel_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(GlossaryEntry)
-        .where(GlossaryEntry.novel_id == novel_id)
-        .order_by(GlossaryEntry.canonical)
+        select(GlossaryEntry).where(GlossaryEntry.novel_id == novel_id).order_by(GlossaryEntry.canonical)
     )
     return result.scalars().all()
+
 
 @router.put("/api/v1/novels/{novel_id}/glossary/{entry_id}/metadata", response_model=GlossaryResponse)
 async def update_glossary_metadata(
@@ -83,9 +84,7 @@ async def update_glossary_metadata(
 
     # Find the corresponding policy to update its metadata_json and needs_review status
     policy_result = await db.execute(
-        select(Policy)
-        .where(Policy.novel_id == novel_id)
-        .where(Policy.trigger == entry.canonical)
+        select(Policy).where(Policy.novel_id == novel_id).where(Policy.trigger == entry.canonical)
     )
     policy = policy_result.scalar_one_or_none()
     if policy:
@@ -98,9 +97,7 @@ async def update_glossary_metadata(
 
 
 @router.post("/api/v1/novels/{novel_id}/glossary/merge", response_model=GlossaryResponse)
-async def merge_glossary_entries(
-    novel_id: int, merge_in: MergeGlossaryRequest, db: AsyncSession = Depends(get_db)
-):
+async def merge_glossary_entries(novel_id: int, merge_in: MergeGlossaryRequest, db: AsyncSession = Depends(get_db)):
     target = await db.get(GlossaryEntry, merge_in.target_id)
     if not target or target.novel_id != novel_id:
         raise HTTPException(status_code=404, detail="Target glossary entry not found")
@@ -193,9 +190,9 @@ async def merge_glossary_entries(
     if merge_in.deterministic_ids is not None:
         deterministic_match_forms = sorted(list(deterministic_aliases))
     else:
-        deterministic_match_forms = sorted(list({
-            alias for alias in target_aliases if _is_spelling_or_typo_variant(alias, target.canonical)
-        }))
+        deterministic_match_forms = sorted(
+            list({alias for alias in target_aliases if _is_spelling_or_typo_variant(alias, target.canonical)})
+        )
     if not deterministic_match_forms:
         deterministic_match_forms = [target.canonical]
 
@@ -216,21 +213,79 @@ async def merge_glossary_entries(
 @router.get("/api/v1/novels/{novel_id}/glossary/duplicates", response_model=list[DuplicateClusterResponse])
 async def get_glossary_duplicates(novel_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(GlossaryEntry)
-        .where(GlossaryEntry.novel_id == novel_id)
-        .order_by(GlossaryEntry.canonical)
+        select(GlossaryEntry).where(GlossaryEntry.novel_id == novel_id).order_by(GlossaryEntry.canonical)
     )
     entries = result.scalars().all()
 
     TITLE_STOPWORDS = {
-        "count", "countess", "lord", "lady", "sir", "madam", "chief", "elder", "master",
-        "saint", "king", "queen", "prince", "princess", "captain", "general", "brother",
-        "sister", "patriarch", "matriarch", "young", "old", "senior", "junior", "wizard",
-        "apprentice", "guard", "soldier", "village", "city", "town", "castle", "palace",
-        "sect", "clan", "family", "house", "mountain", "river", "forest", "valley", "lake",
-        "sword", "blade", "demon", "divine", "holy", "dark", "light", "grand", "great",
-        "high", "supreme", "emperor", "empress", "duke", "duchess", "baron", "baroness",
-        "marquis", "the", "and", "of", "in", "at", "to", "for", "with"
+        "count",
+        "countess",
+        "lord",
+        "lady",
+        "sir",
+        "madam",
+        "chief",
+        "elder",
+        "master",
+        "saint",
+        "king",
+        "queen",
+        "prince",
+        "princess",
+        "captain",
+        "general",
+        "brother",
+        "sister",
+        "patriarch",
+        "matriarch",
+        "young",
+        "old",
+        "senior",
+        "junior",
+        "wizard",
+        "apprentice",
+        "guard",
+        "soldier",
+        "village",
+        "city",
+        "town",
+        "castle",
+        "palace",
+        "sect",
+        "clan",
+        "family",
+        "house",
+        "mountain",
+        "river",
+        "forest",
+        "valley",
+        "lake",
+        "sword",
+        "blade",
+        "demon",
+        "divine",
+        "holy",
+        "dark",
+        "light",
+        "grand",
+        "great",
+        "high",
+        "supreme",
+        "emperor",
+        "empress",
+        "duke",
+        "duchess",
+        "baron",
+        "baroness",
+        "marquis",
+        "the",
+        "and",
+        "of",
+        "in",
+        "at",
+        "to",
+        "for",
+        "with",
     }
 
     def _tokens(key: str) -> set[str]:
@@ -325,9 +380,7 @@ async def create_policy(novel_id: int, policy_in: PolicyCreate, db: AsyncSession
 
 
 @router.put("/api/v1/novels/{novel_id}/policies/{policy_id}", response_model=PolicyResponse)
-async def update_policy(
-    novel_id: int, policy_id: int, policy_in: PolicyUpdate, db: AsyncSession = Depends(get_db)
-):
+async def update_policy(novel_id: int, policy_id: int, policy_in: PolicyUpdate, db: AsyncSession = Depends(get_db)):
     policy = await db.get(Policy, policy_id)
     if not policy or policy.novel_id != novel_id:
         raise HTTPException(status_code=404, detail="Policy not found")

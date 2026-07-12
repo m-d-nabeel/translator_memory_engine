@@ -58,17 +58,13 @@ async def list_novels(db: AsyncSession = Depends(get_db)):
 
 @router.get("/{novel_id}", response_model=NovelDetail)
 async def get_novel(novel_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Novel).options(selectinload(Novel.chapters)).where(Novel.id == novel_id)
-    )
+    result = await db.execute(select(Novel).options(selectinload(Novel.chapters)).where(Novel.id == novel_id))
     novel = result.scalar_one_or_none()
     if not novel:
         raise HTTPException(status_code=404, detail="Novel not found")
 
     policy_count_result = await db.execute(select(func.count()).where(Policy.novel_id == novel_id))
-    glossary_count_result = await db.execute(
-        select(func.count()).where(GlossaryEntry.novel_id == novel_id)
-    )
+    glossary_count_result = await db.execute(select(func.count()).where(GlossaryEntry.novel_id == novel_id))
 
     chapters = sorted(novel.chapters, key=lambda c: c.chapter_number)
     return NovelDetail(

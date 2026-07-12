@@ -26,8 +26,14 @@ export function EngineInspectorModal({
   onClose,
 }: EngineInspectorModalProps) {
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
-  const [filterMode, setFilterMode] = useLocalStorageState<"all" | "chapter">("tme-inspector-filter", "all");
-  const [autoScroll, setAutoScroll] = useLocalStorageState("tme-inspector-autoscroll", true);
+  const [filterMode, setFilterMode] = useLocalStorageState<"all" | "chapter">(
+    "tme-inspector-filter",
+    "all",
+  );
+  const [autoScroll, setAutoScroll] = useLocalStorageState(
+    "tme-inspector-autoscroll",
+    true,
+  );
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
   // Poll jobs list every 1.5s for live feedback
@@ -241,8 +247,7 @@ export function EngineInspectorModal({
                 if (job.result_summary) {
                   try {
                     summary = JSON.parse(job.result_summary);
-                  } catch {
-                  }
+                  } catch {}
                 }
 
                 return (

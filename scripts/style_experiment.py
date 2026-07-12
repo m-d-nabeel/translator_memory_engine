@@ -412,9 +412,7 @@ def main():
             m = data["metrics"]
             summary[ch_num][cond] = {
                 "cosine_delta": m.get("cosine_delta"),
-                "cosine_norm_delta": round(
-                    m.get("cosine_norm_gen_orig", 0) - m.get("cosine_norm_mtl_orig", 0), 4
-                )
+                "cosine_norm_delta": round(m.get("cosine_norm_gen_orig", 0) - m.get("cosine_norm_mtl_orig", 0), 4)
                 if m.get("cosine_norm_gen_orig") is not None
                 else None,
                 "novel_persons": m.get("faith", {}).get("novel_person_count", 0),
@@ -431,9 +429,7 @@ def main():
     print(f"\n{'=' * 80}")
     print("COMPARISON TABLE")
     print(f"{'=' * 80}")
-    print(
-        f"{'Ch':>4} {'Cond':>5} {'CosΔ':>8} {'NormΔ':>8} {'NovelP':>7} {'Intr':>6} {'VR_gen':>7} {'VR_orig':>7}"
-    )
+    print(f"{'Ch':>4} {'Cond':>5} {'CosΔ':>8} {'NormΔ':>8} {'NovelP':>7} {'Intr':>6} {'VR_gen':>7} {'VR_orig':>7}")
     print("-" * 80)
     for ch_num in sorted(results.keys()):
         for cond in ["A", "B", "C", "D"]:
@@ -447,9 +443,7 @@ def main():
             vr_gen = m.get("voice_richness_gen", "N/A")
             vr_orig = m.get("voice_richness_orig", "N/A")
             cos_str = f"{cos_d:+.4f}" if isinstance(cos_d, float) else cos_d
-            print(
-                f"{ch_num:>4} {cond:>5} {cos_str:>8} {norm_d:>8} {novel:>7} {intr:>6} {vr_gen:>7} {vr_orig:>7}"
-            )
+            print(f"{ch_num:>4} {cond:>5} {cos_str:>8} {norm_d:>8} {novel:>7} {intr:>6} {vr_gen:>7} {vr_orig:>7}")
 
 
 if __name__ == "__main__":

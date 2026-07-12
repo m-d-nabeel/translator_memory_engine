@@ -106,9 +106,7 @@ class TestMtlCleaner:
     def test_strips_site_watermark_line(self):
         from translator_memory_engine.rewrite.clean import clean_mtl_artifacts
 
-        out = clean_mtl_artifacts(
-            "He left the hall.\n\n* * * Ranovel dot com * * *\n\nThe night was cold."
-        )
+        out = clean_mtl_artifacts("He left the hall.\n\n* * * Ranovel dot com * * *\n\nThe night was cold.")
         assert "ranovel" not in out.lower()
         assert "He left the hall." in out
         assert "The night was cold." in out
@@ -158,23 +156,19 @@ class TestPromptModes:
         prompt_fallback = build_prompt("MTL text", [p])
         assert "Speaker Attribution & Sentence Ownership (Dialogue Disentanglement)" in prompt_ref
         assert "Speaker Attribution & Sentence Ownership (Dialogue Disentanglement)" in prompt_fallback
+
     def test_prompt_includes_active_cast(self):
         p = _policy("Dominic", ["Dominic"], applies="prompted")
         active_cast = [
             {
                 "canonical": "Dominic",
-                "metadata": {
-                    "gender": "male",
-                    "race_or_identity": "Human",
-                    "speech_style": "Polite"
-                }
+                "metadata": {"gender": "male", "race_or_identity": "Human", "speech_style": "Polite"},
             }
         ]
         prompt = build_prompt("MTL text", [p], active_cast_entries=active_cast)
         assert "ACTIVE SCENE CAST" in prompt
         assert "- Dominic (male), Human, Polite" in prompt
         assert "Do NOT inject their background" in prompt
-
 
 
 class TestRewriteModeSelection:

@@ -9,12 +9,7 @@ from translator_memory_engine.style.analyzer import (
 
 class TestDeterministicProfile:
     def test_basic_metrics(self):
-        text = (
-            '"Hello there!" she said. '
-            "The boy ran across the field. "
-            "He didn't stop. "
-            '"Come back!" she shouted.'
-        )
+        text = '"Hello there!" she said. The boy ran across the field. He didn\'t stop. "Come back!" she shouted.'
         p = compute_deterministic_profile(text)
         assert "avg_sentence_length" in p
         assert "sentence_length_variance" in p
@@ -54,10 +49,7 @@ class TestStylometryDelta:
 
 class TestVoiceRichnessScore:
     def test_returns_float(self):
-        text = (
-            '"Hello!" she said. He ran across the field. '
-            "She didn't stop. He wondered what to do next."
-        )
+        text = '"Hello!" she said. He ran across the field. She didn\'t stop. He wondered what to do next.'
         score = voice_richness_score(text)
         assert isinstance(score, float)
         assert 0 <= score <= 1

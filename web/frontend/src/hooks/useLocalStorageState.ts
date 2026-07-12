@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 
 export function useLocalStorageState<T>(
   key: string,
-  defaultValue: T | (() => T)
+  defaultValue: T | (() => T),
 ): [T, (value: T | ((val: T) => T)) => void] {
   const [state, setState] = useState<T>(() => {
     try {
@@ -13,7 +13,9 @@ export function useLocalStorageState<T>(
     } catch (error) {
       console.warn(`Error reading localStorage key "${key}":`, error);
     }
-    return typeof defaultValue === "function" ? (defaultValue as () => T)() : defaultValue;
+    return typeof defaultValue === "function"
+      ? (defaultValue as () => T)()
+      : defaultValue;
   });
 
   useEffect(() => {

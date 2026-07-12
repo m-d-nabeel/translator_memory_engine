@@ -22,7 +22,10 @@ export function PasteForm({
   const [chapterNumber, setChapterNumber] = useState(
     String(nextSuggestedNumber),
   );
-  const [sourceType, setSourceType] = useLocalStorageState<"mtl" | "original">("tme-paste-sourcetype", "mtl");
+  const [sourceType, setSourceType] = useLocalStorageState<"mtl" | "original">(
+    "tme-paste-sourcetype",
+    "mtl",
+  );
   const [text, setText] = useState("");
 
   useEffect(() => {

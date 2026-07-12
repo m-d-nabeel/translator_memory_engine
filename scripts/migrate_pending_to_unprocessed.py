@@ -24,9 +24,7 @@ async def migrate():
         print(f"Found {len(chapters)} pending chapters. Updating to 'unprocessed'...")
 
         # Update them to unprocessed
-        await session.execute(
-            update(Chapter).where(Chapter.status == "pending").values(status="unprocessed")
-        )
+        await session.execute(update(Chapter).where(Chapter.status == "pending").values(status="unprocessed"))
         await session.commit()
 
         print("Migration complete!")

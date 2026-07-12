@@ -26,17 +26,19 @@ export function Reader() {
   const settings = useReaderSettings();
   const queryClient = useQueryClient();
 
-  const [processingTriggeredAt, setProcessingTriggeredAt] = useState<number | null>(null);
+  const [processingTriggeredAt, setProcessingTriggeredAt] = useState<
+    number | null
+  >(null);
 
   const reprocessMutation = useMutation({
     mutationFn: (doLlm: boolean) => api.reprocessChapter(id, doLlm),
     onMutate: () => {
       setProcessingTriggeredAt(Date.now());
       queryClient.setQueryData(["chapterStatus", id], (old: any) =>
-        old ? { ...old, status: "processing" } : { status: "processing" }
+        old ? { ...old, status: "processing" } : { status: "processing" },
       );
       queryClient.setQueryData(["read", id], (old: any) =>
-        old ? { ...old, status: "processing" } : { status: "processing" }
+        old ? { ...old, status: "processing" } : { status: "processing" },
       );
     },
     onSuccess: () => {
@@ -48,8 +50,14 @@ export function Reader() {
     },
   });
 
-  const [viewMode, setViewMode] = useLocalStorageState<ViewMode>("tme-reader-viewMode", "refined");
-  const [splitMode, setSplitMode] = useLocalStorageState("tme-reader-splitMode", false);
+  const [viewMode, setViewMode] = useLocalStorageState<ViewMode>(
+    "tme-reader-viewMode",
+    "refined",
+  );
+  const [splitMode, setSplitMode] = useLocalStorageState(
+    "tme-reader-splitMode",
+    false,
+  );
   const [isControlsVisible, setIsControlsVisible] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [showToc, setShowToc] = useState(false);
@@ -99,7 +107,9 @@ export function Reader() {
   }, [chapterData?.status, chapter?.status, processingTriggeredAt]);
 
   const isChapterProcessing =
-    reprocessMutation.isPending || !!processingTriggeredAt || isCurrentlyProcessing;
+    reprocessMutation.isPending ||
+    !!processingTriggeredAt ||
+    isCurrentlyProcessing;
 
   const { data: novel } = useQuery({
     queryKey: ["novel", chapterData?.novel_id],
@@ -124,14 +134,22 @@ export function Reader() {
     enabled: !!chapterData?.novel_id,
   });
 
-  const [initialModeSetFor, setInitialModeSetFor] = useState<number | null>(null);
+  const [initialModeSetFor, setInitialModeSetFor] = useState<number | null>(
+    null,
+  );
 
   useEffect(() => {
     if (chapter && allChapters && initialModeSetFor !== id) {
-      const vers = allChapters.filter(c => c.chapter_number === chapter.chapter_number);
-      const mtlVer = vers.find(c => c.source_type === "mtl") || (chapter.source_type === "mtl" ? chapter : undefined);
-      const origVer = vers.find(c => c.source_type === "original") || (chapter.source_type === "original" ? chapter : undefined);
-      
+      const vers = allChapters.filter(
+        (c) => c.chapter_number === chapter.chapter_number,
+      );
+      const mtlVer =
+        vers.find((c) => c.source_type === "mtl") ||
+        (chapter.source_type === "mtl" ? chapter : undefined);
+      const origVer =
+        vers.find((c) => c.source_type === "original") ||
+        (chapter.source_type === "original" ? chapter : undefined);
+
       if (origVer) {
         setViewMode("original");
       } else if (mtlVer?.refined_text) {
@@ -145,7 +163,10 @@ export function Reader() {
 
   const prevStatusRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (prevStatusRef.current === "processing" && chapter?.status === "completed") {
+    if (
+      prevStatusRef.current === "processing" &&
+      chapter?.status === "completed"
+    ) {
       queryClient.invalidateQueries({ queryKey: ["chaptersForNovel"] });
       if (chapter.refined_text) {
         setViewMode("refined");
@@ -215,13 +236,17 @@ export function Reader() {
     ? allChapters.filter((c) => c.chapter_number === chapter?.chapter_number)
     : [];
 
-  const mtlVer = (chapter?.source_type === "mtl" ? chapter : undefined) || versions.find((c) => c.source_type === "mtl");
-  const origVer = (chapter?.source_type === "original" ? chapter : undefined) || versions.find((c) => c.source_type === "original");
+  const mtlVer =
+    (chapter?.source_type === "mtl" ? chapter : undefined) ||
+    versions.find((c) => c.source_type === "mtl");
+  const origVer =
+    (chapter?.source_type === "original" ? chapter : undefined) ||
+    versions.find((c) => c.source_type === "original");
 
   const hasOriginal = !!origVer;
   const hasMtl = !!mtlVer;
   const hasRefined = !!mtlVer?.refined_text;
-  
+
   // Only show the switcher if we have multiple versions to switch between
   const availableModes = [
     ...(hasRefined ? ["refined"] : []),
@@ -232,7 +257,8 @@ export function Reader() {
 
   const getDisplayText = () => {
     if (!chapter) return "";
-    if (viewMode === "refined" && mtlVer?.refined_text) return mtlVer.refined_text;
+    if (viewMode === "refined" && mtlVer?.refined_text)
+      return mtlVer.refined_text;
     if (viewMode === "original" && origVer) return origVer.raw_text;
     if (viewMode === "mtl" && mtlVer) return mtlVer.raw_text;
     // Fallback if the mode is selected but version doesn't exist
@@ -243,7 +269,8 @@ export function Reader() {
     if (!chapter) return "";
     if (viewMode === "refined" && mtlVer) return mtlVer.raw_text;
     if (viewMode === "mtl" && origVer) return origVer.raw_text;
-    if (viewMode === "original" && mtlVer?.refined_text) return mtlVer.refined_text;
+    if (viewMode === "original" && mtlVer?.refined_text)
+      return mtlVer.refined_text;
     if (viewMode === "original" && mtlVer) return mtlVer.raw_text;
     return chapter.raw_text;
   };
@@ -392,7 +419,9 @@ export function Reader() {
               <RefreshCw
                 className={`w-3.5 h-3.5 ${isChapterProcessing ? "animate-spin text-[var(--color-accent)]" : ""}`}
               />
-              <span className="hidden sm:inline">{isChapterProcessing ? "Processing..." : "Process"}</span>
+              <span className="hidden sm:inline">
+                {isChapterProcessing ? "Processing..." : "Process"}
+              </span>
             </button>
 
             {/* Split Compare Button (Desktop / Tablet) */}

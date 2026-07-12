@@ -389,16 +389,12 @@ _TITLE_PREFIXES: List[str] = [
 
 # Pre-compiled patterns
 _TITLE_PATTERN = re.compile(
-    r"\b("
-    + "|".join(re.escape(t) for t in _TITLE_PREFIXES)
-    + r")\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b"
+    r"\b(" + "|".join(re.escape(t) for t in _TITLE_PREFIXES) + r")\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b"
 )
 _MULTI_CAP_PATTERN = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b")
 _SINGLE_CAP_PATTERN = re.compile(r"\b([A-Z][a-z]{2,})\b")
 _SUFFIX_PATTERN = re.compile(
-    r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:"
-    + "|".join(re.escape(s) for s in _DOMAIN_SUFFIXES)
-    + r"))\b"
+    r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:" + "|".join(re.escape(s) for s in _DOMAIN_SUFFIXES) + r"))\b"
 )
 
 
@@ -540,11 +536,7 @@ def extract_entities(chapters: List[Chapter], min_support: int = 2) -> List[Sign
 
     # Filter single-word names by min_support (must appear in multiple chapters)
     if min_support > 1:
-        passing_singles = {
-            name for name, chaps in single_word_chapters.items() if len(chaps) >= min_support
-        }
-        signals = [
-            s for s in signals if s.extractor != "entity.single_cap" or s.text in passing_singles
-        ]
+        passing_singles = {name for name, chaps in single_word_chapters.items() if len(chaps) >= min_support}
+        signals = [s for s in signals if s.extractor != "entity.single_cap" or s.text in passing_singles]
 
     return signals

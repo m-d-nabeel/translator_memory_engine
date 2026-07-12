@@ -131,12 +131,8 @@ class PolicyStore:
                         policy.note or None,
                         str(policy.needs_review).lower(),
                         str(policy.llm_rejected).lower(),
-                        json.dumps(policy.contexts, ensure_ascii=False)
-                        if policy.contexts
-                        else None,
-                        json.dumps(policy.metadata, ensure_ascii=False)
-                        if policy.metadata
-                        else None,
+                        json.dumps(policy.contexts, ensure_ascii=False) if policy.contexts else None,
+                        json.dumps(policy.metadata, ensure_ascii=False) if policy.metadata else None,
                     ),
                 )
             conn.commit()

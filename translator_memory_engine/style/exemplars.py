@@ -102,18 +102,12 @@ class ExemplarIndex:
         # Try embedding-based retrieval
         if self._embeddings is not None and embed_fn is not None:
             query_emb = np.array(embed_fn(query_text), dtype=np.float32)
-            candidate_indices = [
-                i
-                for i, e in enumerate(self.exemplars)
-                if e in candidates and e.embedding is not None
-            ]
+            candidate_indices = [i for i, e in enumerate(self.exemplars) if e in candidates and e.embedding is not None]
             if not candidate_indices:
                 return candidates[:top_k]
 
             cands_emb = self._embeddings[candidate_indices]
-            scores = [
-                _cosine_similarity(query_emb, cands_emb[j]) for j in range(len(candidate_indices))
-            ]
+            scores = [_cosine_similarity(query_emb, cands_emb[j]) for j in range(len(candidate_indices))]
             ranked = sorted(zip(scores, candidate_indices), key=lambda x: x[0], reverse=True)
             return [self.exemplars[idx] for _, idx in ranked[:top_k]]
 
@@ -148,9 +142,7 @@ class ExemplarIndex:
         """Retrieve top-k per scene type for balanced prompt diversity."""
         results: List[Exemplar] = []
         for st in SCENE_TYPES:
-            results.extend(
-                self.retrieve(query_text, embed_fn=embed_fn, scene_type=st, top_k=per_type)
-            )
+            results.extend(self.retrieve(query_text, embed_fn=embed_fn, scene_type=st, top_k=per_type))
         return results
 
 
