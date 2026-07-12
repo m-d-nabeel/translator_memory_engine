@@ -534,11 +534,14 @@ def _verify_with_llm(candidates: List[Dict[str, Any]], llm_client: Any, chunk_si
                 "role": "system",
                 "content": (
                     "You are a strict fiction entity verifier. Evaluate the candidate terms against their example sentences. "
-                    "Output ONLY valid entities and their true aliases. "
                     "Reject sentence fragments (e.g., 'Seems Centipedes' where 'Seems' is a verb) and common verbs/nouns. "
                     "Do NOT merge distinct characters who share a surname. "
-                    'Return a JSON object with a single key "results" containing an array of objects: '
-                    '{"id": <int>, "status": "valid" | "reject", "canonical": "...", "aliases": [...]}.'
+                    "Return ONLY valid JSON. No conversational text or explanations outside the JSON block.\n\n"
+                    "Output a JSON object with a single key 'results' containing an array of objects:\n"
+                    "{\"results\": [{\"id\": <int>, \"reasoning\": \"<short explanation>\", \"status\": \"valid\" | \"reject\", \"canonical\": \"<clean name>\", \"aliases\": [\"<alias1>\"]}]}\n\n"
+                    "Example:\n"
+                    "{\"results\": [{\"id\": 1, \"reasoning\": \"Valid character name\", \"status\": \"valid\", \"canonical\": \"John Smith\", \"aliases\": []}, "
+                    "{\"id\": 2, \"reasoning\": \"Sentence fragment starting with a verb\", \"status\": \"reject\", \"canonical\": \"Seems Centipedes\", \"aliases\": []}]}"
                 ),
             },
             {"role": "user", "content": json.dumps({"candidates": prompt_data})},
@@ -574,7 +577,16 @@ def _verify_with_llm(candidates: List[Dict[str, Any]], llm_client: Any, chunk_si
             clean_content = clean_content.strip()
 
             parsed = json.loads(clean_content)
-            results_list = parsed.get("results", [])
+            
+            if isinstance(parsed, list):
+                results_list = parsed
+            elif isinstance(parsed, dict):
+                results_list = parsed.get("results", [])
+                # fallback if LLM used a different key
+                if not results_list and "candidates" in parsed:
+                    results_list = parsed.get("candidates", [])
+            else:
+                results_list = []
 
             # Map LLM results back to our chunk
             results_by_id = {r.get("id"): r for r in results_list if isinstance(r, dict)}
