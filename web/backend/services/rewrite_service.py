@@ -472,7 +472,7 @@ async def extract_policies(
             }
         )
 
-    signals = await run_in_threadpool(extract_signals, corpus_chapters, [novel.source_language])
+    signals = await run_in_threadpool(extract_signals, corpus_chapters, source_languages=[novel.source_language])
 
     # Setup LLM client for semantic verification
     try:

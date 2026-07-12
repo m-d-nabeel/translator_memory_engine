@@ -73,7 +73,7 @@ async def extract_policies_for_novel(novel_id: int):
             logger.info(f"Loaded {total_chapters} original chapters for extraction.")
 
             # 2. Extract signals (Run in thread to prevent blocking event loop)
-            signals = await run_in_threadpool(extract_signals, pipeline_chapters, [source_language])
+            signals = await run_in_threadpool(extract_signals, pipeline_chapters, source_languages=[source_language])
             logger.info(f"Extracted {len(signals)} raw signals.")
 
             # Setup LLM client for semantic verification
