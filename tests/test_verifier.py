@@ -94,7 +94,7 @@ class TestVerifierVerdicts:
             path = os.path.join(d, "verification.jsonl")
             v.verify_policies([p], audit_path=path)
             assert os.path.exists(path)
-            recs = [json.loads(l) for l in open(path)]
+            recs = [json.loads(line) for line in open(path)]
             assert recs[0]["id"] == "p_001"
             assert recs[0]["verdict"] == "DROP"
 

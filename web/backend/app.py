@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,9 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from web.backend.api import chapters, jobs, novels, policies
 from web.backend.config import settings
 from web.backend.db.database import init_db
-
-import os
-from logging.handlers import RotatingFileHandler
 
 os.makedirs("logs", exist_ok=True)
 file_handler = RotatingFileHandler("logs/app.log", maxBytes=5 * 1024 * 1024, backupCount=5)

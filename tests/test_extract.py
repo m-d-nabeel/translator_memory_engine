@@ -214,7 +214,7 @@ class TestExtractSignals:
         chapters = _make_chapters()
         signals = extract_signals(chapters, min_support=2, source_languages=["korean"])
         # Should have signals from multiple extractors
-        extractors = {s.extractor for s in signals}
+        assert len({s.extractor for s in signals}) > 1
         types = {s.type for s in signals}
         assert "entity" in types
         assert len(signals) > 0
