@@ -16,7 +16,7 @@ Examples:
   # Reset only refined text and processing jobs for Novel ID 1:
   python scripts/clear_data.py --clear-refined --clear-jobs --novel-id 1
 
-  # Completely wipe the entire database and all generated + preprocessor text files:
+  # Completely wipe all generated DB state and AI output files (SAFE: preserves local seed files in data/originals & data/mtl):
   python scripts/clear_data.py --reset-db --clear-all-files --yes
 """
 
@@ -343,7 +343,7 @@ def main() -> None:
     fs_group.add_argument(
         "--clear-all-files",
         action="store_true",
-        help="Delete all files across data/output, data/policies, data/mtl, and data/originals."
+        help="Delete all generated files (data/output and data/policies). SAFE: NEVER deletes local seed files (data/originals, data/mtl)."
     )
 
     # General options
@@ -399,10 +399,10 @@ def main() -> None:
         if args.clear_policies_files or args.all or args.clear_all_files:
             clear_directory_files(PROJECT_ROOT / "data" / "policies", "*", "Exported Policy/Glossary Files (data/policies)", args.dry_run, args.yes)
 
-        if args.clear_mtl_files or args.clear_all_files:
+        if args.clear_mtl_files:
             clear_directory_files(PROJECT_ROOT / "data" / "mtl", "*", "Preprocessor MTL Files (data/mtl)", args.dry_run, args.yes)
 
-        if args.clear_originals_files or args.clear_all_files:
+        if args.clear_originals_files:
             clear_directory_files(PROJECT_ROOT / "data" / "originals", "*", "Preprocessor Original Files (data/originals)", args.dry_run, args.yes)
 
     print("\n✅ Cleanup check complete.")
