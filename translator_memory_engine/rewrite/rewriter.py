@@ -78,12 +78,13 @@ def _get_groq_keys(api_key_env: str = "LLM_API_KEY") -> List[str]:
     ``.env`` via ``load_dotenv()``.  Returns an empty list when no keys
     are available (keeps the LLM path as a no-op for tests that clear env vars).
     """
-    load_dotenv()
+    load_dotenv(override=True)
     primary = os.environ.get(api_key_env, "")
+    if not primary and api_key_env != "LLM_API_KEY":
+        primary = os.environ.get("GROQ_API_KEY", "") or os.environ.get("LLM_API_KEY", "")
     if primary:
-        extras = [
-            v for k, v in os.environ.items() if k.startswith("GROQ_API_KEY") and v and v != primary
-        ]
+        extra_keys = sorted([k for k in os.environ if k.startswith("GROQ_API_KEY") and os.environ[k] and os.environ[k] != primary])
+        extras = [os.environ[k] for k in extra_keys]
         return [primary] + extras
     return []
 
@@ -501,7 +502,7 @@ def build_prompt(
                 gender = meta.get("gender", "")
                 identity = meta.get("race_or_identity", "")
                 speech = meta.get("speech_style", "")
-                
+
                 parts = []
                 if gender:
                     parts.append(f"({gender})")
@@ -509,11 +510,11 @@ def build_prompt(
                     parts.append(f"{identity}")
                 if speech:
                     parts.append(f"{speech}")
-                
+
                 desc = ", ".join(parts)
                 if desc:
                     cast_lines.append(f"- {canon} {desc}")
-        
+
         if cast_lines:
             cast_str = "\n".join(cast_lines)
             cast_block = (

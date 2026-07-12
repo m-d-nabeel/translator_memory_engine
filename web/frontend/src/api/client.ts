@@ -71,6 +71,8 @@ export interface Policy {
   evidence_chapters: string | null;
   applies: string;
   note: string | null;
+  needs_review: string;
+  metadata_json: string | null;
   created_at: string;
 }
 
@@ -81,6 +83,7 @@ export interface GlossaryEntry {
   aliases: string;
   entity_type: string | null;
   confidence: number | null;
+  metadata_json: string | null;
   created_at: string;
 }
 
@@ -181,12 +184,31 @@ export const api = {
       body: JSON.stringify(data),
     }),
   deletePolicy: (novelId: number, policyId: number) =>
-    request<{ status: string }>(`/novels/${novelId}/policies/${policyId}`, {
+    request(`novels/${novelId}/policies/${policyId}`, {
       method: "DELETE",
+    }),
+
+  updateGlossaryMetadata: (
+    novelId: number,
+    entryId: number,
+    data: { metadata_json: string; needs_review: boolean; apply_proposed: boolean }
+  ) =>
+    request<GlossaryEntry>(`/novels/${novelId}/glossary/${entryId}/metadata`, {
+      method: "PUT",
+      body: JSON.stringify(data),
     }),
   extractPolicies: (novelId: number) =>
     request<{ status: string }>(`/novels/${novelId}/extract`, {
       method: "POST",
+    }),
+  extractLore: (novelId: number, options?: { chapterIds?: number[]; onlyOgTl?: boolean; bypassReview?: boolean }) =>
+    request<{ status: string }>(`/novels/${novelId}/extract-lore`, {
+      method: "POST",
+      body: JSON.stringify({
+        chapter_ids: options?.chapterIds || null,
+        only_og_tl: options?.onlyOgTl || false,
+        bypass_review: options?.bypassReview || false,
+      }),
     }),
   listGlossary: (novelId: number) =>
     request<GlossaryEntry[]>(`/novels/${novelId}/glossary`),

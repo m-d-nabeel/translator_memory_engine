@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Chapter } from "../api/client";
 import { PasteForm } from "../components/PasteForm";
 import { StyleBankTab } from "../components/StyleBankTab";
+import { LoreTab } from "../components/LoreTab";
 import { Header } from "../components/Header";
 import {
   formatPolicyAction,
@@ -28,6 +29,7 @@ import {
   Terminal,
   Brush,
   AlertTriangle,
+  User,
 } from "lucide-react";
 import { EngineInspectorModal } from "../components/EngineInspectorModal";
 
@@ -51,7 +53,7 @@ export function NovelView() {
   const novelId = parseInt(id!, 10);
 
   const [activeTab, setActiveTab] = useState<
-    "catalog" | "policies" | "glossary" | "style" | "import"
+    "catalog" | "policies" | "glossary" | "style" | "import" | "lore"
   >("catalog");
   const [activeBottomNav, setActiveBottomNav] = useState<NavTab>("bookshelf");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -442,6 +444,11 @@ export function NovelView() {
                 id: "glossary",
                 label: `Glossary Matrix (${novel.glossary_count})`,
                 icon: Database,
+              },
+              {
+                id: "lore",
+                label: `Lore Engine`,
+                icon: User,
               },
               {
                 id: "style",
@@ -905,6 +912,7 @@ export function NovelView() {
           )}
 
           {activeTab === "style" && <StyleBankTab novelId={novelId} />}
+          {activeTab === "lore" && <LoreTab novelId={novelId} />}
 
           {/* TAB 4: Studio Import View */}
           {activeTab === "import" && (

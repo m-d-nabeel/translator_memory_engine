@@ -5,6 +5,7 @@ import json
 import logging
 import time
 import traceback
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -179,6 +180,143 @@ async def rewrite_chapter(
 
     await db.commit()
 
+    # Launch asynchronous lore extraction (Phase 2)
+    if chapter.status == "completed" and chapter.refined_text:
+        import asyncio
+
+        from web.backend.db.database import async_session
+        asyncio.create_task(_background_extract_lore(
+            chapter_id=chapter.id,
+            novel_id=chapter.novel_id,
+            chapter_text=chapter.refined_text,
+            session_maker=async_session,
+        ))
+
+async def _background_extract_lore(chapter_id: int, novel_id: int, chapter_text: str, session_maker: Any, bypass_review: bool = False):
+    import asyncio
+    import json
+    import uuid
+
+    from sqlalchemy import select
+
+    from translator_memory_engine.extract.lore import extract_chapter_lore
+    from web.backend.db.models import Chapter, GlossaryEntry, Policy
+
+    try:
+        # Run the synchronous LLM extraction in a thread pool to avoid blocking the event loop
+        lore_data = await asyncio.to_thread(
+            extract_chapter_lore,
+            chapter_text,
+            model=settings.LLM_MODEL,
+            base_url=settings.LLM_BASE_URL,
+            api_key_env=settings.LLM_API_KEY_ENV,
+        )
+
+        async with session_maker() as db:
+            # 1. Save chapter summary
+            chapter_result = await db.execute(select(Chapter).where(Chapter.id == chapter_id))
+            chapter = chapter_result.scalar_one_or_none()
+            if chapter and lore_data.get("chapter_summary"):
+                chapter.summary = lore_data["chapter_summary"]
+
+            # 2. Process character lore
+            characters = lore_data.get("characters", [])
+            for char in characters:
+                name = char.get("name")
+                if not name:
+                    continue
+
+                # Find existing entry
+                entry_result = await db.execute(
+                    select(GlossaryEntry)
+                    .where(GlossaryEntry.novel_id == novel_id)
+                    .where(GlossaryEntry.canonical == name)
+                )
+                entry = entry_result.scalar_one_or_none()
+
+                new_meta = {
+                    "gender": char.get("gender", ""),
+                    "race_or_identity": char.get("race_or_identity", ""),
+                    "speech_style": char.get("speech_style", "")
+                }
+
+                if not entry:
+                    # NEW Character: Create GlossaryEntry and Policy
+                    new_entry = GlossaryEntry(
+                        novel_id=novel_id,
+                        canonical=name,
+                        aliases=json.dumps([]),
+                        entity_type="entity",
+                        confidence=0.9,
+                        metadata_json=json.dumps(new_meta)
+                    )
+                    db.add(new_entry)
+
+                    new_policy = Policy(
+                        novel_id=novel_id,
+                        policy_id=f"char-{uuid.uuid4().hex[:8]}",
+                        type="entity",
+                        trigger=name,
+                        match_forms=json.dumps([name]),
+                        action=json.dumps({"render_as": name}),
+                        confidence=0.9,
+                        needs_review="false" if bypass_review else "true",
+                        metadata_json=json.dumps(new_meta)
+                    )
+                    db.add(new_policy)
+                else:
+                    # EXISTING Character
+                    # Find matching policy to check needs_review
+                    policy_result = await db.execute(
+                        select(Policy)
+                        .where(Policy.novel_id == novel_id)
+                        .where(Policy.trigger == name)
+                    )
+                    policy = policy_result.scalar_one_or_none()
+
+                    existing_meta = {}
+                    if entry.metadata_json:
+                        try:
+                            existing_meta = json.loads(entry.metadata_json)
+                        except Exception:
+                            pass
+
+                    is_verified = (policy.needs_review == "false") if policy else False
+
+                    if bypass_review:
+                        # Bypass review = True: directly overwrite and auto-verify
+                        existing_meta.update(new_meta)
+                        existing_meta.pop("proposed_updates", None)
+                        entry.metadata_json = json.dumps(existing_meta)
+                        if policy:
+                            policy.metadata_json = json.dumps(existing_meta)
+                            policy.needs_review = "false"
+                    elif not is_verified:
+                        # Needs review = True: LLM can overwrite and refine
+                        existing_meta.update(new_meta)
+                        entry.metadata_json = json.dumps(existing_meta)
+                        if policy:
+                            policy.metadata_json = json.dumps(existing_meta)
+                    else:
+                        # Verified (needs_review = false): Gated Update for Character Arcs
+                        proposed = {}
+                        if new_meta.get("speech_style") and new_meta["speech_style"] != existing_meta.get("speech_style"):
+                            proposed["speech_style"] = new_meta["speech_style"]
+                        if new_meta.get("race_or_identity") and new_meta["race_or_identity"] != existing_meta.get("race_or_identity"):
+                            proposed["race_or_identity"] = new_meta["race_or_identity"]
+
+                        if proposed:
+                            existing_meta["proposed_updates"] = proposed
+                            entry.metadata_json = json.dumps(existing_meta)
+                            if policy:
+                                policy.metadata_json = json.dumps(existing_meta)
+                                policy.needs_review = "true"  # Flip for review
+
+            await db.commit()
+    except Exception as e:
+        logger.error(f"Background lore extraction failed for chapter {chapter_id}: {e}", exc_info=True)
+
+
 
 async def extract_policies(
     db: AsyncSession,
@@ -242,3 +380,84 @@ async def extract_policies(
         db.add(db_policy)
 
     await db.commit()
+
+
+async def extract_lore_for_chapters(
+    novel_id: int,
+    chapter_ids: list[int] | None,
+    session_maker: Any,
+    only_og_tl: bool = False,
+    bypass_review: bool = False,
+) -> None:
+    import asyncio
+
+    from sqlalchemy import select
+
+    from web.backend.db.models import Chapter
+
+    async with session_maker() as db:
+        query = select(Chapter).where(Chapter.novel_id == novel_id)
+        if chapter_ids and len(chapter_ids) > 0:
+            query = query.where(Chapter.id.in_(chapter_ids))
+
+        result = await db.execute(query.order_by(Chapter.chapter_number))
+        chapters = result.scalars().all()
+
+    # Group all retrieved chapters by chapter_number
+    by_number: dict[int, list[Chapter]] = {}
+    for ch in chapters:
+        by_number.setdefault(ch.chapter_number, []).append(ch)
+
+    # Determine tasks to run in exact order
+    tasks_to_run = []
+    is_explicit_selection = bool(chapter_ids and len(chapter_ids) > 0)
+
+    for num in sorted(by_number.keys()):
+        ch_list = by_number[num]
+
+        # If running on All Chapters (no specific chapters chosen), skip if lore already extracted
+        if not is_explicit_selection and any(c.summary and c.summary.strip() for c in ch_list):
+            logger.info(f"Skipping lore extraction for Ch. {num} (lore/summary already extracted)...")
+            continue
+
+        target_ch = None
+        target_text = None
+        mode_str = ""
+
+        if only_og_tl:
+            # Strict OG TL mode: only pick source_type == "original"
+            for c in ch_list:
+                if c.source_type == "original" and c.raw_text and c.raw_text.strip():
+                    target_ch, target_text, mode_str = c, c.raw_text, "Original (OG TL)"
+                    break
+        else:
+            # Strict Priority Order: Original -> Refined -> MTL
+            # 1. Original (`source_type == "original"`)
+            for c in ch_list:
+                if c.source_type == "original" and c.raw_text and c.raw_text.strip():
+                    target_ch, target_text, mode_str = c, c.raw_text, "Original (OG TL)"
+                    break
+            # 2. Refined (`refined_text`)
+            if not target_ch:
+                for c in ch_list:
+                    if c.refined_text and c.refined_text.strip():
+                        target_ch, target_text, mode_str = c, c.refined_text, "Refined TL"
+                        break
+            # 3. MTL (`raw_text` from non-original)
+            if not target_ch:
+                for c in ch_list:
+                    if c.raw_text and c.raw_text.strip():
+                        target_ch, target_text, mode_str = c, c.raw_text, "MTL"
+                        break
+
+        if target_ch and target_text:
+            tasks_to_run.append((target_ch, target_text, mode_str))
+
+    for i, (target_ch, text, mode_str) in enumerate(tasks_to_run):
+        logger.info(f"Extracting lore ({mode_str}) for chapter {target_ch.id} (Ch. {target_ch.chapter_number})...")
+        await _background_extract_lore(target_ch.id, target_ch.novel_id, text, session_maker, bypass_review=bypass_review)
+
+        # Add brief pacing between chapter calls to prevent Groq API 429 Too Many Requests
+        if i < len(tasks_to_run) - 1:
+            await asyncio.sleep(2.5)
+
