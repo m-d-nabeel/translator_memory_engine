@@ -101,6 +101,7 @@ class ChapterStatusResponse(BaseModel):
 
 class ProcessRequest(BaseModel):
     do_llm: bool = True
+    force: bool = False
 
 
 class PolicyResponse(BaseModel):

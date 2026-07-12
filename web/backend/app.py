@@ -26,9 +26,36 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    # Seed is now idempotent — run manually via: uv run python -m web.backend.seed
-    # from web.backend.seed import seed
-    # await seed()
+    from web.backend.db.database import async_session
+    from web.backend.db.models import Chapter, ProcessingJob
+    from sqlalchemy import update
+
+    active_statuses = [
+        "processing",
+        "queued",
+        "cleaning",
+        "applying_rules",
+        "rewriting",
+        "validating",
+        "extracting_lore",
+        "extracting",
+    ]
+
+    async with async_session() as session:
+        # Reset stuck chapters
+        await session.execute(
+            update(Chapter)
+            .where(Chapter.status.in_(active_statuses))
+            .values(status="failed", error_message="Processing interrupted by server restart.")
+        )
+        # Reset stuck jobs
+        await session.execute(
+            update(ProcessingJob)
+            .where(ProcessingJob.status.in_(["running", "queued"]))
+            .values(status="failed", error_message="Processing interrupted by server restart.")
+        )
+        await session.commit()
+
     yield
 
 

@@ -37,6 +37,7 @@ export function ReaderView({
   const [displayedParagraphs, setDisplayedParagraphs] = useState<string[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const prevTextRef = useRef(text);
+  const prevIsProcessingRef = useRef(isProcessing);
   const isFirstRender = useRef(true);
 
   useEffect(() => {
@@ -47,38 +48,49 @@ export function ReaderView({
       return;
     }
 
-    // If text actually changed and we are no longer processing, stream it!
-    if (prevTextRef.current !== text && !isProcessing) {
-      setIsStreaming(true);
-      setDisplayedParagraphs([]);
-      let currentIdx = 0;
+    const wasProcessing = prevIsProcessingRef.current;
+    prevIsProcessingRef.current = isProcessing;
 
-      const interval = setInterval(() => {
-        if (currentIdx < targetParagraphs.length) {
-          setDisplayedParagraphs((prev) => {
-            // Avoid duplicates just in case
-            if (prev.length === targetParagraphs.length) return prev;
-            return [...prev, targetParagraphs[currentIdx]];
-          });
-          currentIdx++;
-          // Smooth scroll to keep the newest text in view if the user is at the bottom
-          if (
-            window.innerHeight + window.scrollY >=
-            document.body.offsetHeight - 500
-          ) {
-            window.scrollTo({
-              top: document.body.scrollHeight,
-              behavior: "smooth",
+    // If text changed, we need to handle it.
+    if (prevTextRef.current !== text) {
+      // ONLY stream if we just finished processing. Otherwise (like tab switches), update instantly!
+      if (!isProcessing && wasProcessing) {
+        setIsStreaming(true);
+        setDisplayedParagraphs([]);
+        let currentIdx = 0;
+
+        const interval = setInterval(() => {
+          if (currentIdx < targetParagraphs.length) {
+            setDisplayedParagraphs((prev) => {
+              // Avoid duplicates just in case
+              if (prev.length === targetParagraphs.length) return prev;
+              return [...prev, targetParagraphs[currentIdx]];
             });
+            currentIdx++;
+            // Smooth scroll to keep the newest text in view if the user is at the bottom
+            if (
+              window.innerHeight + window.scrollY >=
+              document.body.offsetHeight - 500
+            ) {
+              window.scrollTo({
+                top: document.body.scrollHeight,
+                behavior: "smooth",
+              });
+            }
+          } else {
+            setIsStreaming(false);
+            prevTextRef.current = text;
+            clearInterval(interval);
           }
-        } else {
-          setIsStreaming(false);
-          prevTextRef.current = text;
-          clearInterval(interval);
-        }
-      }, 100); // 100ms per paragraph = fast stream
+        }, 100); // 100ms per paragraph = fast stream
 
-      return () => clearInterval(interval);
+        return () => clearInterval(interval);
+      } else {
+        // Tab switch or initial loads - instant update
+        setDisplayedParagraphs(targetParagraphs);
+        prevTextRef.current = text;
+        setIsStreaming(false);
+      }
     }
   }, [text, isProcessing, targetParagraphs]);
 

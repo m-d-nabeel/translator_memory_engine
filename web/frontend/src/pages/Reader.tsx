@@ -31,7 +31,7 @@ export function Reader() {
   >(null);
 
   const reprocessMutation = useMutation({
-    mutationFn: (doLlm: boolean) => api.reprocessChapter(id, doLlm),
+    mutationFn: ({ doLlm, force }: { doLlm: boolean; force: boolean }) => api.reprocessChapter(id, doLlm, force),
     onMutate: () => {
       setProcessingTriggeredAt(Date.now());
       queryClient.setQueryData(["chapterStatus", id], (old: any) =>
@@ -68,8 +68,17 @@ export function Reader() {
     refetchInterval: (query) =>
       reprocessMutation.isPending ||
       !!processingTriggeredAt ||
-      query.state.data?.status === "processing" ||
-      query.state.data?.status === "pending"
+      (query.state.data?.status &&
+        [
+          "processing",
+          "queued",
+          "cleaning",
+          "applying_rules",
+          "rewriting",
+          "validating",
+          "extracting_lore",
+          "extracting",
+        ].includes(query.state.data.status))
         ? 1500
         : false,
   });
@@ -81,17 +90,34 @@ export function Reader() {
     refetchInterval: (query) =>
       reprocessMutation.isPending ||
       !!processingTriggeredAt ||
-      query.state.data?.status === "processing" ||
-      query.state.data?.status === "pending"
+      (query.state.data?.status &&
+        [
+          "processing",
+          "queued",
+          "cleaning",
+          "applying_rules",
+          "rewriting",
+          "validating",
+          "extracting_lore",
+          "extracting",
+        ].includes(query.state.data.status))
         ? 1500
         : false,
   });
 
+  const activeStatuses = [
+    "processing",
+    "queued",
+    "cleaning",
+    "applying_rules",
+    "rewriting",
+    "validating",
+    "extracting_lore",
+    "extracting"
+  ];
   const isCurrentlyProcessing =
-    chapterData?.status === "processing" ||
-    chapterData?.status === "pending" ||
-    chapter?.status === "processing" ||
-    chapter?.status === "pending";
+    (chapterData?.status && activeStatuses.includes(chapterData.status)) ||
+    (chapter?.status && activeStatuses.includes(chapter.status));
 
   useEffect(() => {
     if (processingTriggeredAt) {
@@ -397,17 +423,27 @@ export function Reader() {
             {/* Process Button */}
             <button
               onClick={() => {
-                if (isChapterProcessing) return;
-                if (
-                  confirm(
-                    "Process this chapter? It will run through the latest rules again.",
-                  )
-                ) {
-                  reprocessMutation.mutate(true);
+                if (isChapterProcessing) {
+                  if (
+                    !confirm(
+                      "This chapter is currently processing. If it got stuck or failed, you can force it to restart. Force restart?",
+                    )
+                  ) {
+                    return;
+                  }
+                  reprocessMutation.mutate({ doLlm: true, force: true });
+                } else {
+                  if (
+                    !confirm(
+                      "Process this chapter? It will run through the latest rules again.",
+                    )
+                  ) {
+                    return;
+                  }
+                  reprocessMutation.mutate({ doLlm: true, force: false });
                 }
               }}
-              disabled={isChapterProcessing}
-              title="Process Chapter"
+              title={isChapterProcessing ? "Force Restart" : "Process Chapter"}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer hover:bg-white/5 disabled:opacity-70 disabled:cursor-not-allowed"
               style={{
                 borderColor: "var(--color-border)",
@@ -542,9 +578,7 @@ export function Reader() {
               lineHeight={settings.lineHeight}
               paraMode={settings.paraMode}
               maxWidth={splitMode ? "full" : settings.maxWidth}
-              isProcessing={
-                chapter.status === "processing" || chapter.status === "pending"
-              }
+              isProcessing={isCurrentlyProcessing}
             />
           </div>
 
@@ -568,6 +602,7 @@ export function Reader() {
                 lineHeight={settings.lineHeight}
                 paraMode={settings.paraMode}
                 maxWidth="full"
+                isProcessing={isCurrentlyProcessing}
               />
             </div>
           )}
