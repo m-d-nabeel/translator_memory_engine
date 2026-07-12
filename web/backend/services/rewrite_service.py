@@ -453,6 +453,10 @@ async def extract_policies(
 
     from translator_memory_engine.extract import extract_signals
     from translator_memory_engine.policy.miner import mine_policies
+    from openai import OpenAI
+    import logging
+
+    logger = logging.getLogger(__name__)
 
     corpus_chapters = []
     for ch in chapters:
@@ -464,7 +468,19 @@ async def extract_policies(
         )
 
     signals = extract_signals(corpus_chapters, source_languages=[novel.source_language])
-    policies = mine_policies(signals, total_chapters=len(chapters))
+
+    # Setup LLM client for semantic verification
+    try:
+        llm_client = OpenAI(base_url="http://127.0.0.1:8080/v1", api_key="sk-no-key-required")
+    except Exception as e:
+        logger.warning(f"Could not instantiate OpenAI client for semantic verification: {e}")
+        llm_client = None
+
+    policies = mine_policies(
+        signals, 
+        total_chapters=len(chapters),
+        llm_client=llm_client,
+    )
 
     # ---------------------------------------------------------------
     # Clear old policies for this novel, then write new ones to SQLite

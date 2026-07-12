@@ -2,6 +2,7 @@ import json
 import logging
 
 from sqlalchemy import select
+from openai import OpenAI
 
 from translator_memory_engine.extract import extract_signals
 from translator_memory_engine.memory.store import PolicyStore
@@ -75,6 +76,15 @@ async def extract_policies_for_novel(novel_id: int):
             signals = extract_signals(pipeline_chapters, source_languages=[source_language])
             logger.info(f"Extracted {len(signals)} raw signals.")
 
+            # Setup LLM client for semantic verification
+            try:
+                # Point to local llama.cpp server
+                llm_client = OpenAI(base_url="http://127.0.0.1:8080/v1", api_key="sk-no-key-required")
+                logger.info("Instantiated local LLM client for semantic verification.")
+            except Exception as e:
+                logger.warning(f"Could not instantiate OpenAI client for semantic verification: {e}")
+                llm_client = None
+
             # 3. Mine policies
             policies = mine_policies(
                 signals,
@@ -85,6 +95,7 @@ async def extract_policies_for_novel(novel_id: int):
                 confidence_base=0.5,
                 confidence_per_occurrence=0.03,
                 confidence_cap=0.99,
+                llm_client=llm_client,
             )
             logger.info(f"Mined {len(policies)} policies.")
 
