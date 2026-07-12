@@ -469,22 +469,21 @@ _STYLE_REFERENCE = [
 # The LLM task is FAITHFUL REPAIR, not free rewriting: keep the existing wording,
 # only fix broken MTL, and preserve the translator's voice/metaphors/onomatopoeia.
 # Never invent. (8B models love to echo the scaffolding — see _strip_echo.)
-_FALLBACK_RULES = """Repair rules:
-- REWRITE MACHINE TRANSLATION (A) into fluent, natural English prose matching the translator's voice.
-- RESOLVE DISCOURSE & NARRATIVE COHERENCE ANOMALIES (DECEPTIVE MTL ARTIFACTS):
-  Machine translations frequently output grammatically valid English words that make zero logical sense inside the scene (due to homograph dictionary lookups, flipped pronouns, or literalized idioms).
-  Before preserving any sentence or exclamation verbatim, verify its Discourse Coherence against the immediate scene:
-  1. Conversational Logic: If a standalone noun, exclamation, or idiom violates the conversational or emotional logic of the scene (e.g. an unrelated economic/technical noun during a physical confrontation, or a bizarre non-sequitur), recognize it as a deceptive MTL homograph/idiom artifact and repair it so it makes natural sense inside the scene's context.
-  2. Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses" or bending "her own arm" while attacking an enemy), correct the pronoun logic ("so that you would come to your senses" / "bent his arm") to restore clear narrative causality.
-  3. Speaker Attribution & Sentence Ownership (Dialogue Disentanglement): Korean pro-drop grammar and MTL paragraph merging frequently cause severe sentence ownership distortions in dialogue:
-     - Merged Dialogue Turns: If two distinct characters' dialogue lines are merged into a single quotation block in the MTL (e.g., "Okay, there may be a white pigment that I don't know about. But as a dwarf, I've tried baking with all the white pigments I know..." where the first half is spoken by a human protagonist and the second half by a dwarf), you MUST disentangle and separate them into distinct dialogue turns with clear speaker attributions so sentence ownership is unmistakably clear.
-     - Misattributed Pronouns & Subjects: If a dialogue line or inner thought attributes an identity, race, or profession to the wrong speaker due to MTL pronoun dropping (e.g., a human protagonist saying "as a dwarf I tried..." or "he replied" when the person speaking is "I"), correct the pronoun and speaker attribution ("I responded, 'Okay...' Stonehammer interjected, 'But as a dwarf, I've tried...'") to ensure every sentence belongs to its rightful speaker.
-- Faithfully reproduce the original plot events and characters without adding external details.
+_FALLBACK_RULES = """<Rules>
+1. RESOLVE DISCOURSE & NARRATIVE COHERENCE ANOMALIES (DECEPTIVE MTL ARTIFACTS):
+   Machine translations frequently output grammatically valid English words that make zero logical sense inside the scene (due to homograph dictionary lookups, flipped pronouns, or literalized idioms).
+   Before preserving any sentence or exclamation verbatim, verify its Discourse Coherence against the immediate scene:
+   - Conversational Logic: If a standalone noun, exclamation, or idiom violates the conversational or emotional logic of the scene (e.g. an unrelated economic/technical noun during a physical confrontation, or a bizarre non-sequitur), recognize it as a deceptive MTL homograph/idiom artifact and repair it so it makes natural sense inside the scene's context.
+   - Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses" or bending "her own arm" while attacking an enemy), correct the pronoun logic ("so that you would come to your senses" / "bent his arm") to restore clear narrative causality.
+   - Speaker Attribution & Sentence Ownership: If distinct characters' dialogue lines are merged into a single quotation block, disentangle them into distinct dialogue turns. If a dialogue line attributes an identity to the wrong speaker due to MTL pronoun dropping, correct the pronoun and speaker attribution to ensure every sentence belongs to its rightful speaker.
+   - Inverted Negation & Contradictions: Korean double-negatives frequently cause MTL to flip positive/negative states (e.g. outputting "shouldn't" instead of "should", or "couldn't" instead of "could"). If a character's dialogue or action directly contradicts their obvious intent in the scene, flip the negation to restore the correct logical meaning.
+2. Faithfully reproduce the original plot events and characters without adding external details.
+</Rules>
 
 <Format>
-- Output only the repaired chapter text without conversational filler.
+- Output ONLY the repaired chapter text without conversational filler. No scaffolding or headers.
 - Replicate the exact paragraph spacing of the Machine Translation. Keep every distinct dialogue turn and action tag on its own separate line.
-- You may separate merged dialogue turns into new paragraphs for clarity, but you should never merge existing paragraphs together into blocks.
+- You may separate merged dialogue turns into new paragraphs for clarity, but you should NEVER merge existing paragraphs together into blocks.
 </Format>"""
 
 
@@ -495,8 +494,8 @@ def build_prompt(
     style_profile: Optional[List[str]] = None,
     previous_tail: Optional[str] = None,
     active_cast_entries: Optional[List[Dict]] = None,
-) -> str:
-    """Build the LLM rewrite prompt.
+) -> tuple[str, str]:
+    """Build the LLM rewrite prompt as a (system_prompt, user_prompt) tuple.
 
     Three modes (PLAN §15, D11):
       * reference      — supervised: a published translation of the SAME chapter
@@ -598,28 +597,36 @@ def build_prompt(
             )
 
     if reference:
-        known_errors_section = f"\n{known_errors_block}\n" if known_errors_block else ""
-        return f"""You are POST-EDITING a machine-translated web-novel chapter toward a published human translation of the SAME passage.
-{tail_block}{cast_block}
-Apply the following translator policies consistently:
+        known_errors_section = (
+            f"\n<KnownErrors>\n{known_errors_block}\n</KnownErrors>\n"
+            if known_errors_block
+            else ""
+        )
+        system_prompt = (
+            "You are an expert translator and editor for a high-quality, professionally published fantasy web-novel.\n"
+            "Your task is to rewrite a rough Machine Translation (A) so it reads like the target Published Translation (B).\n"
+            "ELEVATE THE PROSE: Match the phrasing, voice, tone, rhythm, and emotional weight of (B) as closely as possible. "
+            "Do not output dry, literal, or clinical 'study-book' translations. Inject life, feeling, and depth into the narrative."
+        )
+        user_prompt = f"""{tail_block}{cast_block}
+<TranslatorPolicies>
 {instructions}
-{known_errors_section}
-Repair rules:
-- REWRITE the MACHINE TRANSLATION (A) so it READS LIKE the PUBLISHED TRANSLATION (B): match its phrasing, voice, tone, rhythm, and emotional weight as closely as possible.
-- RESOLVE DISCOURSE & NARRATIVE COHERENCE ANOMALIES (DECEPTIVE MTL ARTIFACTS):
-  Machine translations frequently output grammatically valid English words that make zero logical sense inside the scene. Before preserving any sentence verbatim, verify its Discourse Coherence against the immediate scene:
-  1. Conversational Logic: If a noun, exclamation, or idiom violates the conversational or emotional logic of the scene (e.g. an unrelated economic noun during a physical confrontation, or a bizarre non-sequitur), recognize it as a deceptive artifact and repair it to match (B)'s phrasing.
-  2. Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses"), correct the pronoun logic to restore clear narrative causality.
-  3. Speaker Attribution & Sentence Ownership (Dialogue Disentanglement): Korean pro-drop grammar and MTL paragraph merging frequently cause severe sentence ownership distortions in dialogue:
-     - Merged Dialogue Turns: If two distinct characters' dialogue lines are merged into a single quotation block in the MTL, disentangle and separate them into distinct dialogue turns with correct speaker attributions matching (B) so sentence ownership is unmistakably clear.
-     - Misattributed Pronouns & Subjects: If a dialogue line or inner thought attributes an identity, race, or profession to the wrong speaker due to MTL pronoun dropping, correct the pronoun and speaker attribution so every sentence belongs to its rightful speaker.
-- Maintain exact scene pacing by reproducing all beats from (A).
-- Faithfully reproduce the original plot events and characters without adding external details.
+</TranslatorPolicies>{known_errors_section}
+<Rules>
+1. RESOLVE DISCOURSE & NARRATIVE COHERENCE ANOMALIES (DECEPTIVE MTL ARTIFACTS):
+   Machine translations frequently output grammatically valid English words that make zero logical sense inside the scene. Before preserving any sentence verbatim, verify its Discourse Coherence against the immediate scene:
+   - Conversational Logic: If a noun, exclamation, or idiom violates the conversational or emotional logic of the scene (e.g. an unrelated economic noun during a physical confrontation, or a bizarre non-sequitur), recognize it as a deceptive artifact and repair it to match (B)'s phrasing.
+   - Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses"), correct the pronoun logic to restore clear narrative causality.
+   - Speaker Attribution & Sentence Ownership: Disentangle merged dialogue turns into distinct turns with correct speaker attributions matching (B). Correct any misattributed pronouns so every sentence belongs to its rightful speaker.
+   - Inverted Negation & Contradictions: If the MTL outputs a flipped negation (e.g. "shouldn't" instead of "should") that contradicts the obvious logical intent of the speaker, flip the negation to restore the correct meaning.
+2. Maintain exact scene pacing by reproducing all beats from (A).
+3. Faithfully reproduce the original plot events and characters without adding external details.
+</Rules>
 
 <Format>
-- Output only the repaired chapter text without headers, scaffolding, or code fences.
+- Output ONLY the repaired chapter text without headers, scaffolding, or code fences.
 - Replicate the exact paragraph spacing of the Machine Translation. Keep every distinct dialogue turn and action tag on its own separate line.
-- You may separate merged dialogue turns into new paragraphs for clarity, but you should never merge existing paragraphs together into blocks.
+- You may separate merged dialogue turns into new paragraphs for clarity, but you should NEVER merge existing paragraphs together into blocks.
 </Format>
 
 === (A) MACHINE TRANSLATION TO REPAIR ===
@@ -627,41 +634,59 @@ Repair rules:
 
 === (B) PUBLISHED TRANSLATION (reference) ===
 {reference}"""
+        return system_prompt, user_prompt
 
     if style_profile:
-        known_errors_section = f"\n{known_errors_block}\n" if known_errors_block else ""
+        known_errors_section = (
+            f"\n<KnownErrors>\n{known_errors_block}\n</KnownErrors>\n"
+            if known_errors_block
+            else ""
+        )
         profile_txt = "\n".join(f"- {ex}" for ex in style_profile)
-        return f"""You are repairing a machine-translated web-novel chapter into fluent, natural English. There is NO published translation for this chapter.
-{tail_block}{cast_block}
-### VOICE REFERENCE EXCERPTS (DO NOT COPY OR INSERT THESE LINES)
+        system_prompt = (
+            "You are an expert translator and editor for a high-quality, professionally published fantasy web-novel.\n"
+            "Your task is to rewrite a rough Machine Translation into fluent, natural English prose.\n"
+            "ELEVATE THE PROSE: You must read like a high-quality published fantasy novel. Use evocative vocabulary, "
+            "emotional weight, and natural narrative rhythm."
+        )
+        user_prompt = f"""{tail_block}{cast_block}
+<VoiceReference>
 The following quotes are from DIFFERENT chapters by the SAME translator. Use them ONLY as stylistic inspiration for tone, rhythm, and vocabulary. DO NOT copy, insert, or weave any of these lines, characters, or dialogue into the current chapter:
 {profile_txt}
-### END REFERENCE EXCERPTS
+</VoiceReference>
 
-Apply the following translator policies consistently:
+<TranslatorPolicies>
 {instructions}
-{known_errors_section}
-{_FALLBACK_RULES}
-
-CHAPTER TO REWRITE:
-{prepassed_text}"""
-
-    profile_txt = "\n".join(f"- {ex}" for ex in _STYLE_REFERENCE)
-    known_errors_section = f"\n{known_errors_block}\n" if known_errors_block else ""
-    return f"""You are aggressively repairing a machine-translated web novel chapter into fluent, natural English.
-{tail_block}{cast_block}
-Apply the following translator policies consistently:
-{instructions}
-{known_errors_section}
-### VOICE REFERENCE EXCERPTS (DO NOT COPY OR INSERT THESE LINES)
-The following quotes show the translator's vocabulary, dialogue rhythm, and gritty tone. They are from DIFFERENT chapters. Use them ONLY as stylistic inspiration. DO NOT copy, insert, or weave any of these lines or characters into the current chapter:
-{profile_txt}
-### END REFERENCE EXCERPTS
+</TranslatorPolicies>{known_errors_section}
 
 {_FALLBACK_RULES}
 
-CHAPTER TO REWRITE:
+=== MACHINE TRANSLATION TO REPAIR ===
 {prepassed_text}"""
+        return system_prompt, user_prompt
+
+    # Fallback (unsupervised, no style bank)
+    known_errors_section = (
+        f"\n<KnownErrors>\n{known_errors_block}\n</KnownErrors>\n"
+        if known_errors_block
+        else ""
+    )
+    system_prompt = (
+        "You are an expert translator and editor for a high-quality, professionally published fantasy web-novel.\n"
+        "Your task is to rewrite a rough Machine Translation into fluent, natural English prose.\n"
+        "ELEVATE THE PROSE: You must read like a high-quality published fantasy novel. Use evocative vocabulary, "
+        "emotional weight, and natural narrative rhythm."
+    )
+    user_prompt = f"""{tail_block}{cast_block}
+<TranslatorPolicies>
+{instructions}
+</TranslatorPolicies>{known_errors_section}
+
+{_FALLBACK_RULES}
+
+=== MACHINE TRANSLATION TO REPAIR ===
+{prepassed_text}"""
+    return system_prompt, user_prompt
 
 
 def rewrite(
@@ -824,7 +849,7 @@ def rewrite(
                         ):
                             active_cast_entries.append(entry)
 
-                prompt = build_prompt(
+                system_prompt, user_prompt = build_prompt(
                     mtl_chunk,
                     prompted,
                     reference=ref_chunk,
@@ -832,14 +857,20 @@ def rewrite(
                     previous_tail=context_tail,
                     active_cast_entries=active_cast_entries,
                 )
-                logger.debug(f"Prompt length: {len(prompt)} chars")
+                logger.debug(
+                    f"System Prompt length: {len(system_prompt)} chars | User Prompt length: {len(user_prompt)} chars"
+                )
                 resp = _llm_complete(
                     client,
                     model=model,
                     messages=[
                         {
+                            "role": "system",
+                            "content": system_prompt,
+                        },
+                        {
                             "role": "user",
-                            "content": prompt,
+                            "content": user_prompt,
                         },
                     ],
                     temperature=0.45,
