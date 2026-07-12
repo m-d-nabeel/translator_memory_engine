@@ -300,8 +300,6 @@ export function Reader() {
     );
   }
 
-  // We handle processing states inside the ReaderView now so the user can see the old text while waiting
-
   return (
     <div className="min-h-screen flex flex-col bg-[var(--color-bg)] text-[var(--color-text)] transition-colors duration-200">
       {/* Top Floating Reader App Bar */}
@@ -425,21 +423,19 @@ export function Reader() {
             </button>
 
             {/* Split Compare Button (Desktop / Tablet) */}
-            {(hasRefined || hasOriginal) && (
-              <button
-                onClick={() => setSplitMode(!splitMode)}
-                title="Toggle Side-by-Side Comparison Mode"
-                className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                  splitMode
-                    ? "shadow-md glow-accent bg-[var(--color-accent)] text-white border-transparent"
-                    : "hover:bg-white/5"
-                }`}
-                style={{ borderColor: "var(--color-border)" }}
-              >
-                <Split className="w-3.5 h-3.5" />
-                <span>Compare</span>
-              </button>
-            )}
+            <button
+              onClick={() => setSplitMode(!splitMode)}
+              title="Toggle Side-by-Side Comparison Mode"
+              className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                splitMode
+                  ? "shadow-md glow-accent bg-[var(--color-accent)] text-white border-transparent"
+                  : "hover:bg-white/5"
+              }`}
+              style={{ borderColor: "var(--color-border)" }}
+            >
+              <Split className="w-3.5 h-3.5" />
+              <span>Compare</span>
+            </button>
 
             {/* Quick Font Size Controls */}
             <div

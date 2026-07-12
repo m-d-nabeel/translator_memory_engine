@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { Sparkles } from "lucide-react";
 import {
   type ReaderFont,
@@ -34,7 +34,53 @@ export function ReaderView({
       .filter((p) => p.length > 0);
   }, [text]);
 
-  const displayedParagraphs = targetParagraphs;
+  const [displayedParagraphs, setDisplayedParagraphs] = useState<string[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const prevTextRef = useRef(text);
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    // If text hasn't changed, or it's the first render, just show it immediately
+    if (prevTextRef.current === text && isFirstRender.current) {
+      setDisplayedParagraphs(targetParagraphs);
+      isFirstRender.current = false;
+      return;
+    }
+
+    // If text actually changed and we are no longer processing, stream it!
+    if (prevTextRef.current !== text && !isProcessing) {
+      setIsStreaming(true);
+      setDisplayedParagraphs([]);
+      let currentIdx = 0;
+
+      const interval = setInterval(() => {
+        if (currentIdx < targetParagraphs.length) {
+          setDisplayedParagraphs((prev) => {
+            // Avoid duplicates just in case
+            if (prev.length === targetParagraphs.length) return prev;
+            return [...prev, targetParagraphs[currentIdx]];
+          });
+          currentIdx++;
+          // Smooth scroll to keep the newest text in view if the user is at the bottom
+          if (
+            window.innerHeight + window.scrollY >=
+            document.body.offsetHeight - 500
+          ) {
+            window.scrollTo({
+              top: document.body.scrollHeight,
+              behavior: "smooth",
+            });
+          }
+        } else {
+          setIsStreaming(false);
+          prevTextRef.current = text;
+          clearInterval(interval);
+        }
+      }, 100); // 100ms per paragraph = fast stream
+
+      return () => clearInterval(interval);
+    }
+  }, [text, isProcessing, targetParagraphs]);
 
   const fontStyle =
     {
@@ -92,7 +138,7 @@ export function ReaderView({
           return (
             <p
               key={i}
-              className={`${marginClass} tracking-[0.01em] transition-colors`}
+              className={`${marginClass} tracking-[0.01em] transition-colors ${isStreaming && i === displayedParagraphs.length - 1 ? "animate-slide-up animate-fade-in" : ""}`}
               style={{ textIndent: indentStyle }}
             >
               {para}
@@ -101,7 +147,7 @@ export function ReaderView({
         })}
 
         {/* End of Chapter Divider Ornament */}
-        {displayedParagraphs.length > 0 && (
+        {!isStreaming && displayedParagraphs.length > 0 && (
           <div className="pt-12 pb-6 flex items-center justify-center gap-3 opacity-40">
             <div className="w-12 h-px bg-current" />
             <span className="text-sm font-serif">◈</span>
