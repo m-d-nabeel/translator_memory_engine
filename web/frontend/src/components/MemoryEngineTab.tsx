@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -33,8 +33,7 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
     "tme-memory-subtab",
     "policies",
   );
-  const [dismissedJobIds, setDismissedJobIds] = useState<number[]>([]);
-  const [recentlyTriggered, setRecentlyTriggered] = useState(false);
+  const [dismissedJobIds, setDismissedJobIds] = useLocalStorageState<number[]>("tme-dismissed-jobs", []);
 
   const { data: novels, isLoading: novelsLoading } = useQuery({
     queryKey: ["novels"],
@@ -91,16 +90,19 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
         : null
       : selectedNovelId;
 
+  const [processingStartedAt, setProcessingStartedAt] = useState<number | null>(null);
+
   const extractMutation = useMutation({
-    mutationFn: (id: number) => {
-      setRecentlyTriggered(true);
-      setTimeout(() => setRecentlyTriggered(false), 5000);
-      return api.extractPolicies(id);
+    mutationFn: (id: number) => api.extractPolicies(id),
+    onMutate: () => {
+      setProcessingStartedAt(Date.now());
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["jobsNovel", targetNovelId] });
-      queryClient.invalidateQueries({ queryKey: ["policies", targetNovelId] });
-      queryClient.invalidateQueries({ queryKey: ["glossary", targetNovelId] });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["jobsNovel", targetNovelId] });
+        queryClient.invalidateQueries({ queryKey: ["policies", targetNovelId] });
+        queryClient.invalidateQueries({ queryKey: ["glossary", targetNovelId] });
+      }, 600);
     },
   });
 
@@ -120,21 +122,56 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
 
   const { data: activeJobs } = useQuery({
     queryKey: ["jobsNovel", targetNovelId],
-    queryFn: () => targetNovelId ? api.listNovelJobs(targetNovelId) : Promise.resolve([]),
+    queryFn: () =>
+      targetNovelId ? api.listNovelJobs(targetNovelId) : Promise.resolve([]),
     enabled: !!targetNovelId,
     refetchInterval: (query) => {
       const jobs = query.state.data || [];
-      const hasRunning = jobs.some(j => (j.job_type === "extract_policies" || j.job_type === "extract_lore") && (j.status === "running" || j.status === "queued"));
-      if (hasRunning && recentlyTriggered) {
-        setRecentlyTriggered(false);
-      }
-      return hasRunning || extractMutation.isPending || recentlyTriggered ? 1000 : false;
-    }
+      const running = jobs.some(
+        (j: any) =>
+          (j.job_type === "extract_policies" || j.job_type === "extract_lore") &&
+          (j.status === "running" || j.status === "queued"),
+      );
+      return running || extractMutation.isPending || !!processingStartedAt
+        ? 1000
+        : false;
+    },
   });
 
-  const isExtracting = extractMutation.isPending || recentlyTriggered || (activeJobs || []).some(j => (j.job_type === "extract_policies" || j.job_type === "extract_lore") && (j.status === "running" || j.status === "queued"));
-  const latestExtractionJob = (activeJobs || []).find(j => j.job_type === "extract_policies" || j.job_type === "extract_lore");
-  const isJobDismissed = latestExtractionJob ? dismissedJobIds.includes(latestExtractionJob.id) : false;
+  const hasRunningJob = (activeJobs || []).some(
+    (j: any) =>
+      (j.job_type === "extract_policies" || j.job_type === "extract_lore") &&
+      (j.status === "running" || j.status === "queued"),
+  );
+
+  useEffect(() => {
+    if (processingStartedAt) {
+      const completedRecent = (activeJobs || []).some(
+        (j: any) =>
+          (j.job_type === "extract_policies" || j.job_type === "extract_lore") &&
+          (j.status === "completed" || j.status === "failed") &&
+          Date.now() - new Date(j.completed_at || j.started_at || 0).getTime() < 15000,
+      );
+      if (completedRecent && Date.now() - processingStartedAt > 2000) {
+        setProcessingStartedAt(null);
+      }
+    }
+  }, [activeJobs, processingStartedAt]);
+
+  const isExtracting =
+    extractMutation.isPending || !!processingStartedAt || hasRunningJob;
+
+  const latestExtractionJob = (activeJobs || []).find(
+    (j) => j.job_type === "extract_policies" || j.job_type === "extract_lore",
+  );
+  const isJobDismissed = latestExtractionJob
+    ? (dismissedJobIds || []).includes(latestExtractionJob.id) ||
+      (latestExtractionJob.status === "completed" &&
+        Date.now() -
+          new Date(
+            latestExtractionJob.completed_at || latestExtractionJob.started_at || 0,
+          ).getTime() > 300000)
+    : false;
 
   const filteredPolicies =
     policies?.filter((p) => {

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { User, Edit2, Check, X, AlertTriangle, Eye, ArrowRight, Sparkles, RefreshCw, CheckSquare, Square, ChevronDown, BookOpen, Lock, Unlock, GitMerge, Link2, Quote, Search } from "lucide-react";
@@ -249,12 +249,17 @@ export function LoreTab({ novelId }: LoreTabProps) {
     setSelectedChapterIds([]);
   };
 
+  const [processingStartedAt, setProcessingStartedAt] = useState<number | null>(null);
+
   const extractLoreMutation = useMutation({
     mutationFn: (opts?: { onlyOgTl?: boolean; chapterIds?: number[]; bypassReview?: boolean }) => {
       const isOg = opts?.onlyOgTl ?? onlyOgTl;
       const chIds = opts?.chapterIds !== undefined ? opts.chapterIds : (selectedChapterIds.length > 0 ? selectedChapterIds : undefined);
       const isBypass = opts?.bypassReview ?? bypassReview;
       return api.extractLore(novelId, { onlyOgTl: isOg, chapterIds: chIds, bypassReview: isBypass });
+    },
+    onMutate: () => {
+      setProcessingStartedAt(Date.now());
     },
     onSuccess: (_, variables) => {
       const isOg = variables?.onlyOgTl ?? onlyOgTl;
@@ -266,6 +271,9 @@ export function LoreTab({ novelId }: LoreTabProps) {
       setExtractingMsg(`Background lore extraction triggered for ${modeText}! Check back in a few moments.`);
       setTimeout(() => setExtractingMsg(null), 7000);
       setShowChapterPicker(false);
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["jobsNovel", novelId] });
+      }, 600);
     },
   });
 
@@ -274,12 +282,40 @@ export function LoreTab({ novelId }: LoreTabProps) {
     queryFn: () => api.listNovelJobs(novelId),
     refetchInterval: (query) => {
       const jobs = query.state.data || [];
-      const hasRunning = jobs.some(j => j.status === "running" || j.status === "queued");
-      return hasRunning || extractLoreMutation.isPending ? 1500 : false;
-    }
+      const running = jobs.some(
+        (j: any) =>
+          j.job_type === "extract_lore" &&
+          (j.status === "running" || j.status === "queued"),
+      );
+      return running || extractLoreMutation.isPending || !!processingStartedAt
+        ? 1000
+        : false;
+    },
   });
 
-  const isExtractingLore = extractLoreMutation.isPending || (activeJobs || []).some(j => j.job_type === "extract_lore" && (j.status === "running" || j.status === "queued"));
+  const hasRunningJob = (activeJobs || []).some(
+    (j: any) =>
+      j.job_type === "extract_lore" &&
+      (j.status === "running" || j.status === "queued"),
+  );
+
+  useEffect(() => {
+    if (processingStartedAt) {
+      const completedRecent = (activeJobs || []).some(
+        (j: any) =>
+          j.job_type === "extract_lore" &&
+          (j.status === "completed" || j.status === "failed") &&
+          Date.now() - new Date(j.completed_at || j.started_at || 0).getTime() <
+            15000,
+      );
+      if (completedRecent && Date.now() - processingStartedAt > 2000) {
+        setProcessingStartedAt(null);
+      }
+    }
+  }, [activeJobs, processingStartedAt]);
+
+  const isExtractingLore =
+    extractLoreMutation.isPending || !!processingStartedAt || hasRunningJob;
 
   const updateMetaMutation = useMutation({
     mutationFn: ({
