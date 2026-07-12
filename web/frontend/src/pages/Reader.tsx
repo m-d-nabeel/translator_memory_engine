@@ -200,63 +200,7 @@ export function Reader() {
     );
   }
 
-  if (chapter.status === "processing" || chapter.status === "pending") {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--color-bg)] text-[var(--color-text)] p-6 relative overflow-hidden">
-        {/* Animated Background Orbs */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-[var(--color-accent)]/10 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-[var(--color-ai)]/20 rounded-full blur-2xl animate-pulse delay-150" />
-
-        <div className="relative z-10 flex flex-col items-center gap-6 max-w-sm w-full">
-          <div className="relative flex items-center justify-center">
-            {/* Core Orb */}
-            <div className="absolute inset-0 bg-gradient-to-tr from-[var(--color-accent)] to-[var(--color-ai)] rounded-full blur opacity-50 animate-spin" />
-            <div
-              className="w-16 h-16 bg-[var(--color-surface)] border-2 rounded-full flex items-center justify-center relative z-10 shadow-[0_0_30px_rgba(var(--color-ai-rgb),0.3)]"
-              style={{ borderColor: "var(--color-ai)" }}
-            >
-              <Sparkles className="w-8 h-8 text-[var(--color-ai)] animate-pulse" />
-            </div>
-
-            {/* Orbiting Ring */}
-            <div
-              className="absolute inset-[-10px] border border-dashed rounded-full animate-spin-slow opacity-30"
-              style={{ borderColor: "var(--color-text)" }}
-            />
-          </div>
-
-          <div
-            className="text-center space-y-2 glass-surface p-6 rounded-3xl border w-full"
-            style={{ borderColor: "var(--color-border)" }}
-          >
-            <div
-              className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-[var(--color-ai-glow)] mb-2 border"
-              style={{ borderColor: "var(--color-ai)" }}
-            >
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-ai)] flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-ai)] animate-pulse" />
-                Processing
-              </span>
-            </div>
-            <h3 className="text-xl font-bold font-outfit">
-              Refining Chapter {chapter.chapter_number}
-            </h3>
-            <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
-              Applying terminology policies, polishing tone, and ensuring
-              consistency across the series...
-            </p>
-          </div>
-
-          <button
-            onClick={() => navigate(`/novels/${chapterData?.novel_id || ""}`)}
-            className="px-5 py-2.5 rounded-xl border bg-[var(--color-surface)] text-xs font-bold cursor-pointer transition-transform hover:scale-105 opacity-80 hover:opacity-100"
-          >
-            &larr; Return to Studio
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // We handle processing states inside the ReaderView now so the user can see the old text while waiting
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--color-bg)] text-[var(--color-text)] transition-colors duration-200">
@@ -494,6 +438,9 @@ export function Reader() {
               lineHeight={settings.lineHeight}
               paraMode={settings.paraMode}
               maxWidth={splitMode ? "full" : settings.maxWidth}
+              isProcessing={
+                chapter.status === "processing" || chapter.status === "pending"
+              }
             />
           </div>
 
