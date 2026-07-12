@@ -474,7 +474,16 @@ def build_prompt(
 
     lines = []
     for p in prompted_policies:
-        render_as = p.action.get("render_as", p.trigger)
+        import json
+        action = p.action
+        if isinstance(action, str):
+            try:
+                action = json.loads(action)
+            except Exception:
+                action = {}
+        if not isinstance(action, dict):
+            action = {}
+        render_as = action.get("render_as", p.trigger)
         if p.type == "honorific":
             lines.append(f'- Always render "{p.trigger}" as the honorific "{render_as}".')
         elif p.type == "terminology":
