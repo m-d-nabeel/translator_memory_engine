@@ -292,6 +292,17 @@ def _cluster_variants(
         Merged groups.
     """
 
+    TITLE_STOPWORDS = {
+        "count", "countess", "lord", "lady", "sir", "madam", "chief", "elder", "master",
+        "saint", "king", "queen", "prince", "princess", "captain", "general", "brother",
+        "sister", "patriarch", "matriarch", "young", "old", "senior", "junior", "wizard",
+        "apprentice", "guard", "soldier", "village", "city", "town", "castle", "palace",
+        "sect", "clan", "family", "house", "mountain", "river", "forest", "valley", "lake",
+        "sword", "blade", "demon", "divine", "holy", "dark", "light", "grand", "great",
+        "high", "supreme", "emperor", "empress", "duke", "duchess", "baron", "baroness",
+        "marquis", "the", "and", "of", "in", "at", "to", "for", "with"
+    }
+
     def _tokens(key: str) -> Tuple[str, ...]:
         return tuple(sorted(_normalize(key).split()))
 
@@ -313,7 +324,26 @@ def _cluster_variants(
                 cluster.extend(groups[k2])
                 absorbed.add(k2)
                 continue
-            # (2) edit-distance near-duplicate
+            # Check if one is a single-token proper subset of the other (e.g. "sinclair" vs "count sinclair")
+            # We do NOT absorb single-token subsets here because mine_policies (§3 / D10) explicitly emits
+            # them as distinct policies with needs_review=True ("prompted" mode).
+            t2 = _tokens(k2)
+            is_bare_subset = (len(t2) == 1 and set(t2) < set(t1)) or (len(t1) == 1 and set(t1) < set(t2))
+            if not is_bare_subset:
+                # (2) substring containment for multi-word variants (e.g. "wizard perot" vs "arch-wizard perot")
+                if (k1 in k2 or k2 in k1) and min(len(k1), len(k2)) >= 4:
+                    shorter_tokens = t1 if len(k1) <= len(k2) else t2
+                    if any(tok not in TITLE_STOPWORDS for tok in shorter_tokens):
+                        cluster.extend(groups[k2])
+                        absorbed.add(k2)
+                        continue
+                # (3) token intersection: shared core word of length >= 4 between multi-word variants
+                shared_tokens = {tok for tok in (set(t1) & set(t2)) if tok not in TITLE_STOPWORDS}
+                if any(len(tok) >= 4 for tok in shared_tokens) and len(t1) > 1 and len(t2) > 1:
+                    cluster.extend(groups[k2])
+                    absorbed.add(k2)
+                    continue
+            # (4) edit-distance near-duplicate
             if _normalized_edit_distance(k1, k2) <= similarity_threshold:
                 cluster.extend(groups[k2])
                 absorbed.add(k2)

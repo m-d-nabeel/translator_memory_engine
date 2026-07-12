@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import { useQuery } from "@tanstack/react-query";
 import { api, type ProcessingJob } from "../api/client";
 import {
@@ -25,8 +26,8 @@ export function EngineInspectorModal({
   onClose,
 }: EngineInspectorModalProps) {
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
-  const [filterMode, setFilterMode] = useState<"all" | "chapter">("all");
-  const [autoScroll, setAutoScroll] = useState(true);
+  const [filterMode, setFilterMode] = useLocalStorageState<"all" | "chapter">("tme-inspector-filter", "all");
+  const [autoScroll, setAutoScroll] = useLocalStorageState("tme-inspector-autoscroll", true);
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
   // Poll jobs list every 1.5s for live feedback

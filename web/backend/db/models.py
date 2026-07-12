@@ -42,6 +42,7 @@ class Chapter(Base):
     source_type = Column(String, nullable=False)  # 'mtl' or 'original'
     raw_text = Column(Text, nullable=False)
     refined_text = Column(Text, nullable=True)
+    summary = Column(Text, nullable=True)  # Novel summary/micro-context for next chapter
     status = Column(String, nullable=False, default="unprocessed")
     error_message = Column(Text, nullable=True)
     warnings = Column(Text, nullable=True)  # JSON array
@@ -76,6 +77,7 @@ class Policy(Base):
         String, nullable=False, default="false"
     )  # stored as "true"/"false" for SQLite compat
     contexts = Column(Text, nullable=True)  # JSON array: example sentences
+    metadata_json = Column(Text, nullable=True)  # JSON object for character traits (gender, identity, etc)
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
 
     novel = relationship("Novel", back_populates="policies")
@@ -90,6 +92,8 @@ class GlossaryEntry(Base):
     aliases = Column(Text, nullable=False)  # JSON array
     entity_type = Column(String, nullable=True)
     confidence = Column(Float, nullable=True)
+    evidence_contexts = Column(Text, nullable=True)  # JSON array of verbatim introduction/action quotes
+    metadata_json = Column(Text, nullable=True)  # JSON object for character traits
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
 
     novel = relationship("Novel", back_populates="glossary_entries")

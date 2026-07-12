@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Cpu,
@@ -26,11 +27,13 @@ interface MemoryEngineTabProps {
 }
 
 export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
-  const [selectedNovelId, setSelectedNovelId] = useState<number | "all">("all");
+  const [selectedNovelId, setSelectedNovelId] = useLocalStorageState<number | "all">("tme-memory-novel", "all");
   const [search, setSearch] = useState("");
-  const [activeSubTab, setActiveSubTab] = useState<"policies" | "glossary">(
+  const [activeSubTab, setActiveSubTab] = useLocalStorageState<"policies" | "glossary">(
+    "tme-memory-subtab",
     "policies",
   );
+  const [dismissedJobIds, setDismissedJobIds] = useLocalStorageState<number[]>("tme-dismissed-jobs", []);
 
   const { data: novels, isLoading: novelsLoading } = useQuery({
     queryKey: ["novels"],
@@ -87,11 +90,19 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
         : null
       : selectedNovelId;
 
+  const [processingStartedAt, setProcessingStartedAt] = useState<number | null>(null);
+
   const extractMutation = useMutation({
     mutationFn: (id: number) => api.extractPolicies(id),
+    onMutate: () => {
+      setProcessingStartedAt(Date.now());
+    },
     onSuccess: () => {
-      // In a real app we'd probably poll or show a toast. For now, it runs in the background.
-      alert("Policy regeneration started in the background!");
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["jobsNovel", targetNovelId] });
+        queryClient.invalidateQueries({ queryKey: ["policies", targetNovelId] });
+        queryClient.invalidateQueries({ queryKey: ["glossary", targetNovelId] });
+      }, 600);
     },
   });
 
@@ -108,6 +119,59 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
       targetNovelId ? api.listGlossary(targetNovelId) : Promise.resolve([]),
     enabled: !!targetNovelId,
   });
+
+  const { data: activeJobs } = useQuery({
+    queryKey: ["jobsNovel", targetNovelId],
+    queryFn: () =>
+      targetNovelId ? api.listNovelJobs(targetNovelId) : Promise.resolve([]),
+    enabled: !!targetNovelId,
+    refetchInterval: (query) => {
+      const jobs = query.state.data || [];
+      const running = jobs.some(
+        (j: any) =>
+          (j.job_type === "extract_policies" || j.job_type === "extract_lore") &&
+          (j.status === "running" || j.status === "queued"),
+      );
+      return running || extractMutation.isPending || !!processingStartedAt
+        ? 1000
+        : false;
+    },
+  });
+
+  const hasRunningJob = (activeJobs || []).some(
+    (j: any) =>
+      (j.job_type === "extract_policies" || j.job_type === "extract_lore") &&
+      (j.status === "running" || j.status === "queued"),
+  );
+
+  useEffect(() => {
+    if (processingStartedAt) {
+      const completedRecent = (activeJobs || []).some(
+        (j: any) =>
+          (j.job_type === "extract_policies" || j.job_type === "extract_lore") &&
+          (j.status === "completed" || j.status === "failed") &&
+          Date.now() - new Date(j.completed_at || j.started_at || 0).getTime() < 15000,
+      );
+      if (completedRecent && Date.now() - processingStartedAt > 2000) {
+        setProcessingStartedAt(null);
+      }
+    }
+  }, [activeJobs, processingStartedAt]);
+
+  const isExtracting =
+    extractMutation.isPending || !!processingStartedAt || hasRunningJob;
+
+  const latestExtractionJob = (activeJobs || []).find(
+    (j) => j.job_type === "extract_policies" || j.job_type === "extract_lore",
+  );
+  const isJobDismissed = latestExtractionJob
+    ? (dismissedJobIds || []).includes(latestExtractionJob.id) ||
+      (latestExtractionJob.status === "completed" &&
+        Date.now() -
+          new Date(
+            latestExtractionJob.completed_at || latestExtractionJob.started_at || 0,
+          ).getTime() > 300000)
+    : false;
 
   const filteredPolicies =
     policies?.filter((p) => {
@@ -314,16 +378,103 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
             >
               Engine Status
             </span>
-            <span
-              className="text-xs font-bold flex items-center gap-1.5 mt-1"
-              style={{ color: "var(--color-success)" }}
-            >
-              <ShieldCheck className="w-4 h-4" />
-              Synced & Enforcing
-            </span>
+            {isExtracting ? (
+              <span className="text-xs font-bold flex items-center gap-1.5 mt-1 text-[var(--color-ai)] animate-pulse">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                Regenerating Rules...
+              </span>
+            ) : (
+              <span
+                className="text-xs font-bold flex items-center gap-1.5 mt-1"
+                style={{ color: "var(--color-success)" }}
+              >
+                <ShieldCheck className="w-4 h-4" />
+                Synced & Enforcing
+              </span>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Live Regeneration / Extraction Status Banner */}
+      {(isExtracting || (latestExtractionJob && !isJobDismissed && (latestExtractionJob.status === "completed" || latestExtractionJob.status === "failed"))) && (
+        <div
+          className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
+            isExtracting
+              ? "bg-gradient-to-r from-[var(--color-ai)]/10 to-[var(--color-accent)]/10 border-[var(--color-ai)]/40 shadow-lg animate-pulse"
+              : latestExtractionJob?.status === "failed"
+                ? "bg-red-500/10 border-red-500/30"
+                : "bg-emerald-500/10 border-emerald-500/30"
+          }`}
+        >
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className={`p-2.5 rounded-xl shrink-0 mt-0.5 sm:mt-0 ${
+              isExtracting
+                ? "bg-[var(--color-ai)]/20 text-[var(--color-ai)]"
+                : latestExtractionJob?.status === "failed"
+                  ? "bg-red-500/20 text-red-400"
+                  : "bg-emerald-500/20 text-emerald-400"
+            }`}>
+              <RefreshCw className={`w-5 h-5 ${isExtracting ? "animate-spin" : ""}`} />
+            </div>
+            <div>
+              <div className="text-sm font-bold flex flex-wrap items-center gap-2">
+                {isExtracting ? (
+                  <>
+                    <span style={{ color: "var(--color-text)" }}>Extracting & Regenerating Memory Engine...</span>
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-[var(--color-ai)]/20 text-[var(--color-ai)] font-mono uppercase tracking-wider font-semibold">
+                      {latestExtractionJob?.status === "queued" ? "QUEUED" : "RUNNING"}
+                    </span>
+                  </>
+                ) : latestExtractionJob?.status === "failed" ? (
+                  <span className="text-red-400">Rule Regeneration Failed</span>
+                ) : (
+                  <span className="text-emerald-400">Rule & Lore Regeneration Completed Successfully!</span>
+                )}
+              </div>
+              <div className="text-xs opacity-75 mt-1 leading-relaxed" style={{ color: "var(--color-text)" }}>
+                {isExtracting
+                  ? "Mining translation rules, character patterns, and glossary entries across all original chapters in this novel..."
+                  : latestExtractionJob?.status === "failed"
+                    ? (latestExtractionJob.error_message || "An unexpected error occurred during policy extraction.")
+                    : "Rules and glossary entries have been mined, verified, and synced with your unified engine database."}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+            {!isExtracting && (
+              <>
+                <button
+                  onClick={() => {
+                    if (latestExtractionJob) {
+                      setDismissedJobIds((prev) => [...prev, latestExtractionJob.id]);
+                    }
+                    queryClient.invalidateQueries({ queryKey: ["policies", targetNovelId] });
+                    queryClient.invalidateQueries({ queryKey: ["glossary", targetNovelId] });
+                    queryClient.invalidateQueries({ queryKey: ["jobsNovel", targetNovelId] });
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition-colors hover:bg-white/10 cursor-pointer"
+                  style={{ borderColor: "var(--color-border)", color: "var(--color-text)" }}
+                >
+                  Refresh Data
+                </button>
+                <button
+                  onClick={() => {
+                    if (latestExtractionJob) {
+                      setDismissedJobIds((prev) => [...prev, latestExtractionJob.id]);
+                    }
+                  }}
+                  className="p-1.5 rounded-xl text-xs font-semibold border transition-colors hover:bg-white/10 cursor-pointer opacity-70 hover:opacity-100"
+                  style={{ borderColor: "var(--color-border)", color: "var(--color-text)" }}
+                  title="Dismiss banner"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Sub-tab Navigation and Search Box */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
@@ -403,19 +554,19 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
           {selectedNovelId !== "all" && (
             <button
               onClick={() => extractMutation.mutate(selectedNovelId)}
-              disabled={extractMutation.isPending}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs md:text-sm font-semibold border transition-all hover:bg-white/5 disabled:opacity-50 cursor-pointer"
+              disabled={isExtracting}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs md:text-sm font-semibold border transition-all hover:bg-white/5 disabled:opacity-60 cursor-pointer"
               title="Re-run policy mining on all OG TL chapters in this novel"
               style={{
-                borderColor: "var(--color-border)",
-                color: "var(--color-text)",
+                borderColor: isExtracting ? "var(--color-accent)" : "var(--color-border)",
+                color: isExtracting ? "var(--color-accent)" : "var(--color-text)",
               }}
             >
               <RefreshCw
-                className={`w-3.5 h-3.5 ${extractMutation.isPending ? "animate-spin" : ""}`}
+                className={`w-3.5 h-3.5 ${isExtracting ? "animate-spin text-[var(--color-accent)]" : ""}`}
               />
-              {extractMutation.isPending
-                ? "Starting Extraction..."
+              {isExtracting
+                ? "Extracting Policies... ⏳"
                 : "Regenerate Rules"}
             </button>
           )}

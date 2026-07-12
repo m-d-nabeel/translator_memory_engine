@@ -167,10 +167,11 @@ async def process_chapter(
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
 
-    if chapter.status == "processing":
+    active_statuses = {"processing", "queued", "cleaning", "applying_rules", "rewriting", "validating", "extracting_lore", "extracting"}
+    if chapter.status in active_statuses:
         raise HTTPException(status_code=409, detail="Chapter is already being processed")
 
-    chapter.status = "processing"
+    chapter.status = "queued"
     chapter.error_message = None
     await db.commit()
     await db.refresh(chapter)
@@ -191,10 +192,11 @@ async def reprocess_chapter(
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
 
-    if chapter.status == "processing":
+    active_statuses = {"processing", "queued", "cleaning", "applying_rules", "rewriting", "validating", "extracting_lore", "extracting"}
+    if chapter.status in active_statuses:
         raise HTTPException(status_code=409, detail="Chapter is already being processed")
 
-    chapter.status = "processing"
+    chapter.status = "queued"
     chapter.error_message = None
     # Don't clear refined_text here — preserve old result until new one succeeds.
     # The rewrite service will overwrite refined_text on completion.

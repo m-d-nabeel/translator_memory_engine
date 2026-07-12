@@ -115,6 +115,8 @@ class PolicyResponse(BaseModel):
     evidence_chapters: str | None
     applies: str
     note: str | None
+    needs_review: str | None = None
+    metadata_json: str | None = None
     created_at: datetime.datetime
 
     model_config = {"from_attributes": True}
@@ -127,9 +129,33 @@ class GlossaryResponse(BaseModel):
     aliases: str
     entity_type: str | None
     confidence: float | None
+    evidence_contexts: str | None = None
+    metadata_json: str | None = None
     created_at: datetime.datetime
 
     model_config = {"from_attributes": True}
+
+class GlossaryMetadataUpdate(BaseModel):
+    metadata_json: str
+    needs_review: bool = False
+    apply_proposed: bool = False
+
+class MergeGlossaryRequest(BaseModel):
+    target_id: int
+    source_ids: list[int]
+    deterministic_ids: list[int] | None = None
+
+class DuplicateClusterResponse(BaseModel):
+    cluster_id: str
+    target: GlossaryResponse
+    candidates: list[GlossaryResponse]
+    reason: str
+
+class ExtractLoreRequest(BaseModel):
+    chapter_ids: list[int] | None = None
+    only_og_tl: bool = False
+    bypass_review: bool = False
+
 
 
 class JobResponse(BaseModel):

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import { X, BookOpen, Search, ChevronRight } from "lucide-react";
 import type { Chapter } from "../api/client";
 
@@ -20,7 +21,7 @@ export function TableOfContentsDrawer({
   novelName,
 }: TableOfContentsDrawerProps) {
   const [search, setSearch] = useState("");
-  const [sortAsc, setSortAsc] = useState(true);
+  const [sortAsc, setSortAsc] = useLocalStorageState("tme-toc-sortAsc", true);
 
   if (!isOpen) return null;
 

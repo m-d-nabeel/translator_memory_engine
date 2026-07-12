@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
+import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import { NovelCard } from "../components/NovelCard";
 import { Header } from "../components/Header";
 import { BottomNav, type NavTab } from "../components/BottomNav";
@@ -21,11 +22,11 @@ import {
 export function Dashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<NavTab>("bookshelf");
+  const [activeTab, setActiveTab] = useLocalStorageState<NavTab>("tme-dashboard-tab", "bookshelf");
   const [showCreate, setShowCreate] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedLang, setSelectedLang] = useState<string>("all");
-  const [layoutMode, setLayoutMode] = useState<"grid" | "list">("grid");
+  const [selectedLang, setSelectedLang] = useLocalStorageState<string>("tme-dashboard-lang", "all");
+  const [layoutMode, setLayoutMode] = useLocalStorageState<"grid" | "list">("tme-dashboard-layout", "grid");
 
   const { data: novels, isLoading } = useQuery({
     queryKey: ["novels"],

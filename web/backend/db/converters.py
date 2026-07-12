@@ -34,6 +34,7 @@ def db_policy_to_dataclass(db_policy: Any) -> Policy:
         needs_review=(db_policy.needs_review or "false").lower() == "true",
         llm_rejected=(db_policy.llm_rejected or "false").lower() == "true",
         contexts=json.loads(db_policy.contexts) if db_policy.contexts else [],
+        metadata=json.loads(db_policy.metadata_json) if getattr(db_policy, "metadata_json", None) else {},
     )
 
 
@@ -60,6 +61,7 @@ def db_glossary_to_dict(db_entry: Any) -> Dict[str, Any]:
         "aliases": aliases,
         "type": db_entry.entity_type,
         "confidence": db_entry.confidence,
+        "metadata": json.loads(db_entry.metadata_json) if getattr(db_entry, "metadata_json", None) else {},
     }
 
 

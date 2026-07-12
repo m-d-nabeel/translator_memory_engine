@@ -15,6 +15,13 @@ async def get_db() -> AsyncSession:  # type: ignore[misc]
 
 async def init_db() -> None:
     from web.backend.db.models import Base
+    from sqlalchemy import text
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Safe incremental migration for evidence_contexts
+        try:
+            await conn.execute(text("ALTER TABLE glossary ADD COLUMN evidence_contexts TEXT"))
+        except Exception:
+            # Column likely already exists
+            pass

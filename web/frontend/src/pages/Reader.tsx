@@ -6,6 +6,7 @@ import { ReaderView } from "../components/ReaderView";
 import { ReaderSettingsDrawer } from "../components/ReaderSettingsDrawer";
 import { TableOfContentsDrawer } from "../components/TableOfContentsDrawer";
 import { useReaderSettings } from "../hooks/useReaderSettings";
+import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import {
   ArrowLeft,
   ArrowRight,
@@ -25,17 +26,30 @@ export function Reader() {
   const settings = useReaderSettings();
   const queryClient = useQueryClient();
 
+  const [processingTriggeredAt, setProcessingTriggeredAt] = useState<number | null>(null);
+
   const reprocessMutation = useMutation({
     mutationFn: (doLlm: boolean) => api.reprocessChapter(id, doLlm),
+    onMutate: () => {
+      setProcessingTriggeredAt(Date.now());
+      queryClient.setQueryData(["chapterStatus", id], (old: any) =>
+        old ? { ...old, status: "processing" } : { status: "processing" }
+      );
+      queryClient.setQueryData(["read", id], (old: any) =>
+        old ? { ...old, status: "processing" } : { status: "processing" }
+      );
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["read", id] });
-      queryClient.invalidateQueries({ queryKey: ["chapterStatus", id] });
-      queryClient.invalidateQueries({ queryKey: ["chaptersForNovel"] });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["read", id] });
+        queryClient.invalidateQueries({ queryKey: ["chapterStatus", id] });
+        queryClient.invalidateQueries({ queryKey: ["chaptersForNovel"] });
+      }, 600);
     },
   });
 
-  const [viewMode, setViewMode] = useState<ViewMode>("refined");
-  const [splitMode, setSplitMode] = useState(false);
+  const [viewMode, setViewMode] = useLocalStorageState<ViewMode>("tme-reader-viewMode", "refined");
+  const [splitMode, setSplitMode] = useLocalStorageState("tme-reader-splitMode", false);
   const [isControlsVisible, setIsControlsVisible] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [showToc, setShowToc] = useState(false);
@@ -44,9 +58,11 @@ export function Reader() {
     queryKey: ["read", id],
     queryFn: () => api.readChapter(id),
     refetchInterval: (query) =>
+      reprocessMutation.isPending ||
+      !!processingTriggeredAt ||
       query.state.data?.status === "processing" ||
       query.state.data?.status === "pending"
-        ? 2000
+        ? 1500
         : false,
   });
 
@@ -55,11 +71,35 @@ export function Reader() {
     queryFn: () => api.chapterStatus(id),
     enabled: !isNaN(id),
     refetchInterval: (query) =>
+      reprocessMutation.isPending ||
+      !!processingTriggeredAt ||
       query.state.data?.status === "processing" ||
       query.state.data?.status === "pending"
-        ? 2000
+        ? 1500
         : false,
   });
+
+  const isCurrentlyProcessing =
+    chapterData?.status === "processing" ||
+    chapterData?.status === "pending" ||
+    chapter?.status === "processing" ||
+    chapter?.status === "pending";
+
+  useEffect(() => {
+    if (processingTriggeredAt) {
+      const isDone =
+        chapterData?.status === "completed" ||
+        chapterData?.status === "failed" ||
+        chapter?.status === "completed" ||
+        chapter?.status === "failed";
+      if (isDone && Date.now() - processingTriggeredAt > 2000) {
+        setProcessingTriggeredAt(null);
+      }
+    }
+  }, [chapterData?.status, chapter?.status, processingTriggeredAt]);
+
+  const isChapterProcessing =
+    reprocessMutation.isPending || !!processingTriggeredAt || isCurrentlyProcessing;
 
   const { data: novel } = useQuery({
     queryKey: ["novel", chapterData?.novel_id],
@@ -332,6 +372,7 @@ export function Reader() {
             {/* Process Button */}
             <button
               onClick={() => {
+                if (isChapterProcessing) return;
                 if (
                   confirm(
                     "Process this chapter? It will run through the latest rules again.",
@@ -340,17 +381,18 @@ export function Reader() {
                   reprocessMutation.mutate(true);
                 }
               }}
+              disabled={isChapterProcessing}
               title="Process Chapter"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer hover:bg-white/5"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer hover:bg-white/5 disabled:opacity-70 disabled:cursor-not-allowed"
               style={{
                 borderColor: "var(--color-border)",
                 color: "var(--color-text)",
               }}
             >
               <RefreshCw
-                className={`w-3.5 h-3.5 ${reprocessMutation.isPending ? "animate-spin" : ""}`}
+                className={`w-3.5 h-3.5 ${isChapterProcessing ? "animate-spin text-[var(--color-accent)]" : ""}`}
               />
-              <span className="hidden sm:inline">Process</span>
+              <span className="hidden sm:inline">{isChapterProcessing ? "Processing..." : "Process"}</span>
             </button>
 
             {/* Split Compare Button (Desktop / Tablet) */}
