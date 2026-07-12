@@ -354,3 +354,33 @@ The known error dictionary provides the missing context.
 - Discourse Coherence prompt (language-agnostic) replaces Korean-specific rules.
 - All 115 tests passing.
 - Next: merge PR #5 to master, continue with QOL fixes.
+
+---
+
+## D13 — Web UI & Engine Decoupling
+
+**Context:** The CLI pipeline proved the core hypothesis, but manual JSON inspection and CLI flags are a poor UX for a reading application. We needed a UI for editing policies, fixing MTL, and reading the refined text seamlessly.
+**Decision:** Decoupled the architecture. `translator_memory_engine/` remains a pure Python core (0 UI knowledge). We introduced `web/backend` (FastAPI + SQLite + SQLAlchemy) and `web/frontend` (React + Tailwind V4). The web layer wraps the core engine in a REST API, providing persistence and an interactive Reader mode.
+
+---
+
+## D14 — Database Persistence & Policy Schema Evolution
+
+**Context:** As the system expanded from single-run CLI tests to a persistent web app, storing policies in `policies.jsonl` and reading them dynamically became a bottleneck for CRUD operations.
+**Decision:** Transitioned policies to a SQLite database (`translator_memory.db`) managed by SQLAlchemy. During this transition, we evolved the policy structure slightly, standardizing the `action` field to use `render_as` instead of the old `target` terminology, making it consistent with the web application's typing.
+
+---
+
+## D15 — Real-Time Streaming & UX State Management
+
+**Context:** Processing a chapter takes time (LLM streaming). The original React UI blocked the screen with a loading spinner for the entire generation process, ruining the reading experience. A naive `setInterval` array-mutation implementation caused infinite re-render loops and wiped the screen blank.
+**Decision:** Implemented a two-step React state transition (using `isProcessing` flag + a separate `streamCount` ticker triggered by a controlled `useEffect` loop) to ensure smooth, non-blocking word-by-word streaming of text. We also removed forced `window.scrollTo` calls to respect user scroll control during generation.
+
+---
+
+## Current state (post-D15)
+
+- Architecture: Core python engine wrapped by a decoupled Web UI (React + FastAPI).
+- Database: SQLite with SQLAlchemy handles policies, chapters, and novels.
+- UX: Real-time non-blocking text replacement implemented in the Reader View.
+- Next: Explore Semantic DB and low-confidence policy CRUD UI (moved to future work in `PLAN.md`).

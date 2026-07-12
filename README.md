@@ -7,6 +7,7 @@ Extracts named-entity/terminology/honorific policies from good-translated + MTL 
 ## Quick Start
 
 ### 1. Prerequisites
+
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/) (Python package manager)
 - [Node.js](https://nodejs.org/) & [pnpm](https://pnpm.io/) (for frontend)
@@ -55,5 +56,6 @@ Visit `http://localhost:5173` to access the Translator Memory Engine Dashboard.
 - **Engine Inspector:** View exact rate limits, LLM requests, and processing times in the UI.
 
 ## Data & Logs
+
 - `data/translator_memory.db` — Your SQLite database (created automatically).
 - `logs/app.log` — Backend service and API logs (rotating file handler).
