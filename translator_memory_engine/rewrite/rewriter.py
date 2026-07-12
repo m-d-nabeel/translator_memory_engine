@@ -286,6 +286,15 @@ def _llm_complete(client, retries: int = 5, backoff: float = 15.0, **kwargs):
     raise RuntimeError("LLM completion retries exhausted or zero retries configured.")
 
 
+def _normalize_newlines(text: str) -> str:
+    """Normalize newlines so that solitary single newlines are converted to double newlines,
+    ensuring that chunks and the frontend treat every intended line break as a distinct paragraph."""
+    # Convert \r\n to \n
+    text = text.replace('\r\n', '\n')
+    # Replace single \n with \n\n, but leave \n\n (or more) alone
+    return re.sub(r'(?<!\n)\n(?!\n)', '\n\n', text)
+
+
 def _split_paragraphs(text: str) -> List[str]:
     return [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
 
@@ -495,7 +504,7 @@ def build_prompt(
 
     tail_block = ""
     if previous_tail:
-        tail_block = f"\n=== PREVIOUS PASSAGE CONTEXT (for continuity — do NOT reproduce) ===\n{previous_tail}\n\n"
+        tail_block = f"\n=== PREVIOUS SCENE CONTEXT (For continuity only, DO NOT translate this) ===\n{previous_tail}\n===========================================================================\n\n"
 
     cast_block = ""
     if active_cast_entries:
@@ -710,11 +719,14 @@ def rewrite(
     # Entity shielding: replace glossary entries with placeholders before LLM,
     # restore after. This prevents the LLM from mangling entity names and makes
     # the faithfulness guard almost unnecessary for glossary entities.
-    shielded_text = prepassed_text
+    shielded_text = _normalize_newlines(prepassed_text)
     restore_map: Dict[str, str] = {}
     if glossary and use_llm and need_llm:
-        shielded_text, restore_map = shield_entities(prepassed_text, glossary)
+        shielded_text, restore_map = shield_entities(shielded_text, glossary)
         logger.debug(f"Shielded {len(restore_map)} entities")
+
+    if reference_text:
+        reference_text = _normalize_newlines(reference_text)
 
     # Long chapters exceed the small model's per-request token budget, so rewrite
     # in capped chunks (supervised: MTL chunk + matching reference chunk, aligned
