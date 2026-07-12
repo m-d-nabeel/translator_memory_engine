@@ -21,7 +21,6 @@ Examples:
 """
 
 import argparse
-import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -112,49 +111,50 @@ def clear_database(db_path: Path, args: argparse.Namespace) -> None:
         conn.close()
         return
 
-    # 2. Clear Refined Text & Chapter State (--clear-refined or --all)
-    if args.clear_refined or args.all:
-        where = f"WHERE refined_text IS NOT NULL OR summary IS NOT NULL OR status != 'unprocessed' {'AND novel_id = ?' if args.novel_id is not None else ''}"
-        where_clean = where.replace("OR summary IS NOT NULL OR status != 'unprocessed'", "").strip()
-        
+    # 2. Clear Refined Text & Chapter State (--clear-refined or --all or --clear-all-db-except-chapters)
+    if args.clear_refined or args.all or args.clear_all_db_except_chapters:
         # Build exact query condition based on whether novel_id is specified
         if args.novel_id is not None:
-            query_where = "WHERE novel_id = ? AND (refined_text IS NOT NULL OR summary IS NOT NULL OR status != 'unprocessed')"
+            query_where = (
+                "WHERE novel_id = ? AND (refined_text IS NOT NULL OR summary IS NOT NULL OR status != 'unprocessed')"
+            )
         else:
             query_where = "WHERE refined_text IS NOT NULL OR summary IS NOT NULL OR status != 'unprocessed'"
 
         count = get_table_count(conn, "chapters", query_where, params)
         if count > 0:
-            actions.append(("chapters (reset refined_text, summary, status -> unprocessed)", query_where, params, count, True))
+            actions.append(
+                ("chapters (reset refined_text, summary, status -> unprocessed)", query_where, params, count, True)
+            )
         else:
             print("✓ No chapters with refined text or processed status found.")
 
-    # 3. Clear Policies (--clear-policies or --all)
-    if args.clear_policies or args.all:
+    # 3. Clear Policies (--clear-policies or --all or --clear-all-db-except-chapters)
+    if args.clear_policies or args.all or args.clear_all_db_except_chapters:
         count = get_table_count(conn, "policies", novel_filter_direct, params)
         if count > 0:
             actions.append(("policies table (extracted rules)", novel_filter_direct, params, count, False))
         else:
             print("✓ No extracted policies found.")
 
-    # 4. Clear Glossary & Character Lore (--clear-glossary or --all)
-    if args.clear_glossary or args.all:
+    # 4. Clear Glossary & Character Lore (--clear-glossary or --all or --clear-all-db-except-chapters)
+    if args.clear_glossary or args.all or args.clear_all_db_except_chapters:
         count = get_table_count(conn, "glossary", novel_filter_direct, params)
         if count > 0:
             actions.append(("glossary table (character lore & terms)", novel_filter_direct, params, count, False))
         else:
             print("✓ No glossary/lore entries found.")
 
-    # 5. Clear Processing Jobs (--clear-jobs or --all)
-    if args.clear_jobs or args.all:
+    # 5. Clear Processing Jobs (--clear-jobs or --all or --clear-all-db-except-chapters)
+    if args.clear_jobs or args.all or args.clear_all_db_except_chapters:
         count = get_table_count(conn, "processing_jobs", novel_filter_job, params)
         if count > 0:
             actions.append(("processing_jobs table", novel_filter_job, params, count, False))
         else:
             print("✓ No processing jobs found.")
 
-    # 6. Clear Style Snippets (--clear-snippets)
-    if args.clear_snippets:
+    # 6. Clear Style Snippets (--clear-snippets or --clear-all-db-except-chapters)
+    if args.clear_snippets or args.clear_all_db_except_chapters:
         count = get_table_count(conn, "style_snippets", novel_filter_direct, params)
         if count > 0:
             actions.append(("style_snippets table", novel_filter_direct, params, count, False))
@@ -173,7 +173,15 @@ def clear_database(db_path: Path, args: argparse.Namespace) -> None:
     if args.clear_novels:
         count = get_table_count(conn, "novels", novel_filter_direct if args.novel_id is not None else "", params)
         if count > 0:
-            actions.append(("novels table (and cascading chapters/policies/glossary)", novel_filter_direct if args.novel_id is not None else "", params, count, False))
+            actions.append(
+                (
+                    "novels table (and cascading chapters/policies/glossary)",
+                    novel_filter_direct if args.novel_id is not None else "",
+                    params,
+                    count,
+                    False,
+                )
+            )
         else:
             print("✓ No novels found.")
 
@@ -213,10 +221,7 @@ def clear_directory_files(dir_path: Path, pattern: str, label: str, dry_run: boo
     if not dir_path.exists():
         return 0
 
-    files_to_delete = [
-        f for f in dir_path.glob(pattern)
-        if f.is_file() and f.name != ".gitkeep"
-    ]
+    files_to_delete = [f for f in dir_path.glob(pattern) if f.is_file() and f.name != ".gitkeep"]
 
     if not files_to_delete:
         print(f"✓ No files found in {label} ({dir_path.relative_to(PROJECT_ROOT)})")
@@ -253,14 +258,20 @@ def main() -> None:
 
     # Master shortcut flags
     parser.add_argument(
-        "-a", "--all",
+        "-a",
+        "--all",
         action="store_true",
-        help="Clear all generated/refined database state and output files (refined_text, policies, glossary, jobs, output files, exported policy files)."
+        help="Clear all generated/refined database state and output files (refined_text, policies, glossary, jobs, output files, exported policy files).",
     )
     parser.add_argument(
         "--reset-db",
         action="store_true",
-        help="Completely WIPE all database tables back to an empty state (including all chapters and novels)."
+        help="Completely WIPE all database tables back to an empty state (including all chapters and novels).",
+    )
+    parser.add_argument(
+        "--clear-all-db-except-chapters",
+        action="store_true",
+        help="Clear all database tables EXCEPT chapters and novels (clears policies, glossary, jobs, snippets, and resets refined_text).",
     )
 
     # Database specific flags
@@ -268,54 +279,39 @@ def main() -> None:
     db_group.add_argument(
         "--clear-refined",
         action="store_true",
-        help="Reset refined chapter state (refined_text=NULL, summary=NULL, status='unprocessed')."
+        help="Reset refined chapter state (refined_text=NULL, summary=NULL, status='unprocessed').",
     )
     db_group.add_argument(
-        "--clear-policies",
-        action="store_true",
-        help="Delete all extracted translation rules/policies from database."
+        "--clear-policies", action="store_true", help="Delete all extracted translation rules/policies from database."
     )
     db_group.add_argument(
-        "--clear-glossary",
-        action="store_true",
-        help="Delete all character lore and glossary entries from database."
+        "--clear-glossary", action="store_true", help="Delete all character lore and glossary entries from database."
     )
     db_group.add_argument(
         "--clear-jobs",
         action="store_true",
-        help="Delete all processing jobs (extract_policies, extract_lore, rewrite, etc.)."
+        help="Delete all processing jobs (extract_policies, extract_lore, rewrite, etc.).",
     )
-    db_group.add_argument(
-        "--clear-snippets",
-        action="store_true",
-        help="Delete all style snippets from database."
-    )
-    db_group.add_argument(
-        "--clear-chapters",
-        action="store_true",
-        help="Delete all chapters completely from database."
-    )
+    db_group.add_argument("--clear-snippets", action="store_true", help="Delete all style snippets from database.")
+    db_group.add_argument("--clear-chapters", action="store_true", help="Delete all chapters completely from database.")
     db_group.add_argument(
         "--clear-novels",
         action="store_true",
-        help="Delete all novels completely from database (cascades to chapters, policies, glossary)."
+        help="Delete all novels completely from database (cascades to chapters, policies, glossary).",
     )
     db_group.add_argument(
-        "-n", "--novel-id",
-        type=int,
-        default=None,
-        help="Filter database clearing operations to a specific novel ID."
+        "-n", "--novel-id", type=int, default=None, help="Filter database clearing operations to a specific novel ID."
     )
     db_group.add_argument(
         "--db-path",
         type=Path,
         default=DEFAULT_DB_PATH,
-        help=f"Path to SQLite database file (default: {DEFAULT_DB_PATH.relative_to(PROJECT_ROOT)})."
+        help=f"Path to SQLite database file (default: {DEFAULT_DB_PATH.relative_to(PROJECT_ROOT)}).",
     )
     db_group.add_argument(
         "--also-root-db",
         action="store_true",
-        help="Also apply database clearing operations to 'translator_memory.db' in project root if it exists."
+        help="Also apply database clearing operations to 'translator_memory.db' in project root if it exists.",
     )
 
     # File system specific flags
@@ -323,53 +319,63 @@ def main() -> None:
     fs_group.add_argument(
         "--clear-output",
         action="store_true",
-        help="Delete generated files in data/output/ (rewritten chapters, traces, logs)."
+        help="Delete generated files in data/output/ (rewritten chapters, traces, logs).",
     )
     fs_group.add_argument(
         "--clear-policies-files",
         action="store_true",
-        help="Delete exported files in data/policies/ (policies.jsonl, glossary.json)."
+        help="Delete exported files in data/policies/ (policies.jsonl, glossary.json).",
     )
     fs_group.add_argument(
-        "--clear-mtl-files",
-        action="store_true",
-        help="Delete preprocessor/MTL text files in data/mtl/."
+        "--clear-mtl-files", action="store_true", help="Delete preprocessor/MTL text files in data/mtl/."
     )
     fs_group.add_argument(
         "--clear-originals-files",
         action="store_true",
-        help="Delete preprocessor/original text files in data/originals/."
+        help="Delete preprocessor/original text files in data/originals/.",
     )
     fs_group.add_argument(
         "--clear-all-files",
         action="store_true",
-        help="Delete all generated files (data/output and data/policies). SAFE: NEVER deletes local seed files (data/originals, data/mtl)."
+        help="Delete all generated files (data/output and data/policies). SAFE: NEVER deletes local seed files (data/originals, data/mtl).",
     )
 
     # General options
     parser.add_argument(
-        "-d", "--dry-run",
+        "-d",
+        "--dry-run",
         action="store_true",
-        help="Preview what records or files would be cleared without modifying anything."
+        help="Preview what records or files would be cleared without modifying anything.",
     )
-    parser.add_argument(
-        "-y", "--yes",
-        action="store_true",
-        help="Skip interactive confirmation prompts."
-    )
+    parser.add_argument("-y", "--yes", action="store_true", help="Skip interactive confirmation prompts.")
 
     args = parser.parse_args()
 
     # Check if any action flag was provided
-    has_db_action = any([
-        args.all, args.reset_db, args.clear_refined, args.clear_policies,
-        args.clear_glossary, args.clear_jobs, args.clear_snippets,
-        args.clear_chapters, args.clear_novels
-    ])
-    has_fs_action = any([
-        args.all, args.clear_output, args.clear_policies_files,
-        args.clear_mtl_files, args.clear_originals_files, args.clear_all_files
-    ])
+    has_db_action = any(
+        [
+            args.all,
+            args.reset_db,
+            args.clear_all_db_except_chapters,
+            args.clear_refined,
+            args.clear_policies,
+            args.clear_glossary,
+            args.clear_jobs,
+            args.clear_snippets,
+            args.clear_chapters,
+            args.clear_novels,
+        ]
+    )
+    has_fs_action = any(
+        [
+            args.all,
+            args.clear_output,
+            args.clear_policies_files,
+            args.clear_mtl_files,
+            args.clear_originals_files,
+            args.clear_all_files,
+        ]
+    )
 
     if not (has_db_action or has_fs_action):
         parser.print_help()
@@ -394,16 +400,32 @@ def main() -> None:
         print("📁 File System Operations:")
         print("----------------------------------------------------------------------")
         if args.clear_output or args.all or args.clear_all_files:
-            clear_directory_files(PROJECT_ROOT / "data" / "output", "*", "Generated Output Files (data/output)", args.dry_run, args.yes)
+            clear_directory_files(
+                PROJECT_ROOT / "data" / "output", "*", "Generated Output Files (data/output)", args.dry_run, args.yes
+            )
 
         if args.clear_policies_files or args.all or args.clear_all_files:
-            clear_directory_files(PROJECT_ROOT / "data" / "policies", "*", "Exported Policy/Glossary Files (data/policies)", args.dry_run, args.yes)
+            clear_directory_files(
+                PROJECT_ROOT / "data" / "policies",
+                "*",
+                "Exported Policy/Glossary Files (data/policies)",
+                args.dry_run,
+                args.yes,
+            )
 
         if args.clear_mtl_files:
-            clear_directory_files(PROJECT_ROOT / "data" / "mtl", "*", "Preprocessor MTL Files (data/mtl)", args.dry_run, args.yes)
+            clear_directory_files(
+                PROJECT_ROOT / "data" / "mtl", "*", "Preprocessor MTL Files (data/mtl)", args.dry_run, args.yes
+            )
 
         if args.clear_originals_files:
-            clear_directory_files(PROJECT_ROOT / "data" / "originals", "*", "Preprocessor Original Files (data/originals)", args.dry_run, args.yes)
+            clear_directory_files(
+                PROJECT_ROOT / "data" / "originals",
+                "*",
+                "Preprocessor Original Files (data/originals)",
+                args.dry_run,
+                args.yes,
+            )
 
     print("\n✅ Cleanup check complete.")
     print("======================================================================")

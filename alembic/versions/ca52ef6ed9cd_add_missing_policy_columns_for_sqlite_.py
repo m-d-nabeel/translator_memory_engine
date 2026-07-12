@@ -36,13 +36,9 @@ def upgrade() -> None:
         if not _column_exists("policies", "category"):
             batch_op.add_column(sa.Column("category", sa.String(), nullable=True))
         if not _column_exists("policies", "needs_review"):
-            batch_op.add_column(
-                sa.Column("needs_review", sa.String(), nullable=False, server_default="false")
-            )
+            batch_op.add_column(sa.Column("needs_review", sa.String(), nullable=False, server_default="false"))
         if not _column_exists("policies", "llm_rejected"):
-            batch_op.add_column(
-                sa.Column("llm_rejected", sa.String(), nullable=False, server_default="false")
-            )
+            batch_op.add_column(sa.Column("llm_rejected", sa.String(), nullable=False, server_default="false"))
         if not _column_exists("policies", "contexts"):
             batch_op.add_column(sa.Column("contexts", sa.Text(), nullable=True))
 

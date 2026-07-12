@@ -120,7 +120,9 @@ function getStatusBadgeConfig(status: string, isReprocessing: boolean) {
       text: "Processing... ⏳",
       color: "var(--color-warning)",
       bg: "var(--color-warning-subtle)",
-      icon: <Activity className="w-3 h-3 animate-pulse text-[var(--color-accent)]" />,
+      icon: (
+        <Activity className="w-3 h-3 animate-pulse text-[var(--color-accent)]" />
+      ),
     };
   }
   return {
@@ -203,7 +205,9 @@ export function NovelView() {
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return false;
-      const hasProcessing = data.some((ch) => ACTIVE_PROCESSING_STATUSES.includes(ch.status));
+      const hasProcessing = data.some((ch) =>
+        ACTIVE_PROCESSING_STATUSES.includes(ch.status),
+      );
       return hasProcessing ? 1000 : false;
     },
   });
@@ -707,7 +711,8 @@ export function NovelView() {
                       (e) => e.source_type === "original",
                     );
                     const isReprocessing = mtl
-                      ? reprocessingId === mtl.id || ACTIVE_PROCESSING_STATUSES.includes(mtl.status)
+                      ? reprocessingId === mtl.id ||
+                        ACTIVE_PROCESSING_STATUSES.includes(mtl.status)
                       : false;
                     const displayChapter = mtl || orig;
 
@@ -764,28 +769,35 @@ export function NovelView() {
                                 </span>
                               )}
 
-                              {mtl && (() => {
-                                const cfg = getStatusBadgeConfig(mtl.status, isReprocessing);
-                                return (
-                                  <span
-                                    className="text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider font-mono border flex items-center gap-1 transition-all duration-300"
-                                    style={{
-                                      backgroundColor: cfg.bg,
-                                      color: cfg.color,
-                                      borderColor: isReprocessing ? cfg.color : "var(--color-border)",
-                                    }}
-                                  >
-                                    {cfg.icon}
-                                    {cfg.text}
-                                  </span>
-                                );
-                              })()}
+                              {mtl &&
+                                (() => {
+                                  const cfg = getStatusBadgeConfig(
+                                    mtl.status,
+                                    isReprocessing,
+                                  );
+                                  return (
+                                    <span
+                                      className="text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider font-mono border flex items-center gap-1 transition-all duration-300"
+                                      style={{
+                                        backgroundColor: cfg.bg,
+                                        color: cfg.color,
+                                        borderColor: isReprocessing
+                                          ? cfg.color
+                                          : "var(--color-border)",
+                                      }}
+                                    >
+                                      {cfg.icon}
+                                      {cfg.text}
+                                    </span>
+                                  );
+                                })()}
 
                               {mtl?.warnings && (
                                 <span
                                   className="text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider font-mono border flex items-center gap-1"
                                   style={{
-                                    backgroundColor: "var(--color-warning-subtle)",
+                                    backgroundColor:
+                                      "var(--color-warning-subtle)",
                                     color: "var(--color-warning)",
                                     borderColor: "var(--color-warning)",
                                   }}
@@ -801,7 +813,9 @@ export function NovelView() {
                               className="text-[11px] opacity-60 block mt-1 line-clamp-1 transition-all duration-300"
                               style={{ color: "var(--color-text-muted)" }}
                             >
-                              {mtl ? getStatusSubtext(mtl.status) : "Awaiting processing"}
+                              {mtl
+                                ? getStatusSubtext(mtl.status)
+                                : "Awaiting processing"}
                             </span>
                           </div>
                         </div>
@@ -813,7 +827,9 @@ export function NovelView() {
                         >
                           {displayChapter && (
                             <button
-                              onClick={() => navigate(`/read/${displayChapter.id}`)}
+                              onClick={() =>
+                                navigate(`/read/${displayChapter.id}`)
+                              }
                               className="px-3 py-1.5 rounded-xl text-xs font-bold text-white transition-transform hover:scale-105 active:scale-95 cursor-pointer flex items-center gap-1 shadow-sm"
                               style={{
                                 background:
@@ -847,12 +863,22 @@ export function NovelView() {
                             <button
                               onClick={() => handleReprocess(mtl.id, chNum)}
                               disabled={isReprocessing}
-                              title={isReprocessing ? `Chapter status: ${mtl.status}...` : "Process Chapter with Latest AI Policies"}
+                              title={
+                                isReprocessing
+                                  ? `Chapter status: ${mtl.status}...`
+                                  : "Process Chapter with Latest AI Policies"
+                              }
                               className="p-2 rounded-xl text-xs font-semibold border transition-all duration-300 hover:bg-white/5 cursor-pointer disabled:opacity-80 flex items-center justify-center"
                               style={{
-                                borderColor: isReprocessing ? "var(--color-accent)" : "var(--color-border)",
-                                color: isReprocessing ? "var(--color-accent)" : "var(--color-text-muted)",
-                                backgroundColor: isReprocessing ? "rgba(234, 88, 12, 0.1)" : "transparent",
+                                borderColor: isReprocessing
+                                  ? "var(--color-accent)"
+                                  : "var(--color-border)",
+                                color: isReprocessing
+                                  ? "var(--color-accent)"
+                                  : "var(--color-text-muted)",
+                                backgroundColor: isReprocessing
+                                  ? "rgba(234, 88, 12, 0.1)"
+                                  : "transparent",
                               }}
                             >
                               {mtl.status === "queued" ? (
@@ -865,7 +891,8 @@ export function NovelView() {
                                 <Bot className="w-3.5 h-3.5 animate-pulse text-cyan-400" />
                               ) : mtl.status === "validating" ? (
                                 <ShieldCheck className="w-3.5 h-3.5 animate-pulse text-purple-400" />
-                              ) : mtl.status === "extracting_lore" || mtl.status === "extracting" ? (
+                              ) : mtl.status === "extracting_lore" ||
+                                mtl.status === "extracting" ? (
                                 <Search className="w-3.5 h-3.5 animate-pulse text-indigo-400" />
                               ) : isReprocessing ? (
                                 <Activity className="w-3.5 h-3.5 animate-spin text-[var(--color-accent)]" />

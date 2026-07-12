@@ -32,9 +32,7 @@ def _mock_verifier(response_json):
 class TestVerifierVerdicts:
     def test_keep_writes_note(self):
         p = _make_policy("Anton")
-        v = _mock_verifier(
-            json.dumps([{"id": "p_001", "verdict": "KEEP", "reason": "character name"}])
-        )
+        v = _mock_verifier(json.dumps([{"id": "p_001", "verdict": "KEEP", "reason": "character name"}]))
         out = v.verify_policies([p])
         assert out[0].note == "character name"
         assert out[0].llm_rejected is False
@@ -61,9 +59,7 @@ class TestVerifierVerdicts:
         # DROP must NOT delete the policy; it is flagged llm_rejected and kept
         # (for human review), and forced out of deterministic application.
         p = _make_policy("Centipede")
-        v = _mock_verifier(
-            json.dumps([{"id": "p_001", "verdict": "DROP", "reason": "generic insect term"}])
-        )
+        v = _mock_verifier(json.dumps([{"id": "p_001", "verdict": "DROP", "reason": "generic insect term"}]))
         out = v.verify_policies([p])
         assert len(out) == 1
         assert out[0].llm_rejected is True
@@ -74,9 +70,7 @@ class TestVerifierVerdicts:
         from translator_memory_engine.memory.store import PolicyStore
 
         p = _make_policy("Centipede")
-        v = _mock_verifier(
-            json.dumps([{"id": "p_001", "verdict": "DROP", "reason": "generic insect term"}])
-        )
+        v = _mock_verifier(json.dumps([{"id": "p_001", "verdict": "DROP", "reason": "generic insect term"}]))
         out = v.verify_policies([p])
         store = PolicyStore()
         for pol in out:

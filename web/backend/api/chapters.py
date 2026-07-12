@@ -167,7 +167,16 @@ async def process_chapter(
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
 
-    active_statuses = {"processing", "queued", "cleaning", "applying_rules", "rewriting", "validating", "extracting_lore", "extracting"}
+    active_statuses = {
+        "processing",
+        "queued",
+        "cleaning",
+        "applying_rules",
+        "rewriting",
+        "validating",
+        "extracting_lore",
+        "extracting",
+    }
     if chapter.status in active_statuses:
         raise HTTPException(status_code=409, detail="Chapter is already being processed")
 
@@ -192,7 +201,16 @@ async def reprocess_chapter(
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
 
-    active_statuses = {"processing", "queued", "cleaning", "applying_rules", "rewriting", "validating", "extracting_lore", "extracting"}
+    active_statuses = {
+        "processing",
+        "queued",
+        "cleaning",
+        "applying_rules",
+        "rewriting",
+        "validating",
+        "extracting_lore",
+        "extracting",
+    }
     if chapter.status in active_statuses:
         raise HTTPException(status_code=409, detail="Chapter is already being processed")
 

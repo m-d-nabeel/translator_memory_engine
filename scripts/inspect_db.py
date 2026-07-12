@@ -17,9 +17,7 @@ async def check():
         chapters = ch_res.scalars().all()
         print(f"Total Chapters: {len(chapters)}")
         for ch in chapters[:3]:
-            print(
-                f"  {ch.chapter_number} ({ch.source_type}): status={ch.status}, length={len(ch.raw_text)}"
-            )
+            print(f"  {ch.chapter_number} ({ch.source_type}): status={ch.status}, length={len(ch.raw_text)}")
 
         # Check Policies
         pol_res = await session.execute(select(Policy))

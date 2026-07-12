@@ -237,9 +237,7 @@ Example:
         # Process in batches
         for i in range(0, len(policies), self.batch_size):
             batch = policies[i : i + self.batch_size]
-            prompt = self._build_prompt(
-                batch, context_map=built_context, source_language=source_language
-            )
+            prompt = self._build_prompt(batch, context_map=built_context, source_language=source_language)
 
             try:
                 response_text = self._call_llm(prompt)
@@ -363,9 +361,7 @@ Example:
         audit: List[Dict[str, Any]] = []
         for i in range(0, len(candidates), self.batch_size):
             batch = candidates[i : i + self.batch_size]
-            prompt = self._build_review_prompt(
-                batch, related_cache, context_map, source_language=source_language
-            )
+            prompt = self._build_review_prompt(batch, related_cache, context_map, source_language=source_language)
             try:
                 resp = self._call_llm(prompt)
                 results = self._parse_response(resp)
@@ -432,9 +428,7 @@ Example:
             root.match = sorted(set(root.match) | set(c.match) | {c.trigger})
             root.evidence = sorted(set(root.evidence) | set(c.evidence))
             root.contexts = list(dict.fromkeys(root.contexts + c.contexts))
-            root.note = (
-                root.note + f"; merged '{c.trigger}' ({decisions[cid].get('reason', '')})"
-            ).strip("; ")
+            root.note = (root.note + f"; merged '{c.trigger}' ({decisions[cid].get('reason', '')})").strip("; ")
             c.llm_rejected = True
             c.note = f"merged into {root.id}: {decisions[cid].get('reason', '')}"
         # Roots are resolved (no longer ambiguous)
@@ -489,13 +483,11 @@ Example:
             rel_str = ""
             if rel:
                 rel_lines = "\n".join(
-                    f"      - {r['id']} {r['trigger']} ({r['type']}, conf={r['confidence']})"
-                    for r in rel
+                    f"      - {r['id']} {r['trigger']} ({r['type']}, conf={r['confidence']})" for r in rel
                 )
                 rel_str = f"\n    related_policies:\n{rel_lines}"
             items.append(
-                f'  - id={p.id}, trigger="{p.trigger}", type={p.type}, '
-                f"confidence={p.confidence}{ctx_str}{rel_str}"
+                f'  - id={p.id}, trigger="{p.trigger}", type={p.type}, confidence={p.confidence}{ctx_str}{rel_str}'
             )
         items_text = "\n".join(items)
         return f"""You are resolving AMBIGUOUS candidate policies from an English translation of a {source_language} web novel. Each was flagged because it is low-confidence or overlaps another policy.

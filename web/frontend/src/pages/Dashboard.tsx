@@ -22,11 +22,20 @@ import {
 export function Dashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useLocalStorageState<NavTab>("tme-dashboard-tab", "bookshelf");
+  const [activeTab, setActiveTab] = useLocalStorageState<NavTab>(
+    "tme-dashboard-tab",
+    "bookshelf",
+  );
   const [showCreate, setShowCreate] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedLang, setSelectedLang] = useLocalStorageState<string>("tme-dashboard-lang", "all");
-  const [layoutMode, setLayoutMode] = useLocalStorageState<"grid" | "list">("tme-dashboard-layout", "grid");
+  const [selectedLang, setSelectedLang] = useLocalStorageState<string>(
+    "tme-dashboard-lang",
+    "all",
+  );
+  const [layoutMode, setLayoutMode] = useLocalStorageState<"grid" | "list">(
+    "tme-dashboard-layout",
+    "grid",
+  );
 
   const { data: novels, isLoading } = useQuery({
     queryKey: ["novels"],

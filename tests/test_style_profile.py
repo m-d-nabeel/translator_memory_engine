@@ -67,9 +67,7 @@ class TestStyleProfile:
 
     def test_to_prompt_excerpts_with_cap(self):
         sp = StyleProfile(
-            exemplars=[
-                Exemplar(text=f"ex{i}", scene_type="dialogue", chapter_num=1) for i in range(20)
-            ],
+            exemplars=[Exemplar(text=f"ex{i}", scene_type="dialogue", chapter_num=1) for i in range(20)],
         )
         excerpts = sp.to_prompt_excerpts(max_exemplars=5)
         exemplar_count = sum(1 for e in excerpts if e.startswith("[dialogue]"))

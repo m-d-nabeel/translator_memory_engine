@@ -295,14 +295,74 @@ def _cluster_variants(
     """
 
     TITLE_STOPWORDS = {
-        "count", "countess", "lord", "lady", "sir", "madam", "chief", "elder", "master",
-        "saint", "king", "queen", "prince", "princess", "captain", "general", "brother",
-        "sister", "patriarch", "matriarch", "young", "old", "senior", "junior", "wizard",
-        "apprentice", "guard", "soldier", "village", "city", "town", "castle", "palace",
-        "sect", "clan", "family", "house", "mountain", "river", "forest", "valley", "lake",
-        "sword", "blade", "demon", "divine", "holy", "dark", "light", "grand", "great",
-        "high", "supreme", "emperor", "empress", "duke", "duchess", "baron", "baroness",
-        "marquis", "the", "and", "of", "in", "at", "to", "for", "with"
+        "count",
+        "countess",
+        "lord",
+        "lady",
+        "sir",
+        "madam",
+        "chief",
+        "elder",
+        "master",
+        "saint",
+        "king",
+        "queen",
+        "prince",
+        "princess",
+        "captain",
+        "general",
+        "brother",
+        "sister",
+        "patriarch",
+        "matriarch",
+        "young",
+        "old",
+        "senior",
+        "junior",
+        "wizard",
+        "apprentice",
+        "guard",
+        "soldier",
+        "village",
+        "city",
+        "town",
+        "castle",
+        "palace",
+        "sect",
+        "clan",
+        "family",
+        "house",
+        "mountain",
+        "river",
+        "forest",
+        "valley",
+        "lake",
+        "sword",
+        "blade",
+        "demon",
+        "divine",
+        "holy",
+        "dark",
+        "light",
+        "grand",
+        "great",
+        "high",
+        "supreme",
+        "emperor",
+        "empress",
+        "duke",
+        "duchess",
+        "baron",
+        "baroness",
+        "marquis",
+        "the",
+        "and",
+        "of",
+        "in",
+        "at",
+        "to",
+        "for",
+        "with",
     }
 
     def _tokens(key: str) -> Tuple[str, ...]:
@@ -442,9 +502,7 @@ def _is_generic(canonical: str) -> bool:
     return all(t in _GENERIC_STANDALONE for t in tokens)
 
 
-def _verify_with_llm(
-    candidates: List[Dict[str, Any]], llm_client: Any, chunk_size: int = 10
-) -> List[Dict[str, Any]]:
+def _verify_with_llm(candidates: List[Dict[str, Any]], llm_client: Any, chunk_size: int = 10) -> List[Dict[str, Any]]:
     """Verify candidate entities with a local LLM to prune false positives (Stage 2b).
 
     Uses micro-batching to prevent context window degradation and JSON truncation in
@@ -458,7 +516,7 @@ def _verify_with_llm(
 
     for i in range(0, len(candidates), chunk_size):
         chunk = candidates[i : i + chunk_size]
-        
+
         # Prepare the payload for this micro-batch
         prompt_data = []
         for c in chunk:
@@ -507,10 +565,10 @@ def _verify_with_llm(
 
             parsed = json.loads(content)
             results_list = parsed.get("results", [])
-            
+
             # Map LLM results back to our chunk
             results_by_id = {r.get("id"): r for r in results_list if isinstance(r, dict)}
-            
+
             for candidate in chunk:
                 llm_result = results_by_id.get(candidate["id"])
                 if llm_result and llm_result.get("status") == "valid":
@@ -594,7 +652,7 @@ def mine_policies(
     # Stage 2b: Build candidate list for verification
     candidates_to_verify = []
     candidate_id = 1
-    
+
     for norm_key, group_signals in clustered.items():
         chapters_present: Set[int] = {s.chapter for s in group_signals}
         if len(chapters_present) < min_support:

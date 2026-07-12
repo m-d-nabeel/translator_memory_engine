@@ -33,9 +33,7 @@ def apply_prepass(
     # Keep only deterministic, non-rejected winners, sorted by span start desc
     # (desc so earlier replacements don't shift later indices).
     winners: List[SpanMatch] = [
-        w
-        for w in resolution.winners
-        if w.policy.applies == "deterministic" and not w.policy.llm_rejected
+        w for w in resolution.winners if w.policy.applies == "deterministic" and not w.policy.llm_rejected
     ]
     winners.sort(key=lambda w: w.start, reverse=True)
 

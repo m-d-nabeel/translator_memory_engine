@@ -76,15 +76,11 @@ def faithfulness_vs_source(gen: str, src: str) -> Dict[str, object]:
     gen_tokens = _content_tokens(gen)
 
     gen_sents = _sentences(gdoc)
-    intrusions = sum(
-        1 for s in gen_sents if _content_tokens(s) and not (_content_tokens(s) & src_tokens)
-    )
+    intrusions = sum(1 for s in gen_sents if _content_tokens(s) and not (_content_tokens(s) & src_tokens))
     intrusion_score = round(intrusions / len(gen_sents), 4) if gen_sents else 0.0
 
     src_sents = _sentences(sdoc)
-    drops = sum(
-        1 for s in src_sents if _content_tokens(s) and not (_content_tokens(s) & gen_tokens)
-    )
+    drops = sum(1 for s in src_sents if _content_tokens(s) and not (_content_tokens(s) & gen_tokens))
     drop_score = round(drops / len(src_sents), 4) if src_sents else 0.0
 
     coverage = round(len(gen_tokens & src_tokens) / len(src_tokens), 4) if src_tokens else None

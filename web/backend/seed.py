@@ -83,9 +83,7 @@ async def seed() -> None:
                             note=p.get("note"),
                             needs_review=str(p.get("needs_review", False)).lower(),
                             llm_rejected=str(p.get("llm_rejected", False)).lower(),
-                            contexts=json.dumps(p.get("contexts", []))
-                            if p.get("contexts")
-                            else None,
+                            contexts=json.dumps(p.get("contexts", [])) if p.get("contexts") else None,
                         )
                         db.add(db_policy)
                         count += 1
@@ -98,9 +96,7 @@ async def seed() -> None:
 
         # Glossary: import if empty for this novel
         glossary_count_result = await db.execute(
-            select(func.count())
-            .select_from(GlossaryEntry)
-            .where(GlossaryEntry.novel_id == novel.id)
+            select(func.count()).select_from(GlossaryEntry).where(GlossaryEntry.novel_id == novel.id)
         )
         glossary_count = glossary_count_result.scalar() or 0
 

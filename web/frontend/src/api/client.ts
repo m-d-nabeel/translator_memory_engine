@@ -199,7 +199,11 @@ export const api = {
   updateGlossaryMetadata: (
     novelId: number,
     entryId: number,
-    data: { metadata_json: string; needs_review: boolean; apply_proposed: boolean }
+    data: {
+      metadata_json: string;
+      needs_review: boolean;
+      apply_proposed: boolean;
+    },
   ) =>
     request<GlossaryEntry>(`/novels/${novelId}/glossary/${entryId}/metadata`, {
       method: "PUT",
@@ -209,7 +213,14 @@ export const api = {
     request<{ status: string }>(`/novels/${novelId}/extract`, {
       method: "POST",
     }),
-  extractLore: (novelId: number, options?: { chapterIds?: number[]; onlyOgTl?: boolean; bypassReview?: boolean }) =>
+  extractLore: (
+    novelId: number,
+    options?: {
+      chapterIds?: number[];
+      onlyOgTl?: boolean;
+      bypassReview?: boolean;
+    },
+  ) =>
     request<{ status: string }>(`/novels/${novelId}/extract-lore`, {
       method: "POST",
       body: JSON.stringify({
@@ -222,10 +233,19 @@ export const api = {
     request<GlossaryEntry[]>(`/novels/${novelId}/glossary`),
   listGlossaryDuplicates: (novelId: number) =>
     request<DuplicateCluster[]>(`/novels/${novelId}/glossary/duplicates`),
-  mergeGlossaryEntries: (novelId: number, targetId: number, sourceIds: number[], deterministicIds?: number[]) =>
+  mergeGlossaryEntries: (
+    novelId: number,
+    targetId: number,
+    sourceIds: number[],
+    deterministicIds?: number[],
+  ) =>
     request<GlossaryEntry>(`/novels/${novelId}/glossary/merge`, {
       method: "POST",
-      body: JSON.stringify({ target_id: targetId, source_ids: sourceIds, deterministic_ids: deterministicIds }),
+      body: JSON.stringify({
+        target_id: targetId,
+        source_ids: sourceIds,
+        deterministic_ids: deterministicIds,
+      }),
     }),
 
   listChapterJobs: (chapterId: number) =>
@@ -253,7 +273,10 @@ export const api = {
       body: JSON.stringify(data),
     }),
   deleteStyleSnippet: (novelId: number, snippetId: number) =>
-    request<{ status: string }>(`/novels/${novelId}/style-snippets/${snippetId}`, {
-      method: "DELETE",
-    }),
+    request<{ status: string }>(
+      `/novels/${novelId}/style-snippets/${snippetId}`,
+      {
+        method: "DELETE",
+      },
+    ),
 };

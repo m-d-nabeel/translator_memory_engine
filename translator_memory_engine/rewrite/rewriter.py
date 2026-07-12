@@ -83,7 +83,9 @@ def _get_groq_keys(api_key_env: str = "LLM_API_KEY") -> List[str]:
     if not primary and api_key_env != "LLM_API_KEY":
         primary = os.environ.get("GROQ_API_KEY", "") or os.environ.get("LLM_API_KEY", "")
     if primary:
-        extra_keys = sorted([k for k in os.environ if k.startswith("GROQ_API_KEY") and os.environ[k] and os.environ[k] != primary])
+        extra_keys = sorted(
+            [k for k in os.environ if k.startswith("GROQ_API_KEY") and os.environ[k] and os.environ[k] != primary]
+        )
         extras = [os.environ[k] for k in extra_keys]
         return [primary] + extras
     return []
@@ -93,9 +95,7 @@ def _get_groq_keys(api_key_env: str = "LLM_API_KEY") -> List[str]:
 # Known MTL error corrections (data/known_errors.json)
 # ---------------------------------------------------------------------------
 
-_KNOWN_ERRORS_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "..", "data", "known_errors.json"
-)
+_KNOWN_ERRORS_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "known_errors.json")
 
 
 def _load_known_errors() -> List[Dict]:
@@ -122,9 +122,7 @@ def scan_known_errors(text: str, known_errors: Optional[List[Dict]] = None) -> L
         phrase = error.get("mtl_phrase", "")
         if phrase and re.search(re.escape(phrase), text, re.IGNORECASE):
             matches.append(error)
-            logger.debug(
-                f"Known error detected: '{phrase}' → '{error.get('correct_translation', '?')}'"
-            )
+            logger.debug(f"Known error detected: '{phrase}' → '{error.get('correct_translation', '?')}'")
     if matches:
         logger.info(f"Detected {len(matches)} known MTL errors for correction")
     return matches
@@ -487,10 +485,7 @@ def build_prompt(
 
     tail_block = ""
     if previous_tail:
-        tail_block = (
-            "\n=== PREVIOUS PASSAGE CONTEXT (for continuity — do NOT reproduce) ===\n"
-            f"{previous_tail}\n\n"
-        )
+        tail_block = f"\n=== PREVIOUS PASSAGE CONTEXT (for continuity — do NOT reproduce) ===\n{previous_tail}\n\n"
 
     cast_block = ""
     if active_cast_entries:
@@ -671,9 +666,7 @@ def rewrite(
                 # Inject discovered aliases into policy match lists in memory
                 for p in policy_list:
                     for mtl_form, canonical in alias_map.items():
-                        if p.trigger.lower() == canonical.lower() or canonical.lower() in [
-                            a.lower() for a in p.match
-                        ]:
+                        if p.trigger.lower() == canonical.lower() or canonical.lower() in [a.lower() for a in p.match]:
                             if mtl_form not in p.match:
                                 p.match.append(mtl_form)
 
@@ -744,9 +737,7 @@ def rewrite(
                 if glossary:
                     active_canonicals = set()
                     if restore_map:
-                        active_canonicals.update(
-                            canon for ph, canon in restore_map.items() if ph in mtl_chunk
-                        )
+                        active_canonicals.update(canon for ph, canon in restore_map.items() if ph in mtl_chunk)
                     for entry in glossary:
                         canon = entry.get("canonical", "")
                         aliases = entry.get("aliases", [])

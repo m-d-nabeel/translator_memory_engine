@@ -57,9 +57,7 @@ async def rewrite_chapter(
         from translator_memory_engine.rewrite.clean import clean_mtl_artifacts
         from translator_memory_engine.rewrite.rewriter import rewrite as core_rewrite
 
-        logs.append(
-            f"{_ts()} Pre-processing: Executing clean_mtl_artifacts to strip formatting noise."
-        )
+        logs.append(f"{_ts()} Pre-processing: Executing clean_mtl_artifacts to strip formatting noise.")
         cleaned_text = clean_mtl_artifacts(chapter.raw_text)
         orig_len = len(chapter.raw_text)
         clean_len = len(cleaned_text)
@@ -70,23 +68,17 @@ async def rewrite_chapter(
         # ---------------------------------------------------------------
         # Load policies and glossary from SQLite (single source of truth)
         # ---------------------------------------------------------------
-        policies_result = await db.execute(
-            select(Policy).where(Policy.novel_id == chapter.novel_id)
-        )
+        policies_result = await db.execute(select(Policy).where(Policy.novel_id == chapter.novel_id))
         db_policies = policies_result.scalars().all()
         policy_list = db_policies_to_list(db_policies)
         policy_count = len(policy_list)
 
-        glossary_result = await db.execute(
-            select(GlossaryEntry).where(GlossaryEntry.novel_id == chapter.novel_id)
-        )
+        glossary_result = await db.execute(select(GlossaryEntry).where(GlossaryEntry.novel_id == chapter.novel_id))
         db_glossary = glossary_result.scalars().all()
         glossary_data = db_glossary_to_list(db_glossary)
         glossary_count = len(glossary_data)
 
-        snippets_result = await db.execute(
-            select(StyleSnippet).where(StyleSnippet.novel_id == chapter.novel_id)
-        )
+        snippets_result = await db.execute(select(StyleSnippet).where(StyleSnippet.novel_id == chapter.novel_id))
         style_profile = [s.text for s in snippets_result.scalars().all()]
 
         logs.append(
@@ -127,9 +119,7 @@ async def rewrite_chapter(
         mode = result.get("mode", "unknown")
         trace = result.get("trace", [])
 
-        logs.append(
-            f"{_ts()} Deterministic pre-pass complete: {det_count} exact term/entity rules matched & enforced."
-        )
+        logs.append(f"{_ts()} Deterministic pre-pass complete: {det_count} exact term/entity rules matched & enforced.")
 
         # Run Entity Consistency Validator
         chapter.status = "validating"
@@ -137,6 +127,7 @@ async def rewrite_chapter(
         await db.commit()
 
         from translator_memory_engine.validate.entity import validate_entity_consistency
+
         warnings = validate_entity_consistency(result.get("rewritten_text") or "", trace)
         if warnings:
             chapter.warnings = json.dumps(warnings)
@@ -149,16 +140,12 @@ async def rewrite_chapter(
                 f"corrections applied via {settings.LLM_MODEL}."
             )
 
-        chapter.refined_text = result.get("rewritten_text") or result.get(
-            "prepassed_text", cleaned_text
-        )
+        chapter.refined_text = result.get("rewritten_text") or result.get("prepassed_text", cleaned_text)
         chapter.status = "completed"
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
         chapter.processing_time_ms = elapsed_ms
 
-        logs.append(
-            f"{_ts()} Chapter {chapter.chapter_number} refinement completed successfully in {elapsed_ms} ms!"
-        )
+        logs.append(f"{_ts()} Chapter {chapter.chapter_number} refinement completed successfully in {elapsed_ms} ms!")
 
         job.status = "completed"
         job.completed_at = datetime.datetime.utcnow()
@@ -196,19 +183,27 @@ async def rewrite_chapter(
         import asyncio
 
         from web.backend.db.database import async_session
-        asyncio.create_task(_background_extract_lore(
-            chapter_id=chapter.id,
-            novel_id=chapter.novel_id,
-            chapter_text=chapter.refined_text,
-            session_maker=async_session,
-        ))
 
-async def _background_extract_lore(chapter_id: int, novel_id: int, chapter_text: str, session_maker: Any, bypass_review: bool = False):
+        asyncio.create_task(
+            _background_extract_lore(
+                chapter_id=chapter.id,
+                novel_id=chapter.novel_id,
+                chapter_text=chapter.refined_text,
+                session_maker=async_session,
+            )
+        )
+
+
+async def _background_extract_lore(
+    chapter_id: int, novel_id: int, chapter_text: str, session_maker: Any, bypass_review: bool = False
+):
     import asyncio
     import json
     import uuid
     from datetime import datetime
+
     from sqlalchemy import select
+
     from translator_memory_engine.extract.lore import extract_chapter_lore
     from web.backend.db.models import Chapter, GlossaryEntry, Policy, ProcessingJob
 
@@ -272,15 +267,13 @@ async def _background_extract_lore(chapter_id: int, novel_id: int, chapter_text:
                     # New Entity -> insert directly to Glossary + add to Policy Store
                     # Check for policy as well
                     policy_result = await db.execute(
-                        select(Policy)
-                        .where(Policy.novel_id == novel_id)
-                        .where(Policy.trigger == name)
+                        select(Policy).where(Policy.novel_id == novel_id).where(Policy.trigger == name)
                     )
                     policy = policy_result.scalar_one_or_none()
 
                     meta_to_save = dict(new_meta)
                     if bypass_review:
-                        pass # no review flag
+                        pass  # no review flag
                     else:
                         meta_to_save["needs_review"] = True
 
@@ -292,7 +285,11 @@ async def _background_extract_lore(chapter_id: int, novel_id: int, chapter_text:
                             para_str = para.strip()
                             if not para_str:
                                 continue
-                            if name in para_str or (intro_snippet[:15] in para_str if len(intro_snippet) >= 15 else intro_snippet in para_str):
+                            if name in para_str or (
+                                intro_snippet[:15] in para_str
+                                if len(intro_snippet) >= 15
+                                else intro_snippet in para_str
+                            ):
                                 evidence_list.append(para_str)
                                 if len(evidence_list) >= 3:
                                     break
@@ -336,9 +333,7 @@ async def _background_extract_lore(chapter_id: int, novel_id: int, chapter_text:
                 else:
                     # Existing Entity -> Update Metadata
                     policy_result = await db.execute(
-                        select(Policy)
-                        .where(Policy.novel_id == novel_id)
-                        .where(Policy.trigger == name)
+                        select(Policy).where(Policy.novel_id == novel_id).where(Policy.trigger == name)
                     )
                     policy = policy_result.scalar_one_or_none()
 
@@ -350,7 +345,11 @@ async def _background_extract_lore(chapter_id: int, novel_id: int, chapter_text:
                                 para_str = para.strip()
                                 if not para_str:
                                     continue
-                                if name in para_str or (intro_snippet[:15] in para_str if len(intro_snippet) >= 15 else intro_snippet in para_str):
+                                if name in para_str or (
+                                    intro_snippet[:15] in para_str
+                                    if len(intro_snippet) >= 15
+                                    else intro_snippet in para_str
+                                ):
                                     evidence_list.append(para_str)
                                     if len(evidence_list) >= 3:
                                         break
@@ -389,9 +388,13 @@ async def _background_extract_lore(chapter_id: int, novel_id: int, chapter_text:
                     else:
                         # Verified (needs_review = false): Gated Update for Character Arcs
                         proposed = {}
-                        if new_meta.get("speech_style") and new_meta["speech_style"] != existing_meta.get("speech_style"):
+                        if new_meta.get("speech_style") and new_meta["speech_style"] != existing_meta.get(
+                            "speech_style"
+                        ):
                             proposed["speech_style"] = new_meta["speech_style"]
-                        if new_meta.get("race_or_identity") and new_meta["race_or_identity"] != existing_meta.get("race_or_identity"):
+                        if new_meta.get("race_or_identity") and new_meta["race_or_identity"] != existing_meta.get(
+                            "race_or_identity"
+                        ):
                             proposed["race_or_identity"] = new_meta["race_or_identity"]
 
                         if proposed:
@@ -431,7 +434,6 @@ async def _background_extract_lore(chapter_id: int, novel_id: int, chapter_text:
             pass
 
 
-
 async def extract_policies(
     db: AsyncSession,
     novel_id: int,
@@ -451,10 +453,12 @@ async def extract_policies(
     if not chapters:
         raise ValueError("No original chapters found for extraction")
 
+    import logging
+
+    from openai import OpenAI
+
     from translator_memory_engine.extract import extract_signals
     from translator_memory_engine.policy.miner import mine_policies
-    from openai import OpenAI
-    import logging
 
     logger = logging.getLogger(__name__)
 
@@ -477,7 +481,7 @@ async def extract_policies(
         llm_client = None
 
     policies = mine_policies(
-        signals, 
+        signals,
         total_chapters=len(chapters),
         llm_client=llm_client,
     )
@@ -585,9 +589,10 @@ async def extract_lore_for_chapters(
 
     for i, (target_ch, text, mode_str) in enumerate(tasks_to_run):
         logger.info(f"Extracting lore ({mode_str}) for chapter {target_ch.id} (Ch. {target_ch.chapter_number})...")
-        await _background_extract_lore(target_ch.id, target_ch.novel_id, text, session_maker, bypass_review=bypass_review)
+        await _background_extract_lore(
+            target_ch.id, target_ch.novel_id, text, session_maker, bypass_review=bypass_review
+        )
 
         # Add brief pacing between chapter calls to prevent Groq API 429 Too Many Requests
         if i < len(tasks_to_run) - 1:
             await asyncio.sleep(2.5)
-

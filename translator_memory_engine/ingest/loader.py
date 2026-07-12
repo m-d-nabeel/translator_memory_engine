@@ -122,9 +122,7 @@ def _load_epub(path: str, marker: re.Pattern, strip_patterns: List[re.Pattern]) 
     return chapters
 
 
-def load_corpus(
-    input_dir: str, chapter_marker: str, strip_patterns: Optional[List[str]] = None
-) -> List[Chapter]:
+def load_corpus(input_dir: str, chapter_marker: str, strip_patterns: Optional[List[str]] = None) -> List[Chapter]:
     marker = re.compile(chapter_marker)
     strips = [re.compile(p) for p in (strip_patterns or [])]
     chapters: List[Chapter] = []

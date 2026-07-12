@@ -27,9 +27,7 @@ class Novel(Base):
 
     chapters = relationship("Chapter", back_populates="novel", cascade="all, delete-orphan")
     policies = relationship("Policy", back_populates="novel", cascade="all, delete-orphan")
-    glossary_entries = relationship(
-        "GlossaryEntry", back_populates="novel", cascade="all, delete-orphan"
-    )
+    glossary_entries = relationship("GlossaryEntry", back_populates="novel", cascade="all, delete-orphan")
 
 
 class Chapter(Base):
@@ -70,12 +68,8 @@ class Policy(Base):
     scores = Column(Text, nullable=True)  # JSON object: {frequency, consistency, context}
     category = Column(String, nullable=True)
     note = Column(Text, nullable=True)
-    needs_review = Column(
-        String, nullable=False, default="false"
-    )  # stored as "true"/"false" for SQLite compat
-    llm_rejected = Column(
-        String, nullable=False, default="false"
-    )  # stored as "true"/"false" for SQLite compat
+    needs_review = Column(String, nullable=False, default="false")  # stored as "true"/"false" for SQLite compat
+    llm_rejected = Column(String, nullable=False, default="false")  # stored as "true"/"false" for SQLite compat
     contexts = Column(Text, nullable=True)  # JSON array: example sentences
     metadata_json = Column(Text, nullable=True)  # JSON object for character traits (gender, identity, etc)
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)

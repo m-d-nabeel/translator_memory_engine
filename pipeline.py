@@ -170,9 +170,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
         # Build a context map (trigger -> example sentences) for the verification
         # backend, but ONLY for policies flagged for review (ambiguous / low
         # confidence). Obvious entities don't need their sentences sent (PLAN.md §3).
-        context_map = {
-            p.trigger: " | ".join(p.contexts[:3]) for p in policies if p.contexts and p.needs_review
-        }
+        context_map = {p.trigger: " | ".join(p.contexts[:3]) for p in policies if p.contexts and p.needs_review}
         policies = verifier.verify_policies(
             policies,
             context_map=context_map,
@@ -188,18 +186,14 @@ def cmd_extract(args: argparse.Namespace) -> None:
                 context_map=context_map,
                 audit_path=os.path.join(output_dir, "review.jsonl"),
             )
-            resolved = needs_review_before - sum(
-                1 for p in policies if getattr(p, "needs_review", False)
-            )
+            resolved = needs_review_before - sum(1 for p in policies if getattr(p, "needs_review", False))
             print(f"  Refined review resolved: {resolved} ambiguous policies")
 
     # Count by type and applies mode
     policy_type_counts = Counter(p.type for p in policies)
     applies_counts = Counter(p.applies for p in policies)
     review_count = sum(
-        1
-        for p in policies
-        if getattr(p, "needs_review", False) and not getattr(p, "llm_rejected", False)
+        1 for p in policies if getattr(p, "needs_review", False) and not getattr(p, "llm_rejected", False)
     )
     rejected_count = sum(1 for p in policies if getattr(p, "llm_rejected", False))
 
@@ -214,9 +208,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
         print(f"  Avg confidence: {avg_conf:.3f}")
         print(f"  Low confidence (<0.6): {low_conf}")
         print(f"  Flagged for review:   {review_count}")
-        print(
-            f"  LLM-rejected (DROP):  {rejected_count}  (retained for review, excluded from glossary)"
-        )
+        print(f"  LLM-rejected (DROP):  {rejected_count}  (retained for review, excluded from glossary)")
 
     # --- Step 4: Store ---
     store = PolicyStore()
@@ -296,9 +288,7 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
         logger.info("Building style bank from reference chapters...")
         ref_chapters = _read_text_chapters(args.reference)
         raw_profile = build_style_bank(ref_chapters)
-        stats_line = (
-            raw_profile[-1] if raw_profile and raw_profile[-1].startswith("Measured") else None
-        )
+        stats_line = raw_profile[-1] if raw_profile and raw_profile[-1].startswith("Measured") else None
         bank_excerpts = [e for e in raw_profile if e != stats_line]
         logger.info(f"Style bank: {len(bank_excerpts)} excerpts")
         logger.debug(f"Stats line: {stats_line[:80] if stats_line else 'None'}")
@@ -319,10 +309,7 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
                 ref_nums,
                 embed_fn=_embed_fn,
             )
-            logger.info(
-                f"Exemplar index: {len(exemplar_index.exemplars)} exemplars "
-                f"(embedding-based retrieval)"
-            )
+            logger.info(f"Exemplar index: {len(exemplar_index.exemplars)} exemplars (embedding-based retrieval)")
         except ImportError:
             logger.warning("fastembed not available, using Jaccard fallback for exemplars")
             exemplar_index = None
@@ -357,11 +344,7 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
     # Collect input files
     mtl_path = args.mtl_path
     if os.path.isdir(mtl_path):
-        files = sorted(
-            os.path.join(mtl_path, f)
-            for f in os.listdir(mtl_path)
-            if f.lower().endswith((".txt", ".md"))
-        )
+        files = sorted(os.path.join(mtl_path, f) for f in os.listdir(mtl_path) if f.lower().endswith((".txt", ".md")))
     else:
         files = [mtl_path]
 
@@ -412,11 +395,7 @@ def cmd_rewrite(args: argparse.Namespace) -> None:
             # Stats line excluded from LLM prompt — it causes "Measured style" dialogue bleed
             # (the 8B model treats the statistical summary as a dialogue line)
 
-        mode = (
-            "supervised_reference"
-            if reference_text
-            else ("unsupervised_stylebank" if chapter_style else "fallback")
-        )
+        mode = "supervised_reference" if reference_text else ("unsupervised_stylebank" if chapter_style else "fallback")
         use_llm = args.llm or (reference_text is not None) or (chapter_style is not None)
         logger.info(f"Mode: {mode}, LLM: {'ON' if use_llm else 'OFF'}")
 
@@ -567,10 +546,7 @@ def cmd_align(args: argparse.Namespace) -> None:
     if paired:
         avg_delta = sum(r["delta_vs_mtl"] for r in rows if r["tier"] == 1) / paired
         wins = sum(1 for r in rows if r["tier"] == 1 and r["delta_vs_mtl"] > 0)
-        avg_norm_delta = (
-            sum(r["sim_gen_orig_norm"] - r["sim_mtl_orig_norm"] for r in rows if r["tier"] == 1)
-            / paired
-        )
+        avg_norm_delta = sum(r["sim_gen_orig_norm"] - r["sim_mtl_orig_norm"] for r in rows if r["tier"] == 1) / paired
         avg_novel = sum(r["faith"]["novel_person_count"] for r in rows if r["tier"] == 1) / paired
         avg_vr_gen = sum(r.get("voice_richness_gen", 0) for r in rows if r["tier"] == 1) / paired
         avg_vr_orig = sum(r.get("voice_richness_orig", 0) for r in rows if r["tier"] == 1) / paired
@@ -592,18 +568,12 @@ def cmd_align(args: argparse.Namespace) -> None:
         if all_sdelta_keys:
             parts = []
             for k in sorted(all_sdelta_keys):
-                vals = [
-                    r["stylometry_delta"].get(k, 0)
-                    for r in rows
-                    if r["tier"] == 1 and "stylometry_delta" in r
-                ]
+                vals = [r["stylometry_delta"].get(k, 0) for r in rows if r["tier"] == 1 and "stylometry_delta" in r]
                 avg = sum(vals) / len(vals) if vals else 0
                 parts.append(f"{k}={avg:.3f}")
             print(f"  Stylometry delta: {'; '.join(parts)}")
     if unpaired:
-        adh = [
-            r["name_adherence"] for r in rows if r["tier"] == 2 and r["name_adherence"] is not None
-        ]
+        adh = [r["name_adherence"] for r in rows if r["tier"] == 2 and r["name_adherence"] is not None]
         avg_adh = (sum(adh) / len(adh)) if adh else None
         avg_novel = sum(r["faith"]["novel_person_count"] for r in rows if r["tier"] == 2) / unpaired
         avg_intr = sum(r["faith"]["intrusion_score"] for r in rows if r["tier"] == 2) / unpaired

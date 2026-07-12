@@ -14,8 +14,9 @@ async def get_db() -> AsyncSession:  # type: ignore[misc]
 
 
 async def init_db() -> None:
-    from web.backend.db.models import Base
     from sqlalchemy import text
+
+    from web.backend.db.models import Base
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
