@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { ReaderView } from "../components/ReaderView";
 import { ReaderSettingsDrawer } from "../components/ReaderSettingsDrawer";
@@ -13,6 +13,7 @@ import {
   Sliders,
   Split,
   Sparkles,
+  RefreshCw,
 } from "lucide-react";
 
 type ViewMode = "refined" | "mtl" | "original";
@@ -22,6 +23,15 @@ export function Reader() {
   const navigate = useNavigate();
   const id = parseInt(chapterId!, 10);
   const settings = useReaderSettings();
+  const queryClient = useQueryClient();
+
+  const reprocessMutation = useMutation({
+    mutationFn: (doLlm: boolean) => api.reprocessChapter(id, doLlm),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["read", id] });
+      queryClient.invalidateQueries({ queryKey: ["chapterStatus", id] });
+    },
+  });
 
   const [viewMode, setViewMode] = useState<ViewMode>("refined");
   const [splitMode, setSplitMode] = useState(false);
@@ -295,6 +305,31 @@ export function Reader() {
 
           {/* Right Action Tools */}
           <div className="flex items-center gap-1.5 shrink-0">
+            {/* Reprocess Button */}
+            <button
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Reprocess this chapter? It will run through the latest rules again.",
+                  )
+                ) {
+                  reprocessMutation.mutate(true);
+                  navigate(`/novels/${chapterData?.novel_id || ""}`); // go back to dashboard so user can see processing state easily, or just wait here
+                }
+              }}
+              title="Reprocess Chapter"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer hover:bg-white/5"
+              style={{
+                borderColor: "var(--color-border)",
+                color: "var(--color-text)",
+              }}
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${reprocessMutation.isPending ? "animate-spin" : ""}`}
+              />
+              <span className="hidden sm:inline">Reprocess</span>
+            </button>
+
             {/* Split Compare Button (Desktop / Tablet) */}
             {(hasRefined || hasOriginal) && (
               <button
