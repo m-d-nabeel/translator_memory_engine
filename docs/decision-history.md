@@ -413,3 +413,18 @@ The known error dictionary provides the missing context.
   - **Stage 2C (Evidence Extraction at Source):** Update `extract_chapter_lore` (`lore.py`) prompt to require `introduction_context` (a 1-2 sentence verbatim quote introducing or showing the character in action right during extraction). Add `evidence_contexts` column (`Text`) to `GlossaryEntry` and cap `Policy.contexts` at 5 sentences.
   - **Stage 2A & 2B (Semantic Blocking + Interactive Verification Modal):** Upgrade `_cluster_variants` (`miner.py`) to check **Substring Containment** (`Wizard Perot` contains `Perot`) + **Token Intersection** ($\ge 4$ chars) alongside normalized Levenshtein edit distance ($\le 0.3$). Add a `Detect Duplicates` modal (`LoreTab.tsx`) displaying candidate clusters side-by-side with verbatim `evidence_contexts` quotes so human verification takes seconds (`[Approve Merge] / [Dismiss]`).
   - **Stage 3 (Contextual Title Rendering):** Structure `context_relations` inside `Policy` so the translation shielding engine (`shield_entities`) knows when to render `Village Chief` vs `Dominic` based on speaker context.
+
+---
+
+## D18 — Hybrid LLM Semantic Verification & Rewrite Pipeline Resiliency
+
+**Context:** The lexical extraction pipeline (spaCy NER + frequency heuristics) produced too many false positives (e.g. sentence fragments, common nouns, bad MTL artifacts like "Seems Centipedes"). Additionally, the rewrite pipeline suffered from edge-case crashes (SQLite JSON deserialization bugs, strict LLM JSON wrapping, and skipping the LLM entirely when policies were missing).
+**Decision:** We implemented a two-pass extraction system and hardened the rewrite pipeline.
+
+- **Hybrid Semantic Verification:**
+  1. **Lexical Pass**: Gathers candidate entities via heuristics.
+  2. **Semantic Pass**: Sends candidates in micro-batches (10 at a time) to a local, highly-quantized LLM (Qwen2.5-1.5B via `llama-server`) to evaluate if the noun is a valid fiction entity based on its context sentences. This dramatically reduced noise without API costs.
+- **LLM JSON Output Resiliency:** Added a robust pre-processor in the `miner.py` JSON parser that aggressively strips markdown backticks (` ```json `) and whitespace before parsing. If decoding still fails, it gracefully logs the raw LLM output and falls back to lexical heuristics for that micro-batch without crashing the extraction job.
+- **SQLite JSON Column Deserialization Fix:** SQLAlchemy's `JSON` column on SQLite stores data as text. We added a lightweight safety parser directly in `prepass.py` and `rewriter.py` to intercept stringified JSON actions and `json.loads()` them on the fly, preventing `AttributeError: 'str' object has no attribute 'get'`.
+- **Fallback Faithful Repair Execution Guarantee:** Modified the `need_llm` execution boolean. If `do_llm` is toggled ON, the LLM will _always_ run, even if the policy count is zero. This ensures the "Fallback Faithful Repair" prompt kicks in to fix poor MTL grammar, remove deceptive idioms, and repair discourse coherence independently of the terminology dictionary.
+- **Granular Database Reset Script:** Expanded the `clear_data.py` CLI script to include a `--clear-all-db-except-chapters` flag. This performs a targeted soft-reset: wiping jobs, policies, glossary, and refined text, while perfectly preserving the raw `novels` and `chapters` tables.
