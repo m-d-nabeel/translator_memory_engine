@@ -27,6 +27,9 @@ jobs:
     - name: Run Ruff Linter
       run: uv run ruff check .
 
+    - name: Download spaCy model
+      run: uv run python -m spacy download en_core_web_sm
+
     - name: Run Pytest
       run: uv run pytest
 
