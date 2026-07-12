@@ -92,6 +92,7 @@ class GlossaryEntry(Base):
     aliases = Column(Text, nullable=False)  # JSON array
     entity_type = Column(String, nullable=True)
     confidence = Column(Float, nullable=True)
+    evidence_contexts = Column(Text, nullable=True)  # JSON array of verbatim introduction/action quotes
     metadata_json = Column(Text, nullable=True)  # JSON object for character traits
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
 

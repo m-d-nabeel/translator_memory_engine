@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { User, Edit2, Check, X, AlertTriangle, Eye, ArrowRight, Sparkles, RefreshCw, CheckSquare, Square, ChevronDown, BookOpen, Lock, Unlock } from "lucide-react";
+import { User, Edit2, Check, X, AlertTriangle, Eye, ArrowRight, Sparkles, RefreshCw, CheckSquare, Square, ChevronDown, BookOpen, Lock, Unlock, GitMerge, Link2, Quote, Search } from "lucide-react";
 import { api, type GlossaryEntry } from "../api/client";
 
 interface LoreTabProps {
@@ -17,6 +17,11 @@ export function LoreTab({ novelId }: LoreTabProps) {
   const [showChapterPicker, setShowChapterPicker] = useState<boolean>(false);
   const [bypassReview, setBypassReview] = useState<boolean>(false);
 
+  const [showDuplicatesModal, setShowDuplicatesModal] = useState<boolean>(false);
+  const [linkingTarget, setLinkingTarget] = useState<GlossaryEntry | null>(null);
+  const [selectedMergeIds, setSelectedMergeIds] = useState<number[]>([]);
+  const [expandedQuotesId, setExpandedQuotesId] = useState<number | null>(null);
+
   const { data: chapters } = useQuery({
     queryKey: ["chapters", novelId],
     queryFn: () => api.listChapters(novelId),
@@ -30,6 +35,24 @@ export function LoreTab({ novelId }: LoreTabProps) {
   const { data: policies } = useQuery({
     queryKey: ["policies", novelId],
     queryFn: () => api.listPolicies(novelId),
+  });
+
+  const { data: duplicates, isLoading: isDuplicatesLoading } = useQuery({
+    queryKey: ["glossaryDuplicates", novelId],
+    queryFn: () => api.listGlossaryDuplicates(novelId),
+    enabled: showDuplicatesModal,
+  });
+
+  const mergeMutation = useMutation({
+    mutationFn: ({ targetId, sourceIds }: { targetId: number; sourceIds: number[] }) =>
+      api.mergeGlossaryEntries(novelId, targetId, sourceIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["glossary", novelId] });
+      queryClient.invalidateQueries({ queryKey: ["glossaryDuplicates", novelId] });
+      queryClient.invalidateQueries({ queryKey: ["policies", novelId] });
+      setSelectedMergeIds([]);
+      setLinkingTarget(null);
+    },
   });
 
   const handleToggleChapter = (chId: number) => {
@@ -230,27 +253,43 @@ export function LoreTab({ novelId }: LoreTabProps) {
             </label>
           </div>
 
-          <button
-            onClick={() => extractLoreMutation.mutate({ onlyOgTl, chapterIds: selectedChapterIds.length > 0 ? selectedChapterIds : undefined, bypassReview })}
-            disabled={extractLoreMutation.isPending}
-            className="flex items-center justify-center gap-2 px-5 py-2 rounded-xl text-xs font-bold transition-transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-md text-white flex-shrink-0"
-            style={{
-              background: "linear-gradient(135deg, var(--color-accent) 0%, #ea580c 100%)",
-            }}
-          >
-            {extractLoreMutation.isPending ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : (
-              <Sparkles className="w-4 h-4" />
-            )}
-            <span>
-              {extractLoreMutation.isPending
-                ? "Starting Extraction..."
-                : selectedChapterIds.length > 0
-                ? `Extract Lore (${selectedChapterIds.length} Ch.)`
-                : `Extract Lore (${onlyOgTl ? "OG TL" : "All Chapters"})`}
-            </span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setShowDuplicatesModal(true)}
+              className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border transition-transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-sm"
+              style={{
+                backgroundColor: "var(--color-surface)",
+                borderColor: "var(--color-accent)",
+                color: "var(--color-accent)",
+              }}
+              title="Scan and verify potential duplicate characters using semantic blocking & evidence quotes"
+            >
+              <Search className="w-4 h-4" />
+              <span>Detect Duplicates 🔍</span>
+            </button>
+
+            <button
+              onClick={() => extractLoreMutation.mutate({ onlyOgTl, chapterIds: selectedChapterIds.length > 0 ? selectedChapterIds : undefined, bypassReview })}
+              disabled={extractLoreMutation.isPending}
+              className="flex items-center justify-center gap-2 px-5 py-2 rounded-xl text-xs font-bold transition-transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-md text-white flex-shrink-0"
+              style={{
+                background: "linear-gradient(135deg, var(--color-accent) 0%, #ea580c 100%)",
+              }}
+            >
+              {extractLoreMutation.isPending ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4" />
+              )}
+              <span>
+                {extractLoreMutation.isPending
+                  ? "Starting Extraction..."
+                  : selectedChapterIds.length > 0
+                  ? `Extract Lore (${selectedChapterIds.length} Ch.)`
+                  : `Extract Lore (${onlyOgTl ? "OG TL" : "All Chapters"})`}
+              </span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -457,6 +496,21 @@ export function LoreTab({ novelId }: LoreTabProps) {
                       >
                         <Edit2 className="h-4 w-4" />
                       </button>
+                      <button
+                        onClick={() => {
+                          setLinkingTarget(char);
+                          setSelectedMergeIds([]);
+                        }}
+                        className="rounded-lg p-2 border hover:opacity-80 cursor-pointer transition-colors"
+                        style={{ 
+                          backgroundColor: "var(--color-box-bg)", 
+                          borderColor: "var(--color-border)",
+                          color: "var(--color-accent)" 
+                        }}
+                        title="Link / Merge other character cards into this entry"
+                      >
+                        <Link2 className="h-4 w-4" />
+                      </button>
                     </>
                   )}
                 </div>
@@ -579,6 +633,59 @@ export function LoreTab({ novelId }: LoreTabProps) {
                       <span className="w-24 flex-shrink-0 text-xs font-semibold" style={{ color: "var(--color-text-muted)" }}>Speech Style:</span>
                       <span className="font-medium leading-relaxed" style={{ color: "var(--color-text)" }}>{char.meta.speech_style || <span className="opacity-40 italic">Not extracted</span>}</span>
                     </div>
+
+                    {(() => {
+                      try {
+                        const arr = JSON.parse(char.aliases || "[]");
+                        if (Array.isArray(arr) && arr.length > 0) {
+                          return (
+                            <div className="flex items-baseline pt-1">
+                              <span className="w-24 flex-shrink-0 text-xs font-semibold" style={{ color: "var(--color-text-muted)" }}>Aliases:</span>
+                              <div className="flex flex-wrap gap-1">
+                                {arr.map((al: string, idx: number) => (
+                                  <span key={idx} className="px-2 py-0.5 rounded-md text-[11px] font-medium border" style={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
+                                    {al}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        }
+                      } catch { /* ignore */ }
+                      return null;
+                    })()}
+
+                    {(() => {
+                      try {
+                        const quotes = JSON.parse(char.evidence_contexts || "[]");
+                        if (Array.isArray(quotes) && quotes.length > 0) {
+                          return (
+                            <div className="pt-1">
+                              <button
+                                onClick={() => setExpandedQuotesId(expandedQuotesId === char.id ? null : char.id)}
+                                className="flex items-center gap-1.5 text-xs font-bold hover:underline cursor-pointer transition-opacity"
+                                style={{ color: "var(--color-accent)" }}
+                              >
+                                <Quote className="w-3.5 h-3.5" />
+                                <span>Verbatim Intro Quotes ({quotes.length})</span>
+                                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expandedQuotesId === char.id ? "rotate-180" : ""}`} />
+                              </button>
+
+                              {expandedQuotesId === char.id && (
+                                <div className="mt-2 space-y-2 pl-2">
+                                  {quotes.map((q: string, idx: number) => (
+                                    <blockquote key={idx} className="border-l-2 pl-2.5 py-1 text-xs italic leading-relaxed opacity-90" style={{ borderColor: "var(--color-accent)", color: "var(--color-text)" }}>
+                                      "{q}"
+                                    </blockquote>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+                      } catch { /* ignore */ }
+                      return null;
+                    })()}
                   </div>
                 )}
               </div>
@@ -677,6 +784,165 @@ export function LoreTab({ novelId }: LoreTabProps) {
                   : `Scan & Extract Lore (${onlyOgTl ? "OG TL" : "All Chapters"})`}
               </span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {linkingTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl rounded-3xl border p-6 shadow-2xl max-h-[85vh] flex flex-col overflow-hidden" style={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text)" }}>
+            <div className="flex items-center justify-between border-b pb-4 mb-4" style={{ borderColor: "var(--color-border)" }}>
+              <div className="flex items-center gap-2">
+                <Link2 className="w-5 h-5" style={{ color: "var(--color-accent)" }} />
+                <h3 className="text-lg font-bold">Link & Merge Aliases into "{linkingTarget.canonical}"</h3>
+              </div>
+              <button onClick={() => setLinkingTarget(null)} className="p-1.5 rounded-lg hover:opacity-80 cursor-pointer border" style={{ borderColor: "var(--color-border)" }}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs mb-4" style={{ color: "var(--color-text-muted)" }}>
+              Select all duplicate or variation cards below to merge into <strong>{linkingTarget.canonical}</strong>. Their aliases and introduction quotes will be preserved, and the duplicate entries will be absorbed.
+            </p>
+            <div className="flex-1 overflow-y-auto space-y-2 pr-2 mb-4">
+              {characters
+                .filter((c) => c.id !== linkingTarget.id)
+                .map((c) => {
+                  const isChecked = selectedMergeIds.includes(c.id);
+                  return (
+                    <label key={c.id} className="flex items-start gap-3 p-3 rounded-2xl border cursor-pointer transition-all hover:opacity-90" style={{ backgroundColor: isChecked ? "var(--color-accent-subtle, rgba(234,88,12,0.15))" : "var(--color-box-bg)", borderColor: isChecked ? "var(--color-accent)" : "var(--color-border)" }}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {
+                          setSelectedMergeIds((prev) =>
+                            isChecked ? prev.filter((id) => id !== c.id) : [...prev, c.id]
+                          );
+                        }}
+                        className="mt-1 w-4 h-4 rounded accent-[var(--color-accent)] cursor-pointer"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-sm">{c.canonical}</span>
+                          <span className="text-xs opacity-70">{c.meta.gender || ""}</span>
+                        </div>
+                        <p className="text-xs mt-0.5 opacity-80 line-clamp-1">{c.meta.race_or_identity || "No identity noted"}</p>
+                      </div>
+                    </label>
+                  );
+                })}
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-3 border-t" style={{ borderColor: "var(--color-border)" }}>
+              <button onClick={() => setLinkingTarget(null)} className="px-4 py-2 rounded-xl text-xs font-bold border cursor-pointer hover:opacity-80" style={{ borderColor: "var(--color-border)" }}>
+                Cancel
+              </button>
+              <button
+                disabled={selectedMergeIds.length === 0 || mergeMutation.isPending}
+                onClick={() => mergeMutation.mutate({ targetId: linkingTarget.id, sourceIds: selectedMergeIds })}
+                className="px-5 py-2 rounded-xl text-xs font-bold text-white shadow-md transition-transform hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50"
+                style={{ background: "linear-gradient(135deg, var(--color-accent) 0%, #ea580c 100%)" }}
+              >
+                {mergeMutation.isPending ? "Merging..." : `Confirm Merge (${selectedMergeIds.length})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDuplicatesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-4xl rounded-3xl border p-6 shadow-2xl max-h-[88vh] flex flex-col overflow-hidden" style={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text)" }}>
+            <div className="flex items-center justify-between border-b pb-4 mb-4" style={{ borderColor: "var(--color-border)" }}>
+              <div className="flex items-center gap-2.5">
+                <Search className="w-5 h-5" style={{ color: "var(--color-accent)" }} />
+                <div>
+                  <h3 className="text-lg font-bold">Automated Entity Deduplication</h3>
+                  <p className="text-xs opacity-70">Semantic blocking & evidence verification across character cards</p>
+                </div>
+              </div>
+              <button onClick={() => setShowDuplicatesModal(false)} className="p-1.5 rounded-lg hover:opacity-80 cursor-pointer border" style={{ borderColor: "var(--color-border)" }}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4">
+              {isDuplicatesLoading ? (
+                <div className="p-12 text-center text-sm opacity-60">Scanning character lore for candidate clusters...</div>
+              ) : !duplicates || duplicates.length === 0 ? (
+                <div className="p-12 text-center border-2 border-dashed rounded-2xl flex flex-col items-center justify-center" style={{ borderColor: "var(--color-border)" }}>
+                  <Check className="w-8 h-8 mb-2" style={{ color: "var(--color-success)" }} />
+                  <span className="font-bold text-sm">No duplicate clusters found!</span>
+                  <span className="text-xs opacity-70 mt-1">All character names are unique according to semantic blocking rules.</span>
+                </div>
+              ) : (
+                duplicates.map((cluster) => {
+                  const targetQuotes = (() => {
+                    try { return JSON.parse(cluster.target.evidence_contexts || "[]"); } catch { return []; }
+                  })();
+                  return (
+                    <div key={cluster.cluster_id} className="rounded-2xl border p-4 shadow-sm" style={{ backgroundColor: "var(--color-box-bg)", borderColor: "var(--color-border)" }}>
+                      <div className="flex items-start justify-between flex-wrap gap-2 mb-3">
+                        <div>
+                          <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border" style={{ borderColor: "var(--color-accent)", color: "var(--color-accent)" }}>
+                            Candidate Cluster
+                          </span>
+                          <span className="text-xs font-medium ml-2 opacity-80">Reason: {cluster.reason}</span>
+                        </div>
+                        <button
+                          disabled={mergeMutation.isPending}
+                          onClick={() => mergeMutation.mutate({ targetId: cluster.target.id, sourceIds: cluster.candidates.map((c) => c.id) })}
+                          className="px-4 py-1.5 rounded-xl text-xs font-bold text-white shadow-sm transition-transform hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                          style={{ background: "linear-gradient(135deg, var(--color-accent) 0%, #ea580c 100%)" }}
+                        >
+                          <GitMerge className="w-3.5 h-3.5" />
+                          <span>Merge into "{cluster.target.canonical}"</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                        <div className="p-3 rounded-xl border" style={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-success)" }}>
+                          <div className="text-xs font-bold uppercase mb-1 flex items-center gap-1" style={{ color: "var(--color-success)" }}>
+                            <Check className="w-3.5 h-3.5" /> Target Canonical: {cluster.target.canonical}
+                          </div>
+                          <p className="text-xs opacity-80 mt-1">{cluster.target.metadata_json ? JSON.parse(cluster.target.metadata_json).race_or_identity || "" : ""}</p>
+                          {targetQuotes.length > 0 && (
+                            <blockquote className="mt-2 border-l-2 pl-2 text-xs italic opacity-90 border-[var(--color-success)]">
+                              "{targetQuotes[0]}"
+                            </blockquote>
+                          )}
+                        </div>
+
+                        <div className="p-3 rounded-xl border space-y-2" style={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-border)" }}>
+                          <div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--color-text-muted)" }}>
+                            Candidates to Absorb ({cluster.candidates.length})
+                          </div>
+                          {cluster.candidates.map((c) => {
+                            const cQuotes = (() => {
+                              try { return JSON.parse(c.evidence_contexts || "[]"); } catch { return []; }
+                            })();
+                            return (
+                              <div key={c.id} className="text-xs border-t pt-1.5" style={{ borderColor: "var(--color-border)" }}>
+                                <span className="font-bold">{c.canonical}</span>
+                                {cQuotes.length > 0 && (
+                                  <blockquote className="mt-1 border-l-2 pl-2 text-[11px] italic opacity-80 border-[var(--color-border)]">
+                                    "{cQuotes[0]}"
+                                  </blockquote>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="flex justify-end pt-3 border-t" style={{ borderColor: "var(--color-border)" }}>
+              <button onClick={() => setShowDuplicatesModal(false)} className="px-5 py-2 rounded-xl text-xs font-bold border cursor-pointer hover:opacity-80" style={{ borderColor: "var(--color-border)" }}>
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

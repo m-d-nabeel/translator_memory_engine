@@ -10,14 +10,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from web.backend.db.database import get_db
 from web.backend.db.models import GlossaryEntry, Novel, Policy
 from web.backend.schemas.novel import (
+    DuplicateClusterResponse,
     ExtractLoreRequest,
     GlossaryMetadataUpdate,
     GlossaryResponse,
+    MergeGlossaryRequest,
     PolicyCreate,
     PolicyResponse,
     PolicyUpdate,
 )
 from web.backend.services.extraction_service import extract_policies_for_novel
+from translator_memory_engine.policy.miner import _normalize, _normalized_edit_distance
 
 router = APIRouter(tags=["policies"])
 
@@ -92,6 +95,167 @@ async def update_glossary_metadata(
     await db.commit()
     await db.refresh(entry)
     return entry
+
+
+@router.post("/api/v1/novels/{novel_id}/glossary/merge", response_model=GlossaryResponse)
+async def merge_glossary_entries(
+    novel_id: int, merge_in: MergeGlossaryRequest, db: AsyncSession = Depends(get_db)
+):
+    target = await db.get(GlossaryEntry, merge_in.target_id)
+    if not target or target.novel_id != novel_id:
+        raise HTTPException(status_code=404, detail="Target glossary entry not found")
+
+    target_policy_res = await db.execute(
+        select(Policy).where(Policy.novel_id == novel_id, Policy.trigger == target.canonical)
+    )
+    target_policy = target_policy_res.scalar_one_or_none()
+
+    target_aliases = set()
+    if target.aliases:
+        try:
+            target_aliases = set(json.loads(target.aliases))
+        except Exception:
+            pass
+    target_aliases.add(target.canonical)
+
+    target_evidence = []
+    if target.evidence_contexts:
+        try:
+            target_evidence = json.loads(target.evidence_contexts)
+        except Exception:
+            pass
+
+    target_meta = {}
+    if target.metadata_json:
+        try:
+            target_meta = json.loads(target.metadata_json)
+        except Exception:
+            pass
+
+    for src_id in merge_in.source_ids:
+        if src_id == merge_in.target_id:
+            continue
+        src = await db.get(GlossaryEntry, src_id)
+        if not src or src.novel_id != novel_id:
+            continue
+
+        target_aliases.add(src.canonical)
+        if src.aliases:
+            try:
+                for a in json.loads(src.aliases):
+                    target_aliases.add(a)
+            except Exception:
+                pass
+
+        if src.evidence_contexts:
+            try:
+                for ev in json.loads(src.evidence_contexts):
+                    if ev and ev not in target_evidence and len(target_evidence) < 5:
+                        target_evidence.append(ev)
+            except Exception:
+                pass
+
+        if src.metadata_json:
+            try:
+                src_meta = json.loads(src.metadata_json)
+                for k, v in src_meta.items():
+                    if not target_meta.get(k) and v:
+                        target_meta[k] = v
+            except Exception:
+                pass
+
+        src_policy_res = await db.execute(
+            select(Policy).where(Policy.novel_id == novel_id, Policy.trigger == src.canonical)
+        )
+        src_policy = src_policy_res.scalar_one_or_none()
+        if src_policy:
+            src_policy.llm_rejected = "true"
+            src_policy.needs_review = "false"
+            src_policy.match_forms = json.dumps([])
+
+        await db.delete(src)
+
+    aliases_list = sorted(list(target_aliases - {target.canonical}))
+    all_match_forms = sorted(list(target_aliases))
+
+    target.aliases = json.dumps(aliases_list)
+    target.evidence_contexts = json.dumps(target_evidence) if target_evidence else None
+    target.metadata_json = json.dumps(target_meta) if target_meta else None
+
+    if target_policy:
+        target_policy.match_forms = json.dumps(all_match_forms)
+        target_policy.contexts = json.dumps(target_evidence) if target_evidence else None
+        target_policy.metadata_json = target.metadata_json
+
+    await db.commit()
+    await db.refresh(target)
+    return target
+
+
+@router.get("/api/v1/novels/{novel_id}/glossary/duplicates", response_model=list[DuplicateClusterResponse])
+async def get_glossary_duplicates(novel_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(GlossaryEntry)
+        .where(GlossaryEntry.novel_id == novel_id)
+        .order_by(GlossaryEntry.canonical)
+    )
+    entries = result.scalars().all()
+
+    def _tokens(key: str) -> set[str]:
+        return set(_normalize(key).split())
+
+    clusters: list[DuplicateClusterResponse] = []
+    visited: set[int] = set()
+
+    for i, e1 in enumerate(entries):
+        if e1.id in visited:
+            continue
+        k1 = _normalize(e1.canonical)
+        t1 = _tokens(k1)
+        cluster_cands = []
+        cluster_reasons = []
+
+        for j in range(i + 1, len(entries)):
+            e2 = entries[j]
+            if e2.id in visited:
+                continue
+            k2 = _normalize(e2.canonical)
+            t2 = _tokens(k2)
+
+            match_reason = None
+            if t1 == t2 and len(t1) > 0:
+                match_reason = "Identical tokens in different word order"
+            elif (k1 in k2 or k2 in k1) and min(len(k1), len(k2)) >= 4:
+                match_reason = f"Substring overlap ({e1.canonical} / {e2.canonical})"
+            else:
+                shared = t1 & t2
+                if any(len(tok) >= 4 for tok in shared) and len(t1) > 1 and len(t2) > 1:
+                    match_reason = "Shared descriptive role/title tokens"
+                elif _normalized_edit_distance(k1, k2) <= 0.3 and min(len(k1), len(k2)) >= 4:
+                    match_reason = "Near-duplicate spelling (Levenshtein distance <= 0.3)"
+
+            if match_reason:
+                cluster_cands.append(e2)
+                cluster_reasons.append(match_reason)
+                visited.add(e2.id)
+
+        if cluster_cands:
+            visited.add(e1.id)
+            all_in_cluster = [e1] + cluster_cands
+            all_in_cluster.sort(key=lambda x: len(x.canonical))
+            target = all_in_cluster[0]
+            candidates = [x for x in all_in_cluster if x.id != target.id]
+            reasons_str = "; ".join(sorted(set(cluster_reasons)))
+            clusters.append(
+                DuplicateClusterResponse(
+                    cluster_id=f"cluster-{target.id}",
+                    target=target,
+                    candidates=candidates,
+                    reason=reasons_str,
+                )
+            )
+
+    return clusters
 
 
 @router.post("/api/v1/novels/{novel_id}/policies", response_model=PolicyResponse)

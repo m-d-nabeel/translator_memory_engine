@@ -23,6 +23,7 @@ def extract_chapter_lore(
             - "gender": str
             - "race_or_identity": str (1-2 sentences)
             - "speech_style": str (1-2 sentences)
+            - "introduction_context": str (verbatim 1-2 sentence quote)
     """
     keys = _get_groq_keys(api_key_env) or _get_groq_keys("GROQ_API_KEY")
     if not keys:
@@ -47,7 +48,8 @@ def extract_chapter_lore(
         '      "name": "The character\'s primary name (e.g., Dominic, Stonehammer)",\n'
         '      "gender": "male, female, or unknown",\n'
         '      "race_or_identity": "1-2 short, descriptive sentences about their race, profession, or role in the story.",\n'
-        '      "speech_style": "1-2 short, descriptive sentences detailing how they speak (e.g., Speaks with archaic formality, uses slang, arrogant tone)."\n'
+        '      "speech_style": "1-2 short, descriptive sentences detailing how they speak (e.g., Speaks with archaic formality, uses slang, arrogant tone).",\n'
+        '      "introduction_context": "An exact verbatim 1-2 sentence quote from the chapter introducing or showing this character in action. MUST BE EXACT WORDS FROM THE TEXT, NO PARAPHRASING."\n'
         "    }\n"
         "  ]\n"
         "}\n\n"

@@ -83,8 +83,16 @@ export interface GlossaryEntry {
   aliases: string;
   entity_type: string | null;
   confidence: number | null;
+  evidence_contexts: string | null;
   metadata_json: string | null;
   created_at: string;
+}
+
+export interface DuplicateCluster {
+  cluster_id: string;
+  target: GlossaryEntry;
+  candidates: GlossaryEntry[];
+  reason: string;
 }
 
 export interface StyleSnippet {
@@ -212,6 +220,13 @@ export const api = {
     }),
   listGlossary: (novelId: number) =>
     request<GlossaryEntry[]>(`/novels/${novelId}/glossary`),
+  listGlossaryDuplicates: (novelId: number) =>
+    request<DuplicateCluster[]>(`/novels/${novelId}/glossary/duplicates`),
+  mergeGlossaryEntries: (novelId: number, targetId: number, sourceIds: number[]) =>
+    request<GlossaryEntry>(`/novels/${novelId}/glossary/merge`, {
+      method: "POST",
+      body: JSON.stringify({ target_id: targetId, source_ids: sourceIds }),
+    }),
 
   listChapterJobs: (chapterId: number) =>
     request<ProcessingJob[]>(`/jobs/chapter/${chapterId}`),

@@ -240,14 +240,19 @@ async def _background_extract_lore(chapter_id: int, novel_id: int, chapter_text:
                     "speech_style": char.get("speech_style", "")
                 }
 
+                intro_ctx = (char.get("introduction_context") or "").strip()
+                valid_intro = intro_ctx if len(intro_ctx) >= 10 else None
+
                 if not entry:
                     # NEW Character: Create GlossaryEntry and Policy
+                    evidence_list = [valid_intro] if valid_intro else []
                     new_entry = GlossaryEntry(
                         novel_id=novel_id,
                         canonical=name,
                         aliases=json.dumps([]),
                         entity_type="entity",
                         confidence=0.9,
+                        evidence_contexts=json.dumps(evidence_list) if evidence_list else None,
                         metadata_json=json.dumps(new_meta)
                     )
                     db.add(new_entry)
@@ -261,6 +266,7 @@ async def _background_extract_lore(chapter_id: int, novel_id: int, chapter_text:
                         action=json.dumps({"render_as": name}),
                         confidence=0.9,
                         needs_review="false" if bypass_review else "true",
+                        contexts=json.dumps(evidence_list) if evidence_list else None,
                         metadata_json=json.dumps(new_meta)
                     )
                     db.add(new_policy)
@@ -273,6 +279,20 @@ async def _background_extract_lore(chapter_id: int, novel_id: int, chapter_text:
                         .where(Policy.trigger == name)
                     )
                     policy = policy_result.scalar_one_or_none()
+
+                    # Update evidence quotes if available
+                    if valid_intro:
+                        evidence_list = []
+                        if entry.evidence_contexts:
+                            try:
+                                evidence_list = json.loads(entry.evidence_contexts)
+                            except Exception:
+                                pass
+                        if valid_intro not in evidence_list and len(evidence_list) < 5:
+                            evidence_list.append(valid_intro)
+                            entry.evidence_contexts = json.dumps(evidence_list)
+                            if policy:
+                                policy.contexts = json.dumps(evidence_list)
 
                     existing_meta = {}
                     if entry.metadata_json:
