@@ -390,7 +390,9 @@ def _cluster_variants(
             # We do NOT absorb single-token subsets here because mine_policies (§3 / D10) explicitly emits
             # them as distinct policies with needs_review=True ("prompted" mode).
             t2 = _tokens(k2)
-            is_bare_subset = (len(t2) == 1 and set(t2) < set(t1)) or (len(t1) == 1 and set(t1) < set(t2))
+            is_bare_subset = (len(t2) == 1 and set(t2) < set(t1)) or (
+                len(t1) == 1 and set(t1) < set(t2)
+            )
             if not is_bare_subset:
                 # (2) substring containment for multi-word variants (e.g. "wizard perot" vs "arch-wizard perot")
                 if (k1 in k2 or k2 in k1) and min(len(k1), len(k2)) >= 4:
@@ -400,8 +402,14 @@ def _cluster_variants(
                         absorbed.add(k2)
                         continue
                 # (3) token intersection: shared core word of length >= 4 between multi-word variants
-                shared_tokens = {tok for tok in (set(t1) & set(t2)) if tok not in TITLE_STOPWORDS}
-                if any(len(tok) >= 4 for tok in shared_tokens) and len(t1) > 1 and len(t2) > 1:
+                shared_tokens = {
+                    tok for tok in (set(t1) & set(t2)) if tok not in TITLE_STOPWORDS
+                }
+                if (
+                    any(len(tok) >= 4 for tok in shared_tokens)
+                    and len(t1) > 1
+                    and len(t2) > 1
+                ):
                     cluster.extend(groups[k2])
                     absorbed.add(k2)
                     continue
@@ -502,7 +510,9 @@ def _is_generic(canonical: str) -> bool:
     return all(t in _GENERIC_STANDALONE for t in tokens)
 
 
-def _verify_with_llm(candidates: List[Dict[str, Any]], llm_client: Any, chunk_size: int = 10) -> List[Dict[str, Any]]:
+def _verify_with_llm(
+    candidates: List[Dict[str, Any]], llm_client: Any, chunk_size: int = 5
+) -> List[Dict[str, Any]]:
     """Verify candidate entities with a local LLM to prune false positives (Stage 2b).
 
     Uses micro-batching to prevent context window degradation and JSON truncation in
@@ -533,15 +543,79 @@ def _verify_with_llm(candidates: List[Dict[str, Any]], llm_client: Any, chunk_si
             {
                 "role": "system",
                 "content": (
-                    "You are a strict fiction entity verifier. Evaluate the candidate terms against their example sentences. "
-                    "Reject sentence fragments (e.g., 'Seems Centipedes' where 'Seems' is a verb) and common verbs/nouns. "
-                    "Do NOT merge distinct characters who share a surname. "
-                    "Return ONLY valid JSON. No conversational text or explanations outside the JSON block.\n\n"
-                    "Output a JSON object with a single key 'results' containing an array of objects:\n"
-                    "{\"results\": [{\"id\": <int>, \"reasoning\": \"<short explanation>\", \"status\": \"valid\" | \"reject\", \"canonical\": \"<clean name>\", \"aliases\": [\"<alias1>\"]}]}\n\n"
-                    "Example:\n"
-                    "{\"results\": [{\"id\": 1, \"reasoning\": \"Valid character name\", \"status\": \"valid\", \"canonical\": \"John Smith\", \"aliases\": []}, "
-                    "{\"id\": 2, \"reasoning\": \"Sentence fragment starting with a verb\", \"status\": \"reject\", \"canonical\": \"Seems Centipedes\", \"aliases\": []}]}"
+                    "You are a strict binary classifier for fiction entities. Output ONLY valid proper nouns (names of specific characters, unique places, unique items). "
+                    "Reject common nouns, verbs, sentence fragments, and conversational text.\n"
+                    "Output a JSON object with a single key 'results' containing an array:\n"
+                    '{"results": [{"id": <int>, "status": "valid" | "reject", "canonical": "<clean name>", "aliases": ["<alias1>"]}]}'
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "candidates": [
+                            {
+                                "id": 1,
+                                "canonical": "John Smith",
+                                "aliases": [],
+                                "sentences": ["John Smith drew his sword."],
+                            },
+                            {
+                                "id": 2,
+                                "canonical": "Seems Centipedes",
+                                "aliases": [],
+                                "sentences": ["It Seems Centipedes are everywhere."],
+                            },
+                            {
+                                "id": 3,
+                                "canonical": "Village",
+                                "aliases": [],
+                                "sentences": ["He walked to the Village."],
+                            },
+                            {
+                                "id": 4,
+                                "canonical": "Countess Noella",
+                                "aliases": ["Noella"],
+                                "sentences": [
+                                    "Countess Noella smiled.",
+                                    "Noella looked away.",
+                                ],
+                            },
+                        ]
+                    }
+                ),
+            },
+            {
+                "role": "assistant",
+                "content": json.dumps(
+                    {
+                        "results": [
+                            {
+                                "id": 1,
+                                "status": "valid",
+                                "canonical": "John Smith",
+                                "aliases": [],
+                            },
+                            {
+                                "id": 2,
+                                "status": "reject",
+                                "canonical": "Seems Centipedes",
+                                "aliases": [],
+                            },
+                            {
+                                "id": 3,
+                                "status": "reject",
+                                "canonical": "Village",
+                                "aliases": [],
+                            },
+                            {
+                                "id": 4,
+                                "status": "valid",
+                                "canonical": "Countess Noella",
+                                "aliases": ["Noella"],
+                            },
+                        ]
+                    }
                 ),
             },
             {"role": "user", "content": json.dumps({"candidates": prompt_data})},
@@ -576,46 +650,90 @@ def _verify_with_llm(candidates: List[Dict[str, Any]], llm_client: Any, chunk_si
                 clean_content = clean_content[:-3]
             clean_content = clean_content.strip()
 
-            parsed = json.loads(clean_content)
-            
-            if isinstance(parsed, list):
-                results_list = parsed
-            elif isinstance(parsed, dict):
-                results_list = parsed.get("results", [])
-                # fallback if LLM used a different key
-                if not results_list and "candidates" in parsed:
-                    results_list = parsed.get("candidates", [])
-            else:
+            try:
+                parsed = json.loads(clean_content)
+                if isinstance(parsed, list):
+                    results_list = parsed
+                elif isinstance(parsed, dict):
+                    results_list = parsed.get("results", [])
+                    # fallback if LLM used a different key
+                    if not results_list and "candidates" in parsed:
+                        results_list = parsed.get("candidates", [])
+                else:
+                    results_list = []
+            except Exception as json_err:
+                import re
+                logger.warning(f"JSON parsing failed ({json_err}). Attempting regex recovery on truncated output.")
                 results_list = []
+                # Find all complete dictionary blocks within the truncated string
+                blocks = re.findall(r'\{[^{}]*\}', clean_content)
+                for block in blocks:
+                    try:
+                        b = json.loads(block)
+                        if "id" in b and "status" in b:
+                            results_list.append(b)
+                    except Exception:
+                        pass
+                
+                if not results_list:
+                    # If recovery completely fails, raise so the outer try-except catches it
+                    raise ValueError(f"Could not recover any JSON objects. Original error: {json_err}")
 
-            # Map LLM results back to our chunk
-            results_by_id = {r.get("id"): r for r in results_list if isinstance(r, dict)}
+            # Map LLM results back to our chunk (safely handle string IDs)
+            results_by_id = {}
+            for r in results_list:
+                if isinstance(r, dict) and r.get("id") is not None:
+                    try:
+                        results_by_id[int(r["id"])] = r
+                    except (ValueError, TypeError):
+                        pass
 
             for candidate in chunk:
                 llm_result = results_by_id.get(candidate["id"])
-                if llm_result and llm_result.get("status") == "valid":
+
+                status = ""
+                if (
+                    llm_result
+                    and "status" in llm_result
+                    and isinstance(llm_result["status"], str)
+                ):
+                    status = llm_result["status"].lower()
+
+                if status == "valid":
                     # Keep it and apply verified canonical/aliases if refined by LLM
                     candidate["ai_verified"] = True
-                    if "canonical" in llm_result and isinstance(llm_result["canonical"], str):
+                    if "canonical" in llm_result and isinstance(
+                        llm_result["canonical"], str
+                    ):
                         candidate["canonical"] = llm_result["canonical"]
-                    if "aliases" in llm_result and isinstance(llm_result["aliases"], list):
-                        candidate["aliases"] = [a for a in llm_result["aliases"] if isinstance(a, str)]
+                    if "aliases" in llm_result and isinstance(
+                        llm_result["aliases"], list
+                    ):
+                        candidate["aliases"] = [
+                            a for a in llm_result["aliases"] if isinstance(a, str)
+                        ]
                     verified_candidates.append(candidate)
-                elif llm_result and llm_result.get("status") == "reject":
+                elif status == "reject":
                     # Safely reject
                     logger.debug(f"LLM rejected candidate: {candidate['canonical']}")
                     continue
                 else:
-                    # Fallback for this item if model missed it
-                    candidate["ai_verified"] = False
-                    verified_candidates.append(candidate)
+                    # If the LLM returned valid JSON but omitted this ID, or returned an unknown status,
+                    # treat it as a rejection to maintain strictness, rather than letting it slip through.
+                    logger.debug(
+                        f"LLM omitted or returned invalid status for candidate {candidate['id']} ({candidate['canonical']}). Rejecting."
+                    )
+                    continue
 
         except Exception as e:
             # We catch JSONDecodeError and any other API errors
-            logger.warning(f"LLM verification failed for micro-batch (falling back to lexical): {e}\nRaw LLM output: {content if 'content' in locals() else 'None'}")
-            for candidate in chunk:
-                candidate["ai_verified"] = False
-                verified_candidates.append(candidate)
+            logger.warning(
+                f"LLM verification failed for micro-batch: {e}\nRaw LLM output: {content if 'content' in locals() else 'None'}"
+            )
+            # If the LLM completely fails to parse for this micro-batch, do NOT fall back to accepting all candidates.
+            # Doing so pollutes the database with the exact lexical false-positives we are trying to filter out.
+            # We strictly reject them.
+            continue
 
     return verified_candidates
 
@@ -683,7 +801,11 @@ def mine_policies(
 
         canonical, aliases = _pick_canonical(group_signals)
         canonical, aliases = _clean_match_forms(canonical, aliases)
-        if not canonical or _is_generic(canonical) or canonical.split()[0] in _FRAGMENT_LEADS:
+        if (
+            not canonical
+            or _is_generic(canonical)
+            or canonical.split()[0] in _FRAGMENT_LEADS
+        ):
             continue
 
         example_contexts: List[str] = []
@@ -754,7 +876,9 @@ def mine_policies(
             continue
 
         match_forms = [canonical] + sorted(set(aliases))
-        applies = "deterministic" if confidence >= deterministic_threshold else "prompted"
+        applies = (
+            "deterministic" if confidence >= deterministic_threshold else "prompted"
+        )
         policy_type = _infer_type(group_signals)
 
         policy_id += 1

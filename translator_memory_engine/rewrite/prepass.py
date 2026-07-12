@@ -38,6 +38,7 @@ def apply_prepass(
     winners.sort(key=lambda w: w.start, reverse=True)
 
     import json
+
     trace: List[Dict[str, Any]] = []
     out = text
     for w in winners:
@@ -49,7 +50,7 @@ def apply_prepass(
                 action = {}
         if not isinstance(action, dict):
             action = {}
-            
+
         render_as = action.get("render_as", w.policy.trigger)
         original = out[w.start : w.end]
         # Only record if something actually changes

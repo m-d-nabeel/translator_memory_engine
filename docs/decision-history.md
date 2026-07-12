@@ -416,14 +416,15 @@ The known error dictionary provides the missing context.
 
 ---
 
-## D18 — Hybrid LLM Semantic Verification & Rewrite Pipeline Resiliency
+## D18 — Hybrid LLM Semantic Verification Experiment & Rewrite Pipeline Resiliency
 
-**Context:** The lexical extraction pipeline (spaCy NER + frequency heuristics) produced too many false positives (e.g. sentence fragments, common nouns, bad MTL artifacts like "Seems Centipedes"). Additionally, the rewrite pipeline suffered from edge-case crashes (SQLite JSON deserialization bugs, strict LLM JSON wrapping, and skipping the LLM entirely when policies were missing).
-**Decision:** We implemented a two-pass extraction system and hardened the rewrite pipeline.
+**Context:** The lexical extraction pipeline (spaCy NER + frequency heuristics) produced false positives (e.g. sentence fragments, common nouns, bad MTL artifacts like "Seems Centipedes"). We experimented with adding a local LLM semantic verification step to prune these candidates automatically, while also fixing edge-case crashes in the rewrite pipeline (SQLite JSON deserialization bugs, strict LLM JSON wrapping, and skipping the LLM entirely when policies were missing).
+**Decision:** We hardened the rewrite pipeline, but concluded that a tiny local LLM (1.5B) does not provide enough semantic judgment to justify making it a mandatory extraction stage.
 
-- **Hybrid Semantic Verification:**
-  1. **Lexical Pass**: Gathers candidate entities via heuristics.
-  2. **Semantic Pass**: Sends candidates in micro-batches (10 at a time) to a local, highly-quantized LLM (Qwen2.5-1.5B via `llama-server`) to evaluate if the noun is a valid fiction entity based on its context sentences. This dramatically reduced noise without API costs.
+- **Hybrid Semantic Verification (Optional Backend):**
+  - **Experiment:** We sent lexical candidates in micro-batches to a local, highly-quantized LLM (Qwen2.5-1.5B via `llama-server`) to evaluate if the noun was a valid fiction entity.
+  - **Result:** The local semantic verification reduced some obvious lexical false positives (like sentence fragments), but the improvement over the strengthened deterministic pipeline was limited. The 1.5B model struggled with ambiguous cases, aliases, and titles, often reverting to naive POS filtering.
+  - **Conclusion:** The llama.cpp verifier remains an optional backend rather than a required pipeline stage. The project's value lies in persistent translator memory, evidence aggregation, deterministic consistency application, and review tooling—not in putting a tiny local LLM into every extraction stage. Human-assisted resolution (via the UI) remains the most reliable path for ambiguous candidates.
 - **LLM JSON Output Resiliency:** Added a robust pre-processor in the `miner.py` JSON parser that aggressively strips markdown backticks (` ```json `) and whitespace before parsing. If decoding still fails, it gracefully logs the raw LLM output and falls back to lexical heuristics for that micro-batch without crashing the extraction job.
 - **SQLite JSON Column Deserialization Fix:** SQLAlchemy's `JSON` column on SQLite stores data as text. We added a lightweight safety parser directly in `prepass.py` and `rewriter.py` to intercept stringified JSON actions and `json.loads()` them on the fly, preventing `AttributeError: 'str' object has no attribute 'get'`.
 - **Fallback Faithful Repair Execution Guarantee:** Modified the `need_llm` execution boolean. If `do_llm` is toggled ON, the LLM will _always_ run, even if the policy count is zero. This ensures the "Fallback Faithful Repair" prompt kicks in to fix poor MTL grammar, remove deceptive idioms, and repair discourse coherence independently of the terminology dictionary.

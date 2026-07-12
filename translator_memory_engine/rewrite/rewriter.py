@@ -475,6 +475,7 @@ def build_prompt(
     lines = []
     for p in prompted_policies:
         import json
+
         action = p.action
         if isinstance(action, str):
             try:
