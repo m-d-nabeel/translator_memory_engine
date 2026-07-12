@@ -702,9 +702,8 @@ def rewrite(
 
     # A reference or style profile only makes sense with the LLM on; force it.
     use_llm = do_llm or (reference_text is not None) or (style_profile is not None)
-    # The LLM has something to do only if there are policies to apply, or a
-    # reference / style bank to steer voice against.
-    need_llm = bool(prompted) or (reference_text is not None) or (style_profile is not None)
+    # The LLM has something to do if do_llm is True, or if there's a reference / style bank.
+    need_llm = do_llm or (reference_text is not None) or (style_profile is not None)
     logger.debug(f"LLM: use={use_llm}, need={need_llm}")
 
     # Entity shielding: replace glossary entries with placeholders before LLM,
