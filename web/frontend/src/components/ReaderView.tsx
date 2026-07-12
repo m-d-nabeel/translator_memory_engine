@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useMemo } from "react";
 import { Sparkles } from "lucide-react";
 import {
   type ReaderFont,
@@ -26,48 +26,15 @@ export function ReaderView({
   maxWidth = "normal",
   isProcessing = false,
 }: ReaderViewProps) {
-  const [streamCount, setStreamCount] = useState<number | null>(null);
-  const prevTextRef = useRef(text);
-  const prevProcessingRef = useRef(isProcessing);
-
   // Split by double line break or single line break with indents/blank lines
   const targetParagraphs = useMemo(() => {
-    return text
+    return (text || "")
       .split(/\r?\n(?:\s*\r?\n)+|\r?\n/)
       .map((p) => p.trim())
       .filter((p) => p.length > 0);
   }, [text]);
 
-  // Effect 1: Detect transitions (e.g. finished processing vs normal tab switch)
-  useEffect(() => {
-    const justFinishedProcessing =
-      prevProcessingRef.current && !isProcessing && prevTextRef.current !== text;
-
-    if (justFinishedProcessing) {
-      setStreamCount(1); // Start streaming
-    } else if (prevTextRef.current !== text) {
-      setStreamCount(null); // Normal tab switch, no streaming
-    }
-
-    prevProcessingRef.current = isProcessing;
-    prevTextRef.current = text;
-  }, [text, isProcessing]);
-
-  // Effect 2: Run the stream if active
-  useEffect(() => {
-    if (streamCount !== null && streamCount < targetParagraphs.length) {
-      const timer = setTimeout(() => {
-        setStreamCount((s) => (s !== null ? s + 1 : null));
-      }, 50); // fast stream
-      return () => clearTimeout(timer);
-    } else if (streamCount !== null && streamCount >= targetParagraphs.length) {
-      setStreamCount(null); // Stream finished
-    }
-  }, [streamCount, targetParagraphs.length]);
-
-  const displayedParagraphs =
-    streamCount !== null ? targetParagraphs.slice(0, streamCount) : targetParagraphs;
-  const isStreaming = streamCount !== null;
+  const displayedParagraphs = targetParagraphs;
 
   const fontStyle =
     {
@@ -125,7 +92,7 @@ export function ReaderView({
           return (
             <p
               key={i}
-              className={`${marginClass} tracking-[0.01em] transition-colors ${isStreaming && i === displayedParagraphs.length - 1 ? "animate-slide-up animate-fade-in" : ""}`}
+              className={`${marginClass} tracking-[0.01em] transition-colors`}
               style={{ textIndent: indentStyle }}
             >
               {para}
@@ -134,7 +101,7 @@ export function ReaderView({
         })}
 
         {/* End of Chapter Divider Ornament */}
-        {!isStreaming && displayedParagraphs.length > 0 && (
+        {displayedParagraphs.length > 0 && (
           <div className="pt-12 pb-6 flex items-center justify-center gap-3 opacity-40">
             <div className="w-12 h-px bg-current" />
             <span className="text-sm font-serif">◈</span>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
@@ -30,6 +30,7 @@ export function Reader() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["read", id] });
       queryClient.invalidateQueries({ queryKey: ["chapterStatus", id] });
+      queryClient.invalidateQueries({ queryKey: ["chaptersForNovel"] });
     },
   });
 
@@ -83,11 +84,35 @@ export function Reader() {
     enabled: !!chapterData?.novel_id,
   });
 
+  const [initialModeSetFor, setInitialModeSetFor] = useState<number | null>(null);
+
   useEffect(() => {
-    if (chapter) {
-      setViewMode(chapter.refined_text ? "refined" : "mtl");
+    if (chapter && allChapters && initialModeSetFor !== id) {
+      const vers = allChapters.filter(c => c.chapter_number === chapter.chapter_number);
+      const mtlVer = vers.find(c => c.source_type === "mtl") || (chapter.source_type === "mtl" ? chapter : undefined);
+      const origVer = vers.find(c => c.source_type === "original") || (chapter.source_type === "original" ? chapter : undefined);
+      
+      if (origVer) {
+        setViewMode("original");
+      } else if (mtlVer?.refined_text) {
+        setViewMode("refined");
+      } else {
+        setViewMode("mtl");
+      }
+      setInitialModeSetFor(id);
     }
-  }, [chapter]);
+  }, [id, chapter, allChapters, initialModeSetFor]);
+
+  const prevStatusRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (prevStatusRef.current === "processing" && chapter?.status === "completed") {
+      queryClient.invalidateQueries({ queryKey: ["chaptersForNovel"] });
+      if (chapter.refined_text) {
+        setViewMode("refined");
+      }
+    }
+    prevStatusRef.current = chapter?.status;
+  }, [chapter?.status, chapter?.refined_text, queryClient]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -150,29 +175,37 @@ export function Reader() {
     ? allChapters.filter((c) => c.chapter_number === chapter?.chapter_number)
     : [];
 
-  const hasOriginal = versions.some((c) => c.source_type === "original");
-  const hasRefined = !!chapter?.refined_text;
-  const showVersionSwitcher = hasRefined || hasOriginal;
+  const mtlVer = (chapter?.source_type === "mtl" ? chapter : undefined) || versions.find((c) => c.source_type === "mtl");
+  const origVer = (chapter?.source_type === "original" ? chapter : undefined) || versions.find((c) => c.source_type === "original");
+
+  const hasOriginal = !!origVer;
+  const hasMtl = !!mtlVer;
+  const hasRefined = !!mtlVer?.refined_text;
+  
+  // Only show the switcher if we have multiple versions to switch between
+  const availableModes = [
+    ...(hasRefined ? ["refined"] : []),
+    ...(hasMtl ? ["mtl"] : []),
+    ...(hasOriginal ? ["original"] : []),
+  ];
+  const showVersionSwitcher = availableModes.length > 1;
 
   const getDisplayText = () => {
     if (!chapter) return "";
-    if (viewMode === "refined" && chapter.refined_text)
-      return chapter.refined_text;
-    if (viewMode === "original") {
-      const origVer = versions.find((c) => c.source_type === "original");
-      if (origVer) return origVer.raw_text;
-    }
+    if (viewMode === "refined" && mtlVer?.refined_text) return mtlVer.refined_text;
+    if (viewMode === "original" && origVer) return origVer.raw_text;
+    if (viewMode === "mtl" && mtlVer) return mtlVer.raw_text;
+    // Fallback if the mode is selected but version doesn't exist
     return chapter.raw_text;
   };
 
   const getCompareText = () => {
     if (!chapter) return "";
-    // If main is refined, show raw MTL in compare pane
-    if (viewMode === "refined") return chapter.raw_text;
-    // If main is MTL, show refined or original
-    if (chapter.refined_text) return chapter.refined_text;
-    const origVer = versions.find((c) => c.source_type === "original");
-    return origVer ? origVer.raw_text : chapter.raw_text;
+    if (viewMode === "refined" && mtlVer) return mtlVer.raw_text;
+    if (viewMode === "mtl" && origVer) return origVer.raw_text;
+    if (viewMode === "original" && mtlVer?.refined_text) return mtlVer.refined_text;
+    if (viewMode === "original" && mtlVer) return mtlVer.raw_text;
+    return chapter.raw_text;
   };
 
   if (isLoading) {
@@ -267,16 +300,18 @@ export function Reader() {
                   <span>AI Refined</span>
                 </button>
               )}
-              <button
-                onClick={() => setViewMode("mtl")}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  viewMode === "mtl"
-                    ? "shadow-sm bg-[var(--color-surface-hover)] text-[var(--color-text)]"
-                    : "opacity-60 hover:opacity-100"
-                }`}
-              >
-                Raw MTL
-              </button>
+              {hasMtl && (
+                <button
+                  onClick={() => setViewMode("mtl")}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    viewMode === "mtl"
+                      ? "shadow-sm bg-[var(--color-surface-hover)] text-[var(--color-text)]"
+                      : "opacity-60 hover:opacity-100"
+                  }`}
+                >
+                  Raw MTL
+                </button>
+              )}
               {hasOriginal && (
                 <button
                   onClick={() => setViewMode("original")}
@@ -294,18 +329,18 @@ export function Reader() {
 
           {/* Right Action Tools */}
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* Reprocess Button */}
+            {/* Process Button */}
             <button
               onClick={() => {
                 if (
-                  window.confirm(
-                    "Reprocess this chapter? It will run through the latest rules again.",
+                  confirm(
+                    "Process this chapter? It will run through the latest rules again.",
                   )
                 ) {
                   reprocessMutation.mutate(true);
                 }
               }}
-              title="Reprocess Chapter"
+              title="Process Chapter"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer hover:bg-white/5"
               style={{
                 borderColor: "var(--color-border)",
@@ -315,7 +350,7 @@ export function Reader() {
               <RefreshCw
                 className={`w-3.5 h-3.5 ${reprocessMutation.isPending ? "animate-spin" : ""}`}
               />
-              <span className="hidden sm:inline">Reprocess</span>
+              <span className="hidden sm:inline">Process</span>
             </button>
 
             {/* Split Compare Button (Desktop / Tablet) */}
@@ -388,16 +423,18 @@ export function Reader() {
                   <span>Refined</span>
                 </button>
               )}
-              <button
-                onClick={() => setViewMode("mtl")}
-                className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
-                  viewMode === "mtl"
-                    ? "shadow-sm bg-[var(--color-surface-hover)] text-[var(--color-text)]"
-                    : "opacity-60"
-                }`}
-              >
-                Raw MTL
-              </button>
+              {hasMtl && (
+                <button
+                  onClick={() => setViewMode("mtl")}
+                  className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                    viewMode === "mtl"
+                      ? "shadow-sm bg-[var(--color-surface-hover)] text-[var(--color-text)]"
+                      : "opacity-60"
+                  }`}
+                >
+                  Raw MTL
+                </button>
+              )}
               {hasOriginal && (
                 <button
                   onClick={() => setViewMode("original")}

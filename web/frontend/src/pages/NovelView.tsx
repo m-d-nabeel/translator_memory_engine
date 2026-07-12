@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Chapter } from "../api/client";
 import { PasteForm } from "../components/PasteForm";
+import { StyleBankTab } from "../components/StyleBankTab";
 import { Header } from "../components/Header";
 import {
   formatPolicyAction,
@@ -25,6 +26,8 @@ import {
   ChevronDown,
   ChevronUp,
   Terminal,
+  Brush,
+  AlertTriangle,
 } from "lucide-react";
 import { EngineInspectorModal } from "../components/EngineInspectorModal";
 
@@ -48,7 +51,7 @@ export function NovelView() {
   const novelId = parseInt(id!, 10);
 
   const [activeTab, setActiveTab] = useState<
-    "catalog" | "policies" | "glossary" | "import"
+    "catalog" | "policies" | "glossary" | "style" | "import"
   >("catalog");
   const [activeBottomNav, setActiveBottomNav] = useState<NavTab>("bookshelf");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -118,7 +121,7 @@ export function NovelView() {
   };
 
   const handleReprocess = async (chapterId: number, chNum: number) => {
-    if (!confirm(`Reprocess Chapter ${chNum} with latest AI memory policies?`))
+    if (!confirm(`Process Chapter ${chNum} with latest AI memory policies?`))
       return;
     setReprocessingId(chapterId);
     try {
@@ -440,6 +443,11 @@ export function NovelView() {
                 label: `Glossary Matrix (${novel.glossary_count})`,
                 icon: Database,
               },
+              {
+                id: "style",
+                label: `Style Bank`,
+                icon: Brush,
+              },
               { id: "import", label: "Studio Import (+)", icon: Plus },
             ].map((tab) => {
               const Icon = tab.icon;
@@ -567,17 +575,18 @@ export function NovelView() {
                       ? reprocessingId === mtl.id
                       : false;
                     const isMtlProcessing = mtl && mtl.status === "processing";
+                    const displayChapter = mtl || orig;
 
                     return (
                       <div
                         key={chNum}
                         onClick={() => {
-                          if (mtl?.status === "completed") {
-                            navigate(`/read/${mtl.id}`);
+                          if (displayChapter) {
+                            navigate(`/read/${displayChapter.id}`);
                           }
                         }}
                         className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
-                          mtl?.status === "completed"
+                          displayChapter
                             ? "hover:border-[var(--color-accent)] cursor-pointer hover:shadow-md"
                             : "opacity-90"
                         }`}
@@ -653,6 +662,21 @@ export function NovelView() {
                                         : "Pending"}
                                 </span>
                               )}
+
+                              {mtl?.warnings && (
+                                <span
+                                  className="text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider font-mono border flex items-center gap-1"
+                                  style={{
+                                    backgroundColor: "var(--color-warning-subtle)",
+                                    color: "var(--color-warning)",
+                                    borderColor: "var(--color-warning)",
+                                  }}
+                                  title="Entity Consistency Warnings Detected"
+                                >
+                                  <AlertTriangle className="w-3 h-3" />
+                                  Warn
+                                </span>
+                              )}
                             </div>
 
                             <span
@@ -675,9 +699,9 @@ export function NovelView() {
                           className="flex items-center gap-1.5 shrink-0"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          {mtl?.status === "completed" && (
+                          {displayChapter && (
                             <button
-                              onClick={() => navigate(`/read/${mtl.id}`)}
+                              onClick={() => navigate(`/read/${displayChapter.id}`)}
                               className="px-3 py-1.5 rounded-xl text-xs font-bold text-white transition-transform hover:scale-105 active:scale-95 cursor-pointer flex items-center gap-1 shadow-sm"
                               style={{
                                 background:
@@ -711,7 +735,7 @@ export function NovelView() {
                             <button
                               onClick={() => handleReprocess(mtl.id, chNum)}
                               disabled={isReprocessing}
-                              title="Reprocess Chapter with Latest AI Policies"
+                              title="Process Chapter with Latest AI Policies"
                               className="p-2 rounded-xl text-xs font-semibold border transition-colors hover:bg-white/5 cursor-pointer disabled:opacity-40"
                               style={{
                                 borderColor: "var(--color-border)",
@@ -879,6 +903,8 @@ export function NovelView() {
               )}
             </div>
           )}
+
+          {activeTab === "style" && <StyleBankTab novelId={novelId} />}
 
           {/* TAB 4: Studio Import View */}
           {activeTab === "import" && (
