@@ -33,6 +33,8 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
     "tme-memory-subtab",
     "policies",
   );
+  const [dismissedJobIds, setDismissedJobIds] = useState<number[]>([]);
+  const [recentlyTriggered, setRecentlyTriggered] = useState(false);
 
   const { data: novels, isLoading: novelsLoading } = useQuery({
     queryKey: ["novels"],
@@ -90,7 +92,11 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
       : selectedNovelId;
 
   const extractMutation = useMutation({
-    mutationFn: (id: number) => api.extractPolicies(id),
+    mutationFn: (id: number) => {
+      setRecentlyTriggered(true);
+      setTimeout(() => setRecentlyTriggered(false), 5000);
+      return api.extractPolicies(id);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobsNovel", targetNovelId] });
       queryClient.invalidateQueries({ queryKey: ["policies", targetNovelId] });
@@ -119,12 +125,16 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
     refetchInterval: (query) => {
       const jobs = query.state.data || [];
       const hasRunning = jobs.some(j => (j.job_type === "extract_policies" || j.job_type === "extract_lore") && (j.status === "running" || j.status === "queued"));
-      return hasRunning || extractMutation.isPending ? 1000 : false;
+      if (hasRunning && recentlyTriggered) {
+        setRecentlyTriggered(false);
+      }
+      return hasRunning || extractMutation.isPending || recentlyTriggered ? 1000 : false;
     }
   });
 
-  const isExtracting = extractMutation.isPending || (activeJobs || []).some(j => (j.job_type === "extract_policies" || j.job_type === "extract_lore") && (j.status === "running" || j.status === "queued"));
+  const isExtracting = extractMutation.isPending || recentlyTriggered || (activeJobs || []).some(j => (j.job_type === "extract_policies" || j.job_type === "extract_lore") && (j.status === "running" || j.status === "queued"));
   const latestExtractionJob = (activeJobs || []).find(j => j.job_type === "extract_policies" || j.job_type === "extract_lore");
+  const isJobDismissed = latestExtractionJob ? dismissedJobIds.includes(latestExtractionJob.id) : false;
 
   const filteredPolicies =
     policies?.filter((p) => {
@@ -350,7 +360,7 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
       </div>
 
       {/* Live Regeneration / Extraction Status Banner */}
-      {(isExtracting || (latestExtractionJob && (latestExtractionJob.status === "completed" || latestExtractionJob.status === "failed"))) && (
+      {(isExtracting || (latestExtractionJob && !isJobDismissed && (latestExtractionJob.status === "completed" || latestExtractionJob.status === "failed"))) && (
         <div
           className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
             isExtracting
@@ -396,17 +406,34 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
           </div>
           <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
             {!isExtracting && (
-              <button
-                onClick={() => {
-                  queryClient.invalidateQueries({ queryKey: ["policies", targetNovelId] });
-                  queryClient.invalidateQueries({ queryKey: ["glossary", targetNovelId] });
-                  queryClient.invalidateQueries({ queryKey: ["jobsNovel", targetNovelId] });
-                }}
-                className="px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition-colors hover:bg-white/10"
-                style={{ borderColor: "var(--color-border)", color: "var(--color-text)" }}
-              >
-                Refresh Data
-              </button>
+              <>
+                <button
+                  onClick={() => {
+                    if (latestExtractionJob) {
+                      setDismissedJobIds((prev) => [...prev, latestExtractionJob.id]);
+                    }
+                    queryClient.invalidateQueries({ queryKey: ["policies", targetNovelId] });
+                    queryClient.invalidateQueries({ queryKey: ["glossary", targetNovelId] });
+                    queryClient.invalidateQueries({ queryKey: ["jobsNovel", targetNovelId] });
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition-colors hover:bg-white/10 cursor-pointer"
+                  style={{ borderColor: "var(--color-border)", color: "var(--color-text)" }}
+                >
+                  Refresh Data
+                </button>
+                <button
+                  onClick={() => {
+                    if (latestExtractionJob) {
+                      setDismissedJobIds((prev) => [...prev, latestExtractionJob.id]);
+                    }
+                  }}
+                  className="p-1.5 rounded-xl text-xs font-semibold border transition-colors hover:bg-white/10 cursor-pointer opacity-70 hover:opacity-100"
+                  style={{ borderColor: "var(--color-border)", color: "var(--color-text)" }}
+                  title="Dismiss banner"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </>
             )}
           </div>
         </div>
