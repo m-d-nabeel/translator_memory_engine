@@ -13,7 +13,6 @@ interface ReaderViewProps {
   font?: ReaderFont;
   lineHeight?: ReaderLineHeight;
   paraMode?: ReaderParaMode;
-  paraMode?: ReaderParaMode;
   maxWidth?: ReaderWidth;
   isProcessing?: boolean;
 }
@@ -30,6 +29,7 @@ export function ReaderView({
   const [displayedParagraphs, setDisplayedParagraphs] = useState<string[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const prevTextRef = useRef(text);
+  const isFirstRender = useRef(true);
 
   // Split by double line break or single line break with indents/blank lines
   const targetParagraphs = text
@@ -39,8 +39,9 @@ export function ReaderView({
 
   useEffect(() => {
     // If text hasn't changed, or it's the first render, just show it immediately
-    if (prevTextRef.current === text && displayedParagraphs.length === 0) {
+    if (prevTextRef.current === text && isFirstRender.current) {
       setDisplayedParagraphs(targetParagraphs);
+      isFirstRender.current = false;
       return;
     }
 
