@@ -50,7 +50,7 @@ async def create_policy(novel_id: int, policy_in: PolicyCreate, db: AsyncSession
         type="ENTITY-NAMING",
         trigger=policy_in.trigger,
         match_forms=json.dumps([policy_in.trigger], ensure_ascii=False),
-        action=json.dumps({"target": policy_in.replacement}, ensure_ascii=False),
+        action=json.dumps({"render_as": policy_in.replacement}, ensure_ascii=False),
         confidence=1.0,
         applies="deterministic",
         note=policy_in.note,
@@ -82,10 +82,10 @@ async def update_policy(
     if policy_in.replacement is not None:
         try:
             action = json.loads(policy.action)
-            action["target"] = policy_in.replacement
+            action["render_as"] = policy_in.replacement
             policy.action = json.dumps(action, ensure_ascii=False)
         except Exception:
-            policy.action = json.dumps({"target": policy_in.replacement}, ensure_ascii=False)
+            policy.action = json.dumps({"render_as": policy_in.replacement}, ensure_ascii=False)
             
     if policy_in.note is not None:
         policy.note = policy_in.note
