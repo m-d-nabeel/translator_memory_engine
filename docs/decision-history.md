@@ -384,3 +384,15 @@ The known error dictionary provides the missing context.
 - Database: SQLite with SQLAlchemy handles policies, chapters, and novels.
 - UX: Real-time non-blocking text replacement implemented in the Reader View.
 - Next: Explore Semantic DB and low-confidence policy CRUD UI (moved to future work in `PLAN.md`).
+
+---
+
+## D16 — Future Work Scope Reduction (Critical Engineering Review)
+
+**Context:** Following the completion of the Web UI and decoupled core, the project had accumulated 10 outstanding "Future Work" items in `PLAN.md` (including Vector DB terminology matching, Story Graph extraction, automated pattern mining, and temporal policy versioning).
+**Decision:** We conducted a rigorous Critical Engineering Review and formally rejected 8 of the 10 proposed future features for introducing massive architectural complexity without proportional benefit.
+
+- **Rejected Vector DBs:** Semantic embedding conflates distinct entities (e.g. two different martial arts sects); lexical matching (SQLite FTS5/Levenshtein) is mathematically superior for catching terminology typos.
+- **Rejected Story Memory/Graphs:** Too brittle; novel world states are too fluid for rigid graph databases without massive hallucination risks.
+- **Rejected Context-Dependent Resolution & Pattern Mining:** Solving speaker attribution deterministically is an unsolved NLP problem; automated LLM pattern mining yields low-quality rules. Let the LLM handle context at runtime and let users curate stylistic rules manually.
+- **Accepted:** We will only pursue (1) Manual Language Memory Example Banks (allowing users to save style snippets in the UI to inject into prompts) and (2) Modular Entity Validators (cheap regex/string checks to ensure canonical names survived the LLM rewrite). Low-Confidence UI management was also removed from the plan because it has already been fully implemented.
