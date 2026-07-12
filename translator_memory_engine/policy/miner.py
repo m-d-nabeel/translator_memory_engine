@@ -563,7 +563,17 @@ def _verify_with_llm(candidates: List[Dict[str, Any]], llm_client: Any, chunk_si
                 )
                 content = response["choices"][0]["message"]["content"]
 
-            parsed = json.loads(content)
+            # Strip markdown formatting if the model wrapped the JSON
+            clean_content = content.strip()
+            if clean_content.startswith("```json"):
+                clean_content = clean_content[7:]
+            elif clean_content.startswith("```"):
+                clean_content = clean_content[3:]
+            if clean_content.endswith("```"):
+                clean_content = clean_content[:-3]
+            clean_content = clean_content.strip()
+
+            parsed = json.loads(clean_content)
             results_list = parsed.get("results", [])
 
             # Map LLM results back to our chunk
@@ -589,7 +599,8 @@ def _verify_with_llm(candidates: List[Dict[str, Any]], llm_client: Any, chunk_si
                     verified_candidates.append(candidate)
 
         except Exception as e:
-            logger.warning(f"LLM verification failed for micro-batch (falling back to lexical): {e}")
+            # We catch JSONDecodeError and any other API errors
+            logger.warning(f"LLM verification failed for micro-batch (falling back to lexical): {e}\nRaw LLM output: {content if 'content' in locals() else 'None'}")
             for candidate in chunk:
                 candidate["ai_verified"] = False
                 verified_candidates.append(candidate)
