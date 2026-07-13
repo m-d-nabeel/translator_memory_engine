@@ -31,7 +31,8 @@ export function Reader() {
   >(null);
 
   const reprocessMutation = useMutation({
-    mutationFn: (doLlm: boolean) => api.reprocessChapter(id, doLlm),
+    mutationFn: ({ doLlm, force }: { doLlm: boolean; force: boolean }) =>
+      api.reprocessChapter(id, doLlm, force),
     onMutate: () => {
       setProcessingTriggeredAt(Date.now());
       queryClient.setQueryData(["chapterStatus", id], (old: any) =>
@@ -68,8 +69,17 @@ export function Reader() {
     refetchInterval: (query) =>
       reprocessMutation.isPending ||
       !!processingTriggeredAt ||
-      query.state.data?.status === "processing" ||
-      query.state.data?.status === "pending"
+      (query.state.data?.status &&
+        [
+          "processing",
+          "queued",
+          "cleaning",
+          "applying_rules",
+          "rewriting",
+          "validating",
+          "extracting_lore",
+          "extracting",
+        ].includes(query.state.data.status))
         ? 1500
         : false,
   });
@@ -81,17 +91,35 @@ export function Reader() {
     refetchInterval: (query) =>
       reprocessMutation.isPending ||
       !!processingTriggeredAt ||
-      query.state.data?.status === "processing" ||
-      query.state.data?.status === "pending"
+      (query.state.data?.status &&
+        [
+          "processing",
+          "queued",
+          "cleaning",
+          "applying_rules",
+          "rewriting",
+          "validating",
+          "extracting_lore",
+          "extracting",
+        ].includes(query.state.data.status))
         ? 1500
         : false,
   });
 
-  const isCurrentlyProcessing =
-    chapterData?.status === "processing" ||
-    chapterData?.status === "pending" ||
-    chapter?.status === "processing" ||
-    chapter?.status === "pending";
+  const activeStatuses = [
+    "processing",
+    "queued",
+    "cleaning",
+    "applying_rules",
+    "rewriting",
+    "validating",
+    "extracting_lore",
+    "extracting",
+  ];
+  const isCurrentlyProcessing = Boolean(
+    (chapterData?.status && activeStatuses.includes(chapterData.status)) ||
+    (chapter?.status && activeStatuses.includes(chapter.status)),
+  );
 
   useEffect(() => {
     if (processingTriggeredAt) {
@@ -100,8 +128,13 @@ export function Reader() {
         chapterData?.status === "failed" ||
         chapter?.status === "completed" ||
         chapter?.status === "failed";
-      if (isDone && Date.now() - processingTriggeredAt > 2000) {
-        setProcessingTriggeredAt(null);
+      if (isDone) {
+        const elapsed = Date.now() - processingTriggeredAt;
+        const delay = Math.max(0, 2000 - elapsed);
+        const timer = setTimeout(() => {
+          setProcessingTriggeredAt(null);
+        }, delay);
+        return () => clearTimeout(timer);
       }
     }
   }, [chapterData?.status, chapter?.status, processingTriggeredAt]);
@@ -159,7 +192,7 @@ export function Reader() {
       }
       setInitialModeSetFor(id);
     }
-  }, [id, chapter, allChapters, initialModeSetFor]);
+  }, [id, chapter, allChapters, initialModeSetFor, setViewMode]);
 
   const prevStatusRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -173,7 +206,7 @@ export function Reader() {
       }
     }
     prevStatusRef.current = chapter?.status;
-  }, [chapter?.status, chapter?.refined_text, queryClient]);
+  }, [chapter?.status, chapter?.refined_text, queryClient, setViewMode]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -209,7 +242,7 @@ export function Reader() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [neighbors, navigate, chapterData, showSettings, showToc]);
+  }, [neighbors, navigate, chapterData, showSettings, showToc, setViewMode]);
 
   // Auto-hide controls when scrolling down, show when scrolling up
   useEffect(() => {
@@ -299,8 +332,6 @@ export function Reader() {
       </div>
     );
   }
-
-  // We handle processing states inside the ReaderView now so the user can see the old text while waiting
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--color-bg)] text-[var(--color-text)] transition-colors duration-200">
@@ -399,17 +430,27 @@ export function Reader() {
             {/* Process Button */}
             <button
               onClick={() => {
-                if (isChapterProcessing) return;
-                if (
-                  confirm(
-                    "Process this chapter? It will run through the latest rules again.",
-                  )
-                ) {
-                  reprocessMutation.mutate(true);
+                if (isChapterProcessing) {
+                  if (
+                    !confirm(
+                      "This chapter is currently processing. If it got stuck or failed, you can force it to restart. Force restart?",
+                    )
+                  ) {
+                    return;
+                  }
+                  reprocessMutation.mutate({ doLlm: true, force: true });
+                } else {
+                  if (
+                    !confirm(
+                      "Process this chapter? It will run through the latest rules again.",
+                    )
+                  ) {
+                    return;
+                  }
+                  reprocessMutation.mutate({ doLlm: true, force: false });
                 }
               }}
-              disabled={isChapterProcessing}
-              title="Process Chapter"
+              title={isChapterProcessing ? "Force Restart" : "Process Chapter"}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer hover:bg-white/5 disabled:opacity-70 disabled:cursor-not-allowed"
               style={{
                 borderColor: "var(--color-border)",
@@ -425,21 +466,19 @@ export function Reader() {
             </button>
 
             {/* Split Compare Button (Desktop / Tablet) */}
-            {(hasRefined || hasOriginal) && (
-              <button
-                onClick={() => setSplitMode(!splitMode)}
-                title="Toggle Side-by-Side Comparison Mode"
-                className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                  splitMode
-                    ? "shadow-md glow-accent bg-[var(--color-accent)] text-white border-transparent"
-                    : "hover:bg-white/5"
-                }`}
-                style={{ borderColor: "var(--color-border)" }}
-              >
-                <Split className="w-3.5 h-3.5" />
-                <span>Compare</span>
-              </button>
-            )}
+            <button
+              onClick={() => setSplitMode(!splitMode)}
+              title="Toggle Side-by-Side Comparison Mode"
+              className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                splitMode
+                  ? "shadow-md glow-accent bg-[var(--color-accent)] text-white border-transparent"
+                  : "hover:bg-white/5"
+              }`}
+              style={{ borderColor: "var(--color-border)" }}
+            >
+              <Split className="w-3.5 h-3.5" />
+              <span>Compare</span>
+            </button>
 
             {/* Quick Font Size Controls */}
             <div
@@ -546,9 +585,7 @@ export function Reader() {
               lineHeight={settings.lineHeight}
               paraMode={settings.paraMode}
               maxWidth={splitMode ? "full" : settings.maxWidth}
-              isProcessing={
-                chapter.status === "processing" || chapter.status === "pending"
-              }
+              isProcessing={isCurrentlyProcessing}
             />
           </div>
 
@@ -572,6 +609,7 @@ export function Reader() {
                 lineHeight={settings.lineHeight}
                 paraMode={settings.paraMode}
                 maxWidth="full"
+                isProcessing={isCurrentlyProcessing}
               />
             </div>
           )}

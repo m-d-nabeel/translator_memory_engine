@@ -17,9 +17,19 @@ class TestShieldEntities:
         glossary = [{"canonical": "Li Qing", "match": ["Li Qing", "Li"]}]
         shielded, restore_map = shield_entities(text, glossary)
         assert "Li Qing" not in shielded
-        # "Li" should also be shielded (it's in the match list)
+        assert " Li smiled" not in shielded
         restored = restore_entities(shielded, restore_map)
-        assert "Li Qing" in restored
+        assert restored == "Li Qing walked. Li Qing smiled."
+
+    def test_global_longest_match_wins_across_glossary_rows(self):
+        text = "Li Qing arrived."
+        glossary = [
+            {"canonical": "Li", "match": ["Li"]},
+            {"canonical": "Li Qing", "match": ["Li Qing"]},
+        ]
+        shielded, restore_map = shield_entities(text, glossary)
+        assert shielded == "__ENT_0__ arrived."
+        assert restore_map == {"__ENT_0__": "Li Qing"}
 
     def test_preserves_non_glossary_text(self):
         text = "The boy ate the porridge."
@@ -48,10 +58,10 @@ class TestRestoreEntities:
         assert "Dominic" in restored
         assert "__ENT_" not in restored
 
-    def test_cleans_unrecognized_placeholders(self):
+    def test_preserves_unrecognized_placeholders_for_validation(self):
         text = "__ENT_99__ laughed."
         restored = restore_entities(text, {})
-        assert "__ENT_" not in restored
+        assert "__ENT_99__" in restored
         assert "laughed" in restored
 
     def test_roundtrip(self):

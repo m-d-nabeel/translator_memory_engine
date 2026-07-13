@@ -111,9 +111,8 @@ def clear_database(db_path: Path, args: argparse.Namespace) -> None:
         conn.close()
         return
 
-    # 2. Clear Refined Text & Chapter State (--clear-refined or --all)
-    if args.clear_refined or args.all:
-
+    # 2. Clear Refined Text & Chapter State (--clear-refined or --all or --clear-all-db-except-chapters)
+    if args.clear_refined or args.all or args.clear_all_db_except_chapters:
         # Build exact query condition based on whether novel_id is specified
         if args.novel_id is not None:
             query_where = (
@@ -130,32 +129,32 @@ def clear_database(db_path: Path, args: argparse.Namespace) -> None:
         else:
             print("✓ No chapters with refined text or processed status found.")
 
-    # 3. Clear Policies (--clear-policies or --all)
-    if args.clear_policies or args.all:
+    # 3. Clear Policies (--clear-policies or --all or --clear-all-db-except-chapters)
+    if args.clear_policies or args.all or args.clear_all_db_except_chapters:
         count = get_table_count(conn, "policies", novel_filter_direct, params)
         if count > 0:
             actions.append(("policies table (extracted rules)", novel_filter_direct, params, count, False))
         else:
             print("✓ No extracted policies found.")
 
-    # 4. Clear Glossary & Character Lore (--clear-glossary or --all)
-    if args.clear_glossary or args.all:
+    # 4. Clear Glossary & Character Lore (--clear-glossary or --all or --clear-all-db-except-chapters)
+    if args.clear_glossary or args.all or args.clear_all_db_except_chapters:
         count = get_table_count(conn, "glossary", novel_filter_direct, params)
         if count > 0:
             actions.append(("glossary table (character lore & terms)", novel_filter_direct, params, count, False))
         else:
             print("✓ No glossary/lore entries found.")
 
-    # 5. Clear Processing Jobs (--clear-jobs or --all)
-    if args.clear_jobs or args.all:
+    # 5. Clear Processing Jobs (--clear-jobs or --all or --clear-all-db-except-chapters)
+    if args.clear_jobs or args.all or args.clear_all_db_except_chapters:
         count = get_table_count(conn, "processing_jobs", novel_filter_job, params)
         if count > 0:
             actions.append(("processing_jobs table", novel_filter_job, params, count, False))
         else:
             print("✓ No processing jobs found.")
 
-    # 6. Clear Style Snippets (--clear-snippets)
-    if args.clear_snippets:
+    # 6. Clear Style Snippets (--clear-snippets or --clear-all-db-except-chapters)
+    if args.clear_snippets or args.clear_all_db_except_chapters:
         count = get_table_count(conn, "style_snippets", novel_filter_direct, params)
         if count > 0:
             actions.append(("style_snippets table", novel_filter_direct, params, count, False))
@@ -269,6 +268,11 @@ def main() -> None:
         action="store_true",
         help="Completely WIPE all database tables back to an empty state (including all chapters and novels).",
     )
+    parser.add_argument(
+        "--clear-all-db-except-chapters",
+        action="store_true",
+        help="Clear all database tables EXCEPT chapters and novels (clears policies, glossary, jobs, snippets, and resets refined_text).",
+    )
 
     # Database specific flags
     db_group = parser.add_argument_group("Database Operations")
@@ -352,6 +356,7 @@ def main() -> None:
         [
             args.all,
             args.reset_db,
+            args.clear_all_db_except_chapters,
             args.clear_refined,
             args.clear_policies,
             args.clear_glossary,

@@ -153,15 +153,15 @@ export const api = {
     return request<Chapter[]>(`/novels/${novelId}/chapters${params}`);
   },
 
-  processChapter: (chapterId: number, doLlm = true) =>
+  processChapter: (chapterId: number, doLlm = true, force = false) =>
     request<Chapter>(`/chapters/${chapterId}/process`, {
       method: "POST",
-      body: JSON.stringify({ do_llm: doLlm }),
+      body: JSON.stringify({ do_llm: doLlm, force }),
     }),
-  reprocessChapter: (chapterId: number, doLlm = true) =>
+  reprocessChapter: (chapterId: number, doLlm = true, force = false) =>
     request<Chapter>(`/chapters/${chapterId}/reprocess`, {
       method: "POST",
-      body: JSON.stringify({ do_llm: doLlm }),
+      body: JSON.stringify({ do_llm: doLlm, force }),
     }),
   chapterStatus: (chapterId: number) =>
     request<Chapter>(`/chapters/${chapterId}/status`),

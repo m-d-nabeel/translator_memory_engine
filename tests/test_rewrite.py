@@ -91,7 +91,7 @@ class TestPrepass:
 class TestPromptBuilder:
     def test_includes_prompted_instructions(self):
         p = _policy("Dominic", ["Dominic"], applies="prompted")
-        prompt = build_prompt("Dominic left.", [p])
+        _, prompt = build_prompt("Dominic left.", [p])
         assert "Dominic" in prompt
 
 
@@ -131,7 +131,7 @@ class TestStripEcho:
 class TestPromptModes:
     def test_reference_mode_marks_published_translation(self):
         p = _policy("Dominic", ["Dominic"], applies="prompted")
-        prompt = build_prompt("MTL text", [p], reference="ORIGINAL TEXT")
+        _, prompt = build_prompt("MTL text", [p], reference="ORIGINAL TEXT")
         assert "PUBLISHED TRANSLATION" in prompt
         assert "MACHINE TRANSLATION TO REPAIR" in prompt
         assert "ORIGINAL TEXT" in prompt
@@ -139,23 +139,23 @@ class TestPromptModes:
     def test_style_profile_mode_includes_excerpts(self):
         p = _policy("Dominic", ["Dominic"], applies="prompted")
         profile = ["Calron frowned.", "The elder laughed."]
-        prompt = build_prompt("MTL text", [p], style_profile=profile)
-        assert "NO published translation" in prompt
+        _, prompt = build_prompt("MTL text", [p], style_profile=profile)
+        assert "VoiceReference" in prompt
         assert "Calron frowned." in prompt
         assert "PUBLISHED TRANSLATION" not in prompt
 
     def test_fallback_mode_uses_style_anchor(self):
         p = _policy("Dominic", ["Dominic"], applies="prompted")
-        prompt = build_prompt("MTL text", [p])
-        assert "voice" in prompt.lower()
+        _, prompt = build_prompt("MTL text", [p])
+        assert "MACHINE TRANSLATION TO REPAIR" in prompt
         assert "PUBLISHED TRANSLATION" not in prompt
 
     def test_prompt_includes_speaker_attribution_and_dialogue_disentanglement(self):
         p = _policy("Dominic", ["Dominic"], applies="prompted")
-        prompt_ref = build_prompt("MTL text", [p], reference="ORIGINAL TEXT")
-        prompt_fallback = build_prompt("MTL text", [p])
-        assert "Speaker Attribution & Sentence Ownership (Dialogue Disentanglement)" in prompt_ref
-        assert "Speaker Attribution & Sentence Ownership (Dialogue Disentanglement)" in prompt_fallback
+        _, prompt_ref = build_prompt("MTL text", [p], reference="ORIGINAL TEXT")
+        _, prompt_fallback = build_prompt("MTL text", [p])
+        assert "Speaker Attribution & Sentence Ownership" in prompt_ref
+        assert "Speaker Attribution & Sentence Ownership" in prompt_fallback
 
     def test_prompt_includes_active_cast(self):
         p = _policy("Dominic", ["Dominic"], applies="prompted")
@@ -165,10 +165,50 @@ class TestPromptModes:
                 "metadata": {"gender": "male", "race_or_identity": "Human", "speech_style": "Polite"},
             }
         ]
-        prompt = build_prompt("MTL text", [p], active_cast_entries=active_cast)
+        _, prompt = build_prompt("MTL text", [p], active_cast_entries=active_cast)
         assert "ACTIVE SCENE CAST" in prompt
         assert "- Dominic (male), Human, Polite" in prompt
         assert "Do NOT inject their background" in prompt
+
+
+class TestRewriteBoundaries:
+    def test_known_errors_respect_boundaries_and_protected_terms(self):
+        from translator_memory_engine.rewrite.rewriter import apply_known_errors
+
+        assert apply_known_errors("Whee!") == "Whee!"
+        assert apply_known_errors("Profit!", protected_terms=["Profit!"]) == "Profit!"
+
+    def test_known_error_trace_uses_final_output_key(self):
+        from translator_memory_engine.rewrite.rewriter import apply_known_errors
+
+        text, trace = apply_known_errors("Hee!", with_trace=True)
+        assert text == "Heh!"
+        assert trace[0]["output"] == "Heh!"
+
+    def test_reference_alignment_never_emits_empty_chunk(self):
+        from translator_memory_engine.rewrite.rewriter import _align_reference_chunks
+
+        aligned = _align_reference_chunks(["a\n\nb", "c\n\nd", "e\n\nf"], "r1\n\nr2")
+        assert aligned == ["r1", "r2", "r2"]
+
+    def test_active_dialogue_can_cross_hard_cap_with_bounded_overflow(self):
+        from translator_memory_engine.rewrite.rewriter import _chunk_text
+
+        first = '"' + "a" * 3000 + '"'
+        second = '"' + "b" * 2000 + '"'
+        assert len(_chunk_text(first + "\n\n" + second)) == 1
+
+    def test_integrity_rejects_lost_paragraphs_and_numbers(self):
+        from translator_memory_engine.rewrite.rewriter import _chunk_integrity_violations
+
+        violations = _chunk_integrity_violations("First 7.\n\nSecond.", "First.")
+        assert "paragraph count decreased" in violations
+        assert "missing numeric values: 7" in violations
+
+    def test_integrity_accepts_rephrased_structure_with_numbers(self):
+        from translator_memory_engine.rewrite.rewriter import _chunk_integrity_violations
+
+        assert _chunk_integrity_violations("First 7.\n\nSecond.", "Seven is 7.\n\nThe second remains.") == []
 
 
 class TestRewriteModeSelection:

@@ -167,8 +167,13 @@ export function MemoryEngineTab({ onSelectNovel }: MemoryEngineTabProps) {
           Date.now() - new Date(j.completed_at || j.started_at || 0).getTime() <
             15000,
       );
-      if (completedRecent && Date.now() - processingStartedAt > 2000) {
-        setProcessingStartedAt(null);
+      if (completedRecent) {
+        const elapsed = Date.now() - processingStartedAt;
+        const delay = Math.max(0, 2000 - elapsed);
+        const timer = setTimeout(() => {
+          setProcessingStartedAt(null);
+        }, delay);
+        return () => clearTimeout(timer);
       }
     }
   }, [activeJobs, processingStartedAt]);

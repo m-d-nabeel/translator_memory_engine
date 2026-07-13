@@ -8,10 +8,12 @@ Three stages:
 This is the heart of the system (PLAN.md §7).
 """
 
+import json
+import logging
 import re
 import unicodedata
 from collections import defaultdict
-from typing import Dict, List, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 from translator_memory_engine.extract.entity import (
     _STOP_PREFIXES,
@@ -454,6 +456,8 @@ def _clean_match_forms(canonical: str, aliases: List[str]) -> Tuple[str, List[st
     Returns:
         (cleaned_canonical, cleaned_alias_list)
     """
+    stop_words_lower = {w.lower() for w in _STOP_WORDS}
+    stop_prefixes_lower = {w.lower() for w in _STOP_PREFIXES}
 
     def _clean(form: str) -> str:
         f = form.strip().strip("'`\".,;:!?()[]{}")
@@ -471,7 +475,7 @@ def _clean_match_forms(canonical: str, aliases: List[str]) -> Tuple[str, List[st
         if not ca or ca == canonical:
             continue
         first = ca.split()[0] if ca.split() else ""
-        if first in _STOP_WORDS or first in _STOP_PREFIXES:
+        if first.lower() in stop_words_lower or first.lower() in stop_prefixes_lower:
             continue  # sentence fragment, not a name variant
         if ca not in seen:
             seen.add(ca)
@@ -496,6 +500,228 @@ def _is_generic(canonical: str) -> bool:
         return tokens[0] in _GENERIC_STANDALONE
     # Multi-word: only generic if ALL words are standalone generics
     return all(t in _GENERIC_STANDALONE for t in tokens)
+
+
+def _verify_with_llm(
+    candidates: List[Dict[str, Any]],
+    llm_client: Any,
+    model: str = "qwen2.5",
+    chunk_size: int = 5,
+) -> List[Dict[str, Any]]:
+    """Verify candidate entities with a local LLM to prune false positives (Stage 2b).
+
+    Uses micro-batching to prevent context window degradation and JSON truncation in
+    quantized local models (e.g. Qwen-2.5 1.5B/3B).
+    """
+    if not candidates:
+        return []
+
+    logger = logging.getLogger(__name__)
+    verified_candidates = []
+
+    for i in range(0, len(candidates), chunk_size):
+        chunk = candidates[i : i + chunk_size]
+
+        # Prepare the payload for this micro-batch
+        prompt_data = []
+        for c in chunk:
+            prompt_data.append(
+                {
+                    "id": c["id"],
+                    "canonical": c["canonical"],
+                    "aliases": c["aliases"],
+                    "sentences": c["contexts"][:2],  # Cap sentences to save tokens
+                }
+            )
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a strict binary classifier for fiction entities. Output ONLY valid proper nouns (names of specific characters, unique places, unique items). "
+                    "Reject common nouns, verbs, sentence fragments, and conversational text.\n"
+                    "Output a JSON object with a single key 'results' containing an array:\n"
+                    '{"results": [{"id": <int>, "status": "valid" | "reject", "canonical": "<clean name>", "aliases": ["<alias1>"]}]}'
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "candidates": [
+                            {
+                                "id": 1,
+                                "canonical": "John Smith",
+                                "aliases": [],
+                                "sentences": ["John Smith drew his sword."],
+                            },
+                            {
+                                "id": 2,
+                                "canonical": "Seems Centipedes",
+                                "aliases": [],
+                                "sentences": ["It Seems Centipedes are everywhere."],
+                            },
+                            {
+                                "id": 3,
+                                "canonical": "Village",
+                                "aliases": [],
+                                "sentences": ["He walked to the Village."],
+                            },
+                            {
+                                "id": 4,
+                                "canonical": "Countess Noella",
+                                "aliases": ["Noella"],
+                                "sentences": [
+                                    "Countess Noella smiled.",
+                                    "Noella looked away.",
+                                ],
+                            },
+                        ]
+                    }
+                ),
+            },
+            {
+                "role": "assistant",
+                "content": json.dumps(
+                    {
+                        "results": [
+                            {
+                                "id": 1,
+                                "status": "valid",
+                                "canonical": "John Smith",
+                                "aliases": [],
+                            },
+                            {
+                                "id": 2,
+                                "status": "reject",
+                                "canonical": "Seems Centipedes",
+                                "aliases": [],
+                            },
+                            {
+                                "id": 3,
+                                "status": "reject",
+                                "canonical": "Village",
+                                "aliases": [],
+                            },
+                            {
+                                "id": 4,
+                                "status": "valid",
+                                "canonical": "Countess Noella",
+                                "aliases": ["Noella"],
+                            },
+                        ]
+                    }
+                ),
+            },
+            {"role": "user", "content": json.dumps({"candidates": prompt_data})},
+        ]
+
+        try:
+            # Streamlined invocation working with both local llama.cpp or OpenAI client wrapper
+            if hasattr(llm_client, "chat") and hasattr(llm_client.chat, "completions"):
+                response = llm_client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=0.1,
+                    response_format={"type": "json_object"},
+                )
+                content = response.choices[0].message.content
+            else:
+                # Direct llama_cpp.Llama in-memory client
+                response = llm_client.create_chat_completion(
+                    messages=messages,
+                    temperature=0.1,
+                    response_format={"type": "json_object"},
+                )
+                content = response["choices"][0]["message"]["content"]
+
+            # Strip markdown formatting if the model wrapped the JSON
+            clean_content = content.strip()
+            if clean_content.startswith("```json"):
+                clean_content = clean_content[7:]
+            elif clean_content.startswith("```"):
+                clean_content = clean_content[3:]
+            if clean_content.endswith("```"):
+                clean_content = clean_content[:-3]
+            clean_content = clean_content.strip()
+
+            try:
+                parsed = json.loads(clean_content)
+                if isinstance(parsed, list):
+                    results_list = parsed
+                elif isinstance(parsed, dict):
+                    results_list = parsed.get("results", [])
+                    # fallback if LLM used a different key
+                    if not results_list and "candidates" in parsed:
+                        results_list = parsed.get("candidates", [])
+                else:
+                    results_list = []
+            except Exception as json_err:
+                import re
+
+                logger.warning(f"JSON parsing failed ({json_err}). Attempting regex recovery on truncated output.")
+                results_list = []
+                # Find all complete dictionary blocks within the truncated string
+                blocks = re.findall(r"\{[^{}]*\}", clean_content)
+                for block in blocks:
+                    try:
+                        b = json.loads(block)
+                        if "id" in b and "status" in b:
+                            results_list.append(b)
+                    except Exception:
+                        pass
+
+                if not results_list:
+                    # If recovery completely fails, raise so the outer try-except catches it
+                    raise ValueError(f"Could not recover any JSON objects. Original error: {json_err}")
+
+            # Map LLM results back to our chunk (safely handle string IDs)
+            results_by_id = {}
+            for r in results_list:
+                if isinstance(r, dict) and r.get("id") is not None:
+                    try:
+                        results_by_id[int(r["id"])] = r
+                    except (ValueError, TypeError):
+                        pass
+
+            for candidate in chunk:
+                llm_result = results_by_id.get(candidate["id"])
+
+                status = ""
+                if llm_result and "status" in llm_result and isinstance(llm_result["status"], str):
+                    status = llm_result["status"].lower()
+
+                if status == "valid":
+                    # Keep it and apply verified canonical/aliases if refined by LLM
+                    candidate["ai_verified"] = True
+                    if "canonical" in llm_result and isinstance(llm_result["canonical"], str):
+                        candidate["canonical"] = llm_result["canonical"]
+                    if "aliases" in llm_result and isinstance(llm_result["aliases"], list):
+                        candidate["aliases"] = [a for a in llm_result["aliases"] if isinstance(a, str)]
+                    verified_candidates.append(candidate)
+                elif status == "reject":
+                    # Safely reject
+                    logger.debug(f"LLM rejected candidate: {candidate['canonical']}")
+                    continue
+                else:
+                    # If the LLM returned valid JSON but omitted this ID, or returned an unknown status,
+                    # treat it as a rejection to maintain strictness, rather than letting it slip through.
+                    logger.debug(
+                        f"LLM omitted or returned invalid status for candidate {candidate['id']} ({candidate['canonical']}). Rejecting."
+                    )
+                    continue
+
+        except Exception as e:
+            # We catch JSONDecodeError and any other API errors
+            logger.warning(
+                f"LLM verification failed for micro-batch: {e}\nRaw LLM output: {content if 'content' in locals() else 'None'}"
+            )
+            # If the LLM completely fails to parse for this micro-batch, do NOT fall back to accepting all candidates.
+            # Doing so pollutes the database with the exact lexical false-positives we are trying to filter out.
+            # We strictly reject them.
+            continue
+
+    return verified_candidates
 
 
 # ----------------------------------------------------------------------- #
@@ -525,6 +751,8 @@ def mine_policies(
     confidence_per_occurrence: float = 0.03,
     confidence_cap: float = 0.99,
     deterministic_threshold: float = 0.8,
+    llm_client: Any = None,
+    llm_model: str = "qwen2.5",
 ) -> List[Policy]:
     """Convert raw signals into verified policies.
 
@@ -538,6 +766,8 @@ def mine_policies(
         confidence_per_occurrence: Confidence increment per occurrence.
         confidence_cap: Maximum confidence score.
         deterministic_threshold: Confidence above which policy is deterministic.
+        llm_client: Optional local LLM client for semantic verification.
+        llm_model: Model name sent to an OpenAI-compatible local endpoint.
 
     Returns:
         List of Policy objects, sorted by confidence (descending).
@@ -545,44 +775,23 @@ def mine_policies(
     # Stage 1: Aggregate
     groups = _aggregate_signals(signals)
 
-    # Stage 2: Cluster variants
+    # Stage 2a: Cluster variants lexically
     clustered = _cluster_variants(groups, similarity_threshold=similarity_threshold)
 
-    # Stage 3: Score and build policies
-    policies: List[Policy] = []
-    policy_id = 0
+    # Stage 2b: Build candidate list for verification
+    candidates_to_verify = []
+    candidate_id = 1
 
-    for _norm_key, group_signals in clustered.items():
-        # Check min_support: how many distinct chapters?
+    for norm_key, group_signals in clustered.items():
         chapters_present: Set[int] = {s.chapter for s in group_signals}
         if len(chapters_present) < min_support:
             continue
 
-        # Pick canonical form and aliases
         canonical, aliases = _pick_canonical(group_signals)
-
-        # Clean surface forms (strip quotes/articles, drop fragment aliases)
         canonical, aliases = _clean_match_forms(canonical, aliases)
-        if not canonical:
+        if not canonical or _is_generic(canonical) or canonical.split()[0] in _FRAGMENT_LEADS:
             continue
 
-        # Rules backend: drop clear false positives (generic nouns / standalone titles)
-        if _is_generic(canonical):
-            continue
-
-        # Drop clause-fragment candidates led by a sentence-initial verb
-        # (e.g. "Hearing Calron," is the start of a sentence, not a name).
-        if canonical.split()[0] in _FRAGMENT_LEADS:
-            continue
-
-        # Count occurrences
-        form_counts: Dict[str, int] = defaultdict(int)
-        for s in group_signals:
-            form_counts[s.text] += 1
-        total_occurrences = sum(form_counts.values())
-        canonical_count = form_counts[canonical]
-
-        # Collect a few example sentences (Evidence layer) for LLM review context
         example_contexts: List[str] = []
         for s in group_signals:
             ctx = (s.context or "").strip()
@@ -591,7 +800,41 @@ def mine_policies(
             if len(example_contexts) >= 3:
                 break
 
-        # Compute scores
+        candidates_to_verify.append(
+            {
+                "id": candidate_id,
+                "norm_key": norm_key,
+                "canonical": canonical,
+                "aliases": aliases,
+                "contexts": example_contexts,
+                "chapters_present": chapters_present,
+                "group_signals": group_signals,
+                "ai_verified": False,
+            }
+        )
+        candidate_id += 1
+
+    # Apply LLM verification if a client is provided
+    if llm_client:
+        candidates_to_verify = _verify_with_llm(candidates_to_verify, llm_client, model=llm_model)
+
+    # Stage 3: Score and build policies
+    policies: List[Policy] = []
+    policy_id = 0
+
+    for c in candidates_to_verify:
+        group_signals = c["group_signals"]
+        canonical = c["canonical"]
+        aliases = c["aliases"]
+        chapters_present = c["chapters_present"]
+        ai_verified = c.get("ai_verified", False)
+
+        form_counts: Dict[str, int] = defaultdict(int)
+        for s in group_signals:
+            form_counts[s.text] += 1
+        total_occurrences = sum(form_counts.values())
+        canonical_count = form_counts.get(canonical, total_occurrences)
+
         freq = score_frequency(len(chapters_present), total_chapters)
         consistency = score_consistency(canonical_count, total_occurrences)
 
@@ -609,16 +852,15 @@ def mine_policies(
             cap=confidence_cap,
         )
 
+        # AI Boost: Verified entities get a major confidence boost
+        if ai_verified:
+            confidence = max(confidence, 0.85)
+
         if confidence < min_confidence:
             continue
 
-        # Build match list: canonical + all aliases
         match_forms = [canonical] + sorted(set(aliases))
-
-        # Determine applies mode
         applies = "deterministic" if confidence >= deterministic_threshold else "prompted"
-
-        # Infer type
         policy_type = _infer_type(group_signals)
 
         policy_id += 1
@@ -633,7 +875,7 @@ def mine_policies(
                 confidence=round(confidence, 3),
                 scores=scores,
                 evidence=sorted(chapters_present),
-                contexts=example_contexts,
+                contexts=c["contexts"],
             )
         )
 

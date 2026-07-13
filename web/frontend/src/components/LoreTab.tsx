@@ -45,7 +45,7 @@ function DuplicateClusterItem({
   const [targetId, setTargetId] = useState<number>(cluster.target.id);
   const targetEntry = useMemo(
     () => allMembers.find((m) => m.id === targetId) || cluster.target,
-    [allMembers, targetId],
+    [allMembers, targetId, cluster.target],
   );
   const otherCandidates = useMemo(
     () => allMembers.filter((m) => m.id !== targetId),
@@ -498,8 +498,13 @@ export function LoreTab({ novelId }: LoreTabProps) {
           Date.now() - new Date(j.completed_at || j.started_at || 0).getTime() <
             15000,
       );
-      if (completedRecent && Date.now() - processingStartedAt > 2000) {
-        setProcessingStartedAt(null);
+      if (completedRecent) {
+        const elapsed = Date.now() - processingStartedAt;
+        const delay = Math.max(0, 2000 - elapsed);
+        const timer = setTimeout(() => {
+          setProcessingStartedAt(null);
+        }, delay);
+        return () => clearTimeout(timer);
       }
     }
   }, [activeJobs, processingStartedAt]);

@@ -1,11 +1,14 @@
 import json
 import logging
 
+from openai import OpenAI
 from sqlalchemy import select
+from starlette.concurrency import run_in_threadpool
 
 from translator_memory_engine.extract import extract_signals
 from translator_memory_engine.memory.store import PolicyStore
 from translator_memory_engine.policy.miner import mine_policies
+from web.backend.config import settings
 from web.backend.db.database import async_session
 from web.backend.db.models import GlossaryEntry, Policy
 
@@ -70,12 +73,24 @@ async def extract_policies_for_novel(novel_id: int):
             total_chapters = len(pipeline_chapters)
             logger.info(f"Loaded {total_chapters} original chapters for extraction.")
 
-            # 2. Extract signals
-            signals = extract_signals(pipeline_chapters, source_languages=[source_language])
+            # 2. Extract signals (Run in thread to prevent blocking event loop)
+            signals = await run_in_threadpool(extract_signals, pipeline_chapters, source_languages=[source_language])
             logger.info(f"Extracted {len(signals)} raw signals.")
 
-            # 3. Mine policies
-            policies = mine_policies(
+            # Setup LLM client for semantic verification
+            try:
+                llm_client = OpenAI(
+                    base_url=settings.LOCAL_LLM_BASE_URL,
+                    api_key=settings.LOCAL_LLM_API_KEY,
+                )
+                logger.info("Instantiated local LLM client for semantic verification.")
+            except Exception as e:
+                logger.warning(f"Could not instantiate OpenAI client for semantic verification: {e}")
+                llm_client = None
+
+            # 3. Mine policies (Run in thread to prevent blocking event loop on sync HTTP calls)
+            policies = await run_in_threadpool(
+                mine_policies,
                 signals,
                 total_chapters=total_chapters,
                 min_support=2,
@@ -84,6 +99,8 @@ async def extract_policies_for_novel(novel_id: int):
                 confidence_base=0.5,
                 confidence_per_occurrence=0.03,
                 confidence_cap=0.99,
+                llm_client=llm_client,
+                llm_model=settings.LOCAL_LLM_MODEL,
             )
             logger.info(f"Mined {len(policies)} policies.")
 

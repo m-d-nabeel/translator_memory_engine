@@ -177,7 +177,7 @@ async def process_chapter(
         "extracting_lore",
         "extracting",
     }
-    if chapter.status in active_statuses:
+    if chapter.status in active_statuses and not body.force:
         raise HTTPException(status_code=409, detail="Chapter is already being processed")
 
     chapter.status = "queued"
@@ -211,7 +211,7 @@ async def reprocess_chapter(
         "extracting_lore",
         "extracting",
     }
-    if chapter.status in active_statuses:
+    if chapter.status in active_statuses and not body.force:
         raise HTTPException(status_code=409, detail="Chapter is already being processed")
 
     chapter.status = "queued"

@@ -7,7 +7,7 @@ need to re-prompt for novel entities — they can't be novel if shielded).
 """
 
 import re
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 _PLACEHOLDER_RE = re.compile(r"__ENT_(\d+)__")
 
@@ -15,6 +15,7 @@ _PLACEHOLDER_RE = re.compile(r"__ENT_(\d+)__")
 def shield_entities(
     text: str,
     glossary: List[Dict],
+    placeholder_by_canonical: Optional[Dict[str, str]] = None,
 ) -> Tuple[str, Dict[str, str]]:
     """Replace glossary entry surface forms with __ENT_N__ placeholders.
 
@@ -27,43 +28,50 @@ def shield_entities(
         (shielded_text, restore_map) where restore_map maps placeholder
         to the canonical form to restore.
     """
-    restore_map: Dict[str, str] = {}
-    shielded = text
-    idx = 0
+    supplied_mapping = placeholder_by_canonical is not None
+    canonical_to_placeholder = dict(placeholder_by_canonical or {})
+    restore_map = {placeholder: canonical for canonical, placeholder in canonical_to_placeholder.items()}
+    candidates: List[Tuple[int, int, str]] = []
 
     for entry in glossary:
         canonical = entry.get("canonical", "")
         if not canonical:
             continue
-
-        # Collect all surface forms: match list + canonical itself
-        forms = list(entry.get("match", []))
+        if supplied_mapping and canonical not in canonical_to_placeholder:
+            continue
+        forms = entry.get("match", [])
+        if isinstance(forms, str):
+            forms = [forms]
+        forms = list(forms)
         if canonical not in forms:
             forms.append(canonical)
 
-        # Sort by length descending so longer forms are replaced first
-        # (avoids partial replacement of "Li Qing" before "Li")
-        forms.sort(key=len, reverse=True)
-
-        placeholder = f"__ENT_{idx}__"
-        for form in forms:
+        for form in set(forms):
             if not form:
                 continue
-            # Case-insensitive whole-word replacement
-            pattern = re.compile(
-                r"(?<![a-zA-Z0-9])" + re.escape(form) + r"(?![a-zA-Z0-9])",
-                re.IGNORECASE,
-            )
-            # Only replace if not already shielded
-            if pattern.search(shielded) and placeholder not in shielded:
-                shielded = pattern.sub(placeholder, shielded)
-                restore_map[placeholder] = canonical
-                idx += 1
-                break  # One placeholder per glossary entry
-            elif pattern.search(shielded):
-                # Already has a placeholder for this entry, just replace
-                shielded = pattern.sub(placeholder, shielded)
+            pattern = re.compile(r"(?<!\w)" + re.escape(form) + r"(?!\w)", re.IGNORECASE)
+            candidates.extend((m.start(), m.end(), canonical) for m in pattern.finditer(text))
 
+    # Resolve collisions globally, not one glossary row at a time. This ensures
+    # "Li Qing" wins over "Li" regardless of database insertion order.
+    candidates.sort(key=lambda item: (-(item[1] - item[0]), item[0], item[2].lower()))
+    selected: List[Tuple[int, int, str]] = []
+    for start, end, canonical in candidates:
+        if any(not (end <= chosen_start or start >= chosen_end) for chosen_start, chosen_end, _ in selected):
+            continue
+        selected.append((start, end, canonical))
+
+    next_idx = len(canonical_to_placeholder)
+    for _, _, canonical in sorted(selected, key=lambda item: (item[0], item[1], item[2].lower())):
+        if canonical not in canonical_to_placeholder:
+            placeholder = f"__ENT_{next_idx}__"
+            canonical_to_placeholder[canonical] = placeholder
+            restore_map[placeholder] = canonical
+            next_idx += 1
+
+    shielded = text
+    for start, end, canonical in sorted(selected, key=lambda item: item[0], reverse=True):
+        shielded = shielded[:start] + canonical_to_placeholder[canonical] + shielded[end:]
     return shielded, restore_map
 
 
@@ -76,6 +84,6 @@ def restore_entities(text: str, restore_map: Dict[str, str]) -> str:
     result = text
     for placeholder, canonical in restore_map.items():
         result = result.replace(placeholder, canonical)
-    # Clean up any leftover unrecognized placeholders
-    result = _PLACEHOLDER_RE.sub("", result)
+    # Preserve unknown markers. Dropping them silently deletes a name and makes
+    # corruption impossible for the caller to detect and recover from.
     return result

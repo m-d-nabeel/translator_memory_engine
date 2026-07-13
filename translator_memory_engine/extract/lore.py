@@ -2,7 +2,11 @@ import json
 import logging
 from typing import Any, Dict, Optional
 
-from translator_memory_engine.rewrite.rewriter import GroqRotatingClient, _get_groq_keys, _llm_complete
+from translator_memory_engine.rewrite.rewriter import (
+    GroqRotatingClient,
+    _get_groq_keys,
+    _llm_complete,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,5 +84,5 @@ def extract_chapter_lore(
         return data
 
     except Exception as e:
-        logger.error(f"Failed to extract chapter lore: {e}", exc_info=True)
+        logger.error(f"Failed to extract chapter lore: {e}")
         return {"chapter_summary": "", "characters": []}

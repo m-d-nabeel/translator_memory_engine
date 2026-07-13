@@ -67,10 +67,11 @@ Follow this concise, step-by-step lifecycle to translate novels with high consis
 2. **Upload Chapters:** In the Novel View, click **"Upload Chapters"**. Upload reference human translations as **Original Translation (OG TL)** and raw machine-translated text as **Machine Translation (MTL)**.
    - *Tip:* Uploading 3–5 early chapters as `OG TL` first gives the engine the best baseline for names and tone.
 
-### Step 1: Baseline Policy & Lore Extraction
+### Step 1: Baseline Policy & Semantic Verification
 
-1. **Mine Terminology Policies:** Go to the **Policies Tab** and click **"Mine Policies"**. The engine extracts proper nouns (characters, sects, techniques, honorifics) into deterministic translation rules (`Original -> Refined -> MTL`).
-2. **Extract Character Lore & Profiles:** Go to the **Lore & Glossary Tab** and click **"Extract Lore"** (scanning `OG TL` chapters by default).
+1. **Extract Lexical Policies:** Go to the **Policies Tab** and click **"Regenerate Rules"** (or use the CLI). The engine will first use lexical heuristics (spaCy NER + frequency analysis) to extract all capitalized nouns and potential entities (`Original -> Refined -> MTL`).
+2. **Hybrid LLM Semantic Verification:** Instead of polluting your database with false positives (like sentence fragments or common nouns), the engine instantly micro-batches these candidates to a local LLM (e.g., `llama-server` running Qwen-1.5B). The LLM verifies if the entity is a valid fiction noun, dramatically increasing the signal-to-noise ratio of your dictionary.
+3. **Extract Character Lore & Profiles:** Go to the **Lore & Glossary Tab** and click **"Extract Lore"** (scanning `OG TL` chapters by default).
    - *Background Learning:* The engine uses structured LLM JSON extraction to build profiles (`Gender`, `Identity & Role`, `Speech Style`) along with **Verbatim Introduction Quotes (`introduction_context`)** from the text for side-by-side auditability.
 
 ### Step 2: Hybrid Deduplication & Profile Verification
@@ -85,9 +86,9 @@ Before rewriting chapters, clean and lock your knowledge base:
 
 1. **Trigger Rewrite:** Go to any `MTL` chapter in the **Chapters Tab** or **Reader View** and click **"Rewrite Chapter"**.
 2. **Execution Pipeline:** The engine runs a multi-stage translation pipeline:
-   - **Deterministic Enforcement:** Pre-applies locked terminology policies so names never drift.
-   - **Stylometric Alignment:** Matches sentence rhythm and dialogue voice against verified character profiles (`Speech Style`).
-   - **High-Quality Rewrite:** Streams fluent, voice-consistent prose directly into your reader.
+   - **Artifact Cleaning:** Strips MTL scraper watermarks and bracketed formatting noise.
+   - **Deterministic Enforcement:** Pre-applies locked terminology policies from your DB so names never drift.
+   - **LLM Contextual Rewrite:** Streams fluent, voice-consistent prose directly into your reader, performing grammar fixes (Faithful Repair) even if no specific style rules are prompted.
 
 ### Step 4: Autonomous Arc Tracking & Continuous Learning
 
