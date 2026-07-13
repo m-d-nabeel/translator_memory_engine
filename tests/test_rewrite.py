@@ -198,6 +198,18 @@ class TestRewriteBoundaries:
         second = '"' + "b" * 2000 + '"'
         assert len(_chunk_text(first + "\n\n" + second)) == 1
 
+    def test_integrity_rejects_lost_paragraphs_and_numbers(self):
+        from translator_memory_engine.rewrite.rewriter import _chunk_integrity_violations
+
+        violations = _chunk_integrity_violations("First 7.\n\nSecond.", "First.")
+        assert "paragraph count decreased" in violations
+        assert "missing numeric values: 7" in violations
+
+    def test_integrity_accepts_rephrased_structure_with_numbers(self):
+        from translator_memory_engine.rewrite.rewriter import _chunk_integrity_violations
+
+        assert _chunk_integrity_violations("First 7.\n\nSecond.", "Seven is 7.\n\nThe second remains.") == []
+
 
 class TestRewriteModeSelection:
     def test_reference_forces_mode_even_without_llm_flag(self, tmp_path):

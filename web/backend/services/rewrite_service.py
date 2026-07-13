@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import logging
@@ -91,14 +92,6 @@ async def rewrite_chapter(
         ]
         glossary_count = len(glossary_data)
 
-        snippets_result = await db.execute(select(StyleSnippet).where(StyleSnippet.novel_id == chapter.novel_id))
-        style_profile = [s.text for s in snippets_result.scalars().all()]
-
-        logs.append(
-            f"{_ts()} Memory Engine loaded: {policy_count} active AI policies, "
-            f"{glossary_count} glossary terms, and {len(style_profile)} style snippets indexed from SQLite DB."
-        )
-
         # The caller controls whether an LLM is used. A style profile or a
         # reference must never override an explicit deterministic-only run.
         do_llm_flag = do_llm
@@ -114,6 +107,43 @@ async def rewrite_chapter(
         )
         reference_chapter = reference_result.scalar_one_or_none()
         reference_text = reference_chapter.raw_text if reference_chapter else None
+
+        snippets_result = await db.execute(select(StyleSnippet).where(StyleSnippet.novel_id == chapter.novel_id))
+        style_candidates = [s.text for s in snippets_result.scalars().all()]
+        generated_style_count = 0
+        if reference_text is None:
+            # For MTL-only chapters, derive a compact voice bank from prior
+            # trusted chapters when the user has not curated enough snippets.
+            originals_result = await db.execute(
+                select(Chapter)
+                .where(
+                    Chapter.novel_id == chapter.novel_id,
+                    Chapter.source_type == "original",
+                    Chapter.chapter_number < chapter.chapter_number,
+                )
+                .order_by(Chapter.chapter_number)
+            )
+            original_texts = [ch.raw_text for ch in originals_result.scalars().all() if ch.raw_text.strip()]
+            if original_texts:
+                from translator_memory_engine.memory.style_bank import build_style_bank
+
+                generated = build_style_bank(original_texts, per_chapter=1, max_chars=300, include_stats=False)
+                generated_style_count = len(generated)
+                style_candidates.extend(generated)
+
+        # Avoid a prompt stuffed with unrelated scenes. Retrieval is lexical and
+        # scene-adjacent; it never controls document chunk boundaries.
+        style_profile: list[str] = []
+        if reference_text is None and style_candidates:
+            from translator_memory_engine.memory.style_bank import retrieve_style_excerpts
+
+            style_profile = retrieve_style_excerpts(cleaned_text, list(dict.fromkeys(style_candidates)), k=4)
+
+        logs.append(
+            f"{_ts()} Memory Engine loaded: {policy_count} active AI policies, "
+            f"{glossary_count} glossary terms, {len(style_profile)} selected style snippets "
+            f"({generated_style_count} derived from trusted chapters)."
+        )
 
         previous_result = await db.execute(
             select(Chapter)
@@ -141,17 +171,23 @@ async def rewrite_chapter(
             job.status = "running: applying_rules"
         await db.commit()
 
-        result = core_rewrite(
+        # The core rewriter makes synchronous HTTP calls. Keep them off the
+        # FastAPI event loop so status polling and other chapters remain usable.
+        result = await asyncio.to_thread(
+            core_rewrite,
             text=cleaned_text,
             policies=policy_list,
-            model=settings.LLM_MODEL,
-            base_url=settings.LLM_BASE_URL,
-            api_key_env=settings.LLM_API_KEY_ENV,
+            model=settings.REWRITE_LLM_MODEL,
+            base_url=settings.REWRITE_LLM_BASE_URL,
+            api_key_env=settings.REWRITE_LLM_API_KEY_ENV,
             do_llm=do_llm_flag,
             reference_text=reference_text,
             style_profile=style_profile if style_profile else None,
             glossary=glossary_data,
             previous_tail=previous_tail,
+            temperature=settings.REWRITE_LLM_TEMPERATURE,
+            max_output_tokens=settings.REWRITE_LLM_MAX_TOKENS,
+            enable_alias_bridging=settings.ENABLE_ALIAS_BRIDGING,
         )
 
         det_count = result.get("deterministic_count", 0)
@@ -169,6 +205,8 @@ async def rewrite_chapter(
         from translator_memory_engine.validate.entity import validate_entity_consistency
 
         warnings = validate_entity_consistency(result.get("rewritten_text") or "", trace)
+        warnings.extend(result.get("integrity_warnings", []))
+        warnings = sorted(set(warnings))
         if warnings:
             chapter.warnings = json.dumps(warnings)
             logs.append(f"{_ts()} Validation warnings: {len(warnings)} entity consistency issues detected.")
@@ -177,7 +215,7 @@ async def rewrite_chapter(
         if do_llm_flag:
             logs.append(
                 f"{_ts()} Contextual LLM rewrite complete: {prm_count} semantic context "
-                f"corrections applied via {settings.LLM_MODEL}."
+                f"corrections applied via {settings.REWRITE_LLM_MODEL}."
             )
 
         chapter.refined_text = result.get("rewritten_text") or result.get("prepassed_text", cleaned_text)
@@ -220,8 +258,6 @@ async def rewrite_chapter(
 
     # Launch asynchronous lore extraction (Phase 2)
     if chapter.status == "completed" and chapter.refined_text:
-        import asyncio
-
         from web.backend.db.database import async_session
 
         asyncio.create_task(
@@ -516,7 +552,10 @@ async def extract_policies(
 
     # Setup LLM client for semantic verification
     try:
-        llm_client = OpenAI(base_url="http://127.0.0.1:8080/v1", api_key="sk-no-key-required")
+        llm_client = OpenAI(
+            base_url=settings.LOCAL_LLM_BASE_URL,
+            api_key=settings.LOCAL_LLM_API_KEY,
+        )
     except Exception as e:
         logger.warning(f"Could not instantiate OpenAI client for semantic verification: {e}")
         llm_client = None
@@ -526,6 +565,7 @@ async def extract_policies(
         signals,
         total_chapters=len(chapters),
         llm_client=llm_client,
+        llm_model=settings.LOCAL_LLM_MODEL,
     )
 
     # ---------------------------------------------------------------

@@ -8,6 +8,7 @@ from starlette.concurrency import run_in_threadpool
 from translator_memory_engine.extract import extract_signals
 from translator_memory_engine.memory.store import PolicyStore
 from translator_memory_engine.policy.miner import mine_policies
+from web.backend.config import settings
 from web.backend.db.database import async_session
 from web.backend.db.models import GlossaryEntry, Policy
 
@@ -78,8 +79,10 @@ async def extract_policies_for_novel(novel_id: int):
 
             # Setup LLM client for semantic verification
             try:
-                # Point to local llama.cpp server
-                llm_client = OpenAI(base_url="http://127.0.0.1:8080/v1", api_key="sk-no-key-required")
+                llm_client = OpenAI(
+                    base_url=settings.LOCAL_LLM_BASE_URL,
+                    api_key=settings.LOCAL_LLM_API_KEY,
+                )
                 logger.info("Instantiated local LLM client for semantic verification.")
             except Exception as e:
                 logger.warning(f"Could not instantiate OpenAI client for semantic verification: {e}")
@@ -97,6 +100,7 @@ async def extract_policies_for_novel(novel_id: int):
                 confidence_per_occurrence=0.03,
                 confidence_cap=0.99,
                 llm_client=llm_client,
+                llm_model=settings.LOCAL_LLM_MODEL,
             )
             logger.info(f"Mined {len(policies)} policies.")
 

@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import time
+from collections import Counter
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from dotenv import load_dotenv
@@ -465,6 +466,26 @@ def _align_reference_chunks(mtl_chunks: List[str], reference_text: str) -> List[
     return ref_chunks
 
 
+_NUMBER_RE = re.compile(r"\b\d+(?:[.,]\d+)?\b")
+
+
+def _chunk_integrity_violations(source: str, candidate: str) -> List[str]:
+    """Return deterministic reasons to reject an unsafe chunk rewrite."""
+    if not candidate.strip():
+        return ["empty output"]
+
+    violations: List[str] = []
+    if len(_split_paragraphs(candidate)) < len(_split_paragraphs(source)):
+        violations.append("paragraph count decreased")
+
+    source_numbers = Counter(_NUMBER_RE.findall(source))
+    candidate_numbers = Counter(_NUMBER_RE.findall(candidate))
+    missing_numbers = [number for number, count in source_numbers.items() if candidate_numbers[number] < count]
+    if missing_numbers:
+        violations.append(f"missing numeric values: {', '.join(missing_numbers[:5])}")
+    return violations
+
+
 def _apply_deterministic(text: str, policies: List[Policy]) -> str:
     """Re-run the deterministic name/honorific pre-pass over `text`.
 
@@ -756,10 +777,9 @@ def build_prompt(
     if style_profile:
         profile_txt = "\n".join(f"- {ex}" for ex in style_profile)
         system_prompt = (
-            "You are an expert translator and editor for a high-quality, professionally published fantasy web-novel.\n"
-            "Your task is to rewrite a rough Machine Translation into fluent, natural English prose.\n"
-            "ELEVATE THE PROSE: You must read like a high-quality published fantasy novel. Use evocative vocabulary, "
-            "emotional weight, and natural narrative rhythm."
+            "You are a faithful post-editor for a professionally published fantasy web-novel.\n"
+            "Repair rough Machine Translation into natural English without changing source-supported facts.\n"
+            "Use the voice reference only for surface style; never import its names, events, or dialogue."
         )
         user_prompt = f"""{tail_block}{cast_block}
 <VoiceReference>
@@ -779,10 +799,9 @@ The following quotes are from DIFFERENT chapters by the SAME translator. Use the
 
     # Fallback (unsupervised, no style bank)
     system_prompt = (
-        "You are an expert translator and editor for a high-quality, professionally published fantasy web-novel.\n"
-        "Your task is to rewrite a rough Machine Translation into fluent, natural English prose.\n"
-        "ELEVATE THE PROSE: You must read like a high-quality published fantasy novel. Use evocative vocabulary, "
-        "emotional weight, and natural narrative rhythm."
+        "You are a faithful post-editor for a professionally published fantasy web-novel.\n"
+        "Repair rough Machine Translation into natural English without changing source-supported facts.\n"
+        "When the input is ambiguous, preserve its uncertainty instead of inventing an explanation."
     )
     user_prompt = f"""{tail_block}{cast_block}
 <TranslatorPolicies>
@@ -808,6 +827,9 @@ def rewrite(
     style_profile: Optional[List[str]] = None,
     glossary: Optional[List[Dict]] = None,
     previous_tail: Optional[str] = None,
+    temperature: float = 0.25,
+    max_output_tokens: int = 3072,
+    enable_alias_bridging: bool = False,
 ) -> Dict[str, Any]:
     """Run the full v0 rewrite pipeline on one passage.
 
@@ -849,7 +871,7 @@ def rewrite(
     # Alias bridging: use a lightweight LLM call to map MTL transliterations
     # (e.g. "Noh Young-ju") to canonical policy names (e.g. "Lord Noh").
     # This runs before the retriever so the updated match lists capture MTL forms.
-    if glossary and do_llm:
+    if glossary and do_llm and enable_alias_bridging:
         keys = _get_groq_keys(api_key_env)
         if keys:
             logger.debug("Running alias bridging (MTL -> canonical)...")
@@ -931,6 +953,7 @@ def rewrite(
     logger.debug(f"Split into {len(mtl_chunks)} chunks")
 
     rewritten_text = shielded_text
+    integrity_warnings: List[str] = []
     client = None
     if use_llm:
         keys = _get_groq_keys(api_key_env)
@@ -995,7 +1018,8 @@ def rewrite(
                             "content": user_prompt,
                         },
                     ],
-                    temperature=0.45,
+                    temperature=temperature,
+                    max_tokens=max_output_tokens,
                 )
                 candidate = _strip_echo(resp.choices[0].message.content)
                 expected_placeholders = {
@@ -1006,8 +1030,16 @@ def rewrite(
                 valid_placeholders = all(
                     candidate.count(placeholder) == count for placeholder, count in expected_placeholders.items()
                 ) and found_placeholders.issubset(expected_ids)
+                violations = _chunk_integrity_violations(mtl_chunk, candidate)
                 if not valid_placeholders:
-                    logger.warning("LLM mutated entity placeholders in chunk %d; using deterministic chunk", k + 1)
+                    violations.append("entity placeholders changed")
+                if violations:
+                    logger.warning(
+                        "LLM output failed integrity checks in chunk %d (%s); using deterministic chunk",
+                        k + 1,
+                        "; ".join(violations),
+                    )
+                    integrity_warnings.append(f"Chunk {k + 1}: {'; '.join(violations)}")
                     candidate = mtl_chunk
                 out_parts.append(candidate)
             rewritten_text = "\n\n".join(out_parts)
@@ -1048,6 +1080,7 @@ def rewrite(
                     {"role": "user", "content": guard_prompt},
                 ],
                 temperature=0.1,
+                max_tokens=max_output_tokens,
             )
             rewritten_text = _strip_echo(resp.choices[0].message.content)
             remaining = _novel_entities(rewritten_text, faithfulness_source, whitelist=canon)
@@ -1058,6 +1091,12 @@ def rewrite(
                 logger.info("Faithfulness guard applied")
         else:
             logger.debug("Faithfulness guard: no novel entities found")
+    elif client is not None and faithfulness_source is None:
+        # MTL-only mode cannot safely auto-repair every apparent name mismatch,
+        # but it must surface possible inventions for editorial review.
+        novel = _novel_entities(rewritten_text, prepassed_text, whitelist=canon)
+        if novel:
+            integrity_warnings.append(f"MTL-only review: possible novel entities: {', '.join(sorted(novel))}")
 
     # Re-apply the deterministic pre-pass so canonical names/honorifics survive
     # even if the LLM renamed or dropped a named entity (PLAN §8: the high-confidence
@@ -1075,4 +1114,5 @@ def rewrite(
         "deterministic_count": len(trace),
         "prompted_count": len(prompted),
         "mode": mode,
+        "integrity_warnings": integrity_warnings,
     }

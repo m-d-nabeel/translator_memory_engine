@@ -502,7 +502,12 @@ def _is_generic(canonical: str) -> bool:
     return all(t in _GENERIC_STANDALONE for t in tokens)
 
 
-def _verify_with_llm(candidates: List[Dict[str, Any]], llm_client: Any, chunk_size: int = 5) -> List[Dict[str, Any]]:
+def _verify_with_llm(
+    candidates: List[Dict[str, Any]],
+    llm_client: Any,
+    model: str = "qwen2.5",
+    chunk_size: int = 5,
+) -> List[Dict[str, Any]]:
     """Verify candidate entities with a local LLM to prune false positives (Stage 2b).
 
     Uses micro-batching to prevent context window degradation and JSON truncation in
@@ -615,7 +620,7 @@ def _verify_with_llm(candidates: List[Dict[str, Any]], llm_client: Any, chunk_si
             # Streamlined invocation working with both local llama.cpp or OpenAI client wrapper
             if hasattr(llm_client, "chat") and hasattr(llm_client.chat, "completions"):
                 response = llm_client.chat.completions.create(
-                    model="qwen2.5",  # Ignored by llama.cpp server, required by SDK
+                    model=model,
                     messages=messages,
                     temperature=0.1,
                     response_format={"type": "json_object"},
@@ -747,6 +752,7 @@ def mine_policies(
     confidence_cap: float = 0.99,
     deterministic_threshold: float = 0.8,
     llm_client: Any = None,
+    llm_model: str = "qwen2.5",
 ) -> List[Policy]:
     """Convert raw signals into verified policies.
 
@@ -761,6 +767,7 @@ def mine_policies(
         confidence_cap: Maximum confidence score.
         deterministic_threshold: Confidence above which policy is deterministic.
         llm_client: Optional local LLM client for semantic verification.
+        llm_model: Model name sent to an OpenAI-compatible local endpoint.
 
     Returns:
         List of Policy objects, sorted by confidence (descending).
@@ -809,7 +816,7 @@ def mine_policies(
 
     # Apply LLM verification if a client is provided
     if llm_client:
-        candidates_to_verify = _verify_with_llm(candidates_to_verify, llm_client)
+        candidates_to_verify = _verify_with_llm(candidates_to_verify, llm_client, model=llm_model)
 
     # Stage 3: Score and build policies
     policies: List[Policy] = []
