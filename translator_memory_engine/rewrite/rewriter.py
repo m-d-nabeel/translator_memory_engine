@@ -17,7 +17,7 @@ import logging
 import os
 import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from dotenv import load_dotenv
 from openai import RateLimitError
@@ -150,24 +150,54 @@ def scan_known_errors(
     return matches
 
 
-def apply_known_errors(text: str, known_errors: Optional[List[Dict]] = None) -> str:
-    """Deterministically replace known errors with their correct translations."""
+def apply_known_errors(
+    text: str,
+    known_errors: Optional[List[Dict]] = None,
+    protected_terms: Optional[Iterable[str]] = None,
+    with_trace: bool = False,
+) -> str | Tuple[str, List[Dict[str, Any]]]:
+    """Apply safe known-error corrections without touching protected entities.
+
+    Rules are whole-token matches by default. Short or ambiguous entries can set
+    ``auto_apply: false`` in ``known_errors.json`` and remain available for
+    diagnostics without silently rewriting legitimate prose or character names.
+    """
     if known_errors is None:
         known_errors = _load_known_errors()
 
     out_text = text
-    for error in known_errors:
+    trace: List[Dict[str, Any]] = []
+    protected = [term for term in (protected_terms or []) if term]
+    for error in sorted(known_errors, key=lambda item: len(item.get("mtl_phrase", "")), reverse=True):
+        if error.get("auto_apply", True) is False:
+            continue
         phrase = error.get("mtl_phrase", "")
         correct = error.get("correct_translation", "")
         if phrase and correct:
-            # Replace exact phrase (case-insensitive) with the correct translation
-            out_text = re.sub(
-                re.escape(phrase),
-                correct,
-                out_text,
-                flags=re.IGNORECASE,
-            )
-    return out_text
+            protected_spans = []
+            for term in protected:
+                protected_spans.extend(
+                    (m.start(), m.end())
+                    for m in re.finditer(r"(?<!\w)" + re.escape(term) + r"(?!\w)", out_text, re.IGNORECASE)
+                )
+            pattern = re.compile(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", re.IGNORECASE)
+
+            def replace(match: re.Match) -> str:
+                if any(not (match.end() <= start or match.start() >= end) for start, end in protected_spans):
+                    return match.group(0)
+                trace.append(
+                    {
+                        "original": match.group(0),
+                        "output": correct,
+                        "rule_id": error.get("id", "known-error"),
+                        "kind": "known_error",
+                        "span": [match.start(), match.end()],
+                    }
+                )
+                return correct
+
+            out_text = pattern.sub(replace, out_text)
+    return (out_text, trace) if with_trace else out_text
 
 
 def _load_policies(source: Any) -> List[Policy]:
@@ -361,6 +391,22 @@ def _chunk_text(
             cur = []
             cur_len = 0
 
+    def is_dialogue_turn(paragraph: str) -> bool:
+        stripped = paragraph.strip()
+        return bool(
+            stripped
+            and (
+                stripped.startswith(('"', "“", "'"))
+                or stripped.endswith(('"', "”", "'"))
+                or '"' in stripped
+                or "“" in stripped
+                or "”" in stripped
+            )
+        )
+
+    def is_active_dialogue(previous: str, current: str) -> bool:
+        return is_dialogue_turn(previous) and is_dialogue_turn(current)
+
     for p in paras:
         # If a single paragraph is longer than hard_cap, split at sentence boundaries
         if len(p) > hard_cap:
@@ -376,9 +422,15 @@ def _chunk_text(
                 cur_len += len(piece)
             continue
 
-        if cur_len + len(p) > hard_cap and cur:
-            flush()
-        elif cur_len + len(p) >= target_chars and cur_len >= min_chars and cur:
+        added_len = len(p) + (2 if cur else 0)
+        if cur_len + added_len > hard_cap and cur:
+            prev_p = cur[-1].strip()
+            # Preserve a live exchange through a bounded overflow. If the
+            # exchange is unusually long, the next forced split still receives
+            # the final turns as context in rewrite().
+            if not is_active_dialogue(prev_p, p) or cur_len + added_len > hard_cap + 1200:
+                flush()
+        elif cur_len + added_len >= target_chars and cur_len >= min_chars and cur:
             # Check if we should flush before adding `p`:
             # 1. Check if `p` or `cur[-1]` is a scene break
             prev_p = cur[-1].strip()
@@ -388,17 +440,13 @@ def _chunk_text(
             )
 
             # 2. Check if we are right in the middle of back-to-back dialogue turns
-            prev_is_quote = (
-                prev_p.startswith(('"', "“", "'")) or prev_p.endswith(('"', "”", "'"))
-            )
-            curr_is_quote = p.strip().startswith(('"', "“", "'"))
-            in_active_dialogue = prev_is_quote and curr_is_quote
+            in_active_dialogue = is_active_dialogue(prev_p, p)
 
             if is_scene_break or not in_active_dialogue:
                 flush()
 
         cur.append(p)
-        cur_len += len(p)
+        cur_len += len(p) + (2 if len(cur) > 1 else 0)
 
     flush()
     return chunks
@@ -423,15 +471,25 @@ def _align_reference_chunks(
     if total_mtl_paras == 0:
         return [reference_text] * len(mtl_chunks)
 
+    # Compute cumulative boundaries once. Independent per-chunk rounding can
+    # consume every reference paragraph before the final MTL chunk.
+    boundaries = [0]
+    cumulative = 0
+    for count in mtl_para_counts:
+        cumulative += count
+        boundaries.append(round(cumulative / total_mtl_paras * len(ref_paras)))
+
     ref_chunks: List[str] = []
-    start_idx = 0
-    for k, count in enumerate(mtl_para_counts):
-        if k == len(mtl_para_counts) - 1:
-            chunk_paras = ref_paras[start_idx:]
+    for k in range(len(mtl_chunks)):
+        start_idx, end_idx = boundaries[k], boundaries[k + 1]
+        if end_idx <= start_idx:
+            # There are fewer reference paragraphs than MTL chunks. Reuse the
+            # nearest paragraph as context rather than silently sending an
+            # empty reference and pretending alignment exists.
+            nearest = min(len(ref_paras) - 1, max(0, start_idx))
+            chunk_paras = [ref_paras[nearest]]
         else:
-            slice_len = max(1, int(round((count / total_mtl_paras) * len(ref_paras))))
-            chunk_paras = ref_paras[start_idx : start_idx + slice_len]
-            start_idx += slice_len
+            chunk_paras = ref_paras[start_idx:end_idx]
         ref_chunks.append("\n\n".join(chunk_paras))
     return ref_chunks
 
@@ -513,7 +571,7 @@ def _novel_entities(gen: str, src: str, whitelist: Optional[set] = None) -> set:
     return novel
 
 
-def _faithfulness_prompt(output: str, novel: set) -> str:
+def _faithfulness_prompt(output: str, novel: set, source: str) -> str:
     """Prompt that asks the model to ONLY strip invented names, nothing else."""
     names = ", ".join(sorted(novel))
     return (
@@ -524,7 +582,12 @@ def _faithfulness_prompt(output: str, novel: set) -> str:
         "omit the sentence if it adds nothing). Do NOT add or change any other "
         "content, and preserve the rest verbatim.\n\n"
         "Return the full corrected chapter text, no scaffolding.\n\n"
-        f"{output}"
+        "<SourceReference>\n"
+        f"{source}\n"
+        "</SourceReference>\n\n"
+        "<CandidateOutput>\n"
+        f"{output}\n"
+        "</CandidateOutput>"
     )
 
 
@@ -542,7 +605,7 @@ _STYLE_REFERENCE = [
 # only fix broken MTL, and preserve the translator's voice/metaphors/onomatopoeia.
 # Never invent. (8B models love to echo the scaffolding — see _strip_echo.)
 _FALLBACK_RULES = """<Rules>
-1. ELEVATE THE PROSE: Do not just copy-paste or make minute changes! You must completely rewrite the text into fluent, natural English prose. Inject emotional weight, vivid vocabulary, and natural rhythm to make it read like a professionally published fantasy novel. Replace dry, clinical phrasing with engaging literary prose.
+1. REPAIR, DO NOT REAUTHOR: Correct broken machine translation into fluent, natural English while preserving every source-supported event, relationship, and emotional beat. Improve rhythm and word choice only when the meaning remains grounded in the input. Never add color, motivations, dialogue, or detail that the input does not support.
 2. RESOLVE MACHINE TRANSLATION ERRORS (DECEPTIVE ARTIFACTS):
    Machine translations frequently output grammatically valid English words that make zero logical sense inside the scene (due to homograph dictionary lookups, flipped pronouns, or literalized idioms).
    Before preserving any sentence or exclamation verbatim, verify its Discourse Coherence against the immediate scene:
@@ -550,7 +613,7 @@ _FALLBACK_RULES = """<Rules>
    - Cause-and-Effect Pronoun Inversion: When pronoun cause-and-effect is inverted (e.g. an attacker hitting someone else "so that I could come to my senses" or bending "her own arm" while attacking an enemy), correct the pronouns to restore clear narrative causality.
    - Speaker Attribution & Sentence Ownership: Disentangle dialogue turns merged into single blocks, ensuring every line belongs to its rightful speaker. Correct misattributed pronouns caused by MTL pronoun dropping.
    - Inverted Negation & State Flipping (Common MTL Error): Korean double-negatives often cause machine translation to output flipped positive/negative states ("shouldn't" instead of "should", or "couldn't" instead of "could"). If a sentence logically contradicts the speaker's obvious intent due to this MTL error, flip the negation to restore the true meaning.
-3. Faithfully reproduce the original plot events, but you have full freedom to rephrase sentences for literary quality. DO NOT merge distinct paragraphs into blocks.
+3. Preserve paragraph boundaries and dialogue-turn semantics. You may split a genuinely merged dialogue turn to clarify ownership, but never merge distinct paragraphs or omit a source beat.
 </Rules>
 
 <Examples>
@@ -691,14 +754,14 @@ def build_prompt(
 {instructions}
 </TranslatorPolicies>
 <Rules>
-1. ELEVATE THE PROSE: Do not just copy-paste! Rewrite the Machine Translation (A) so it READS LIKE the Published Translation (B). Match its phrasing, voice, tone, rhythm, and emotional weight as closely as possible.
+1. REPAIR AGAINST THE REFERENCE: Rewrite Machine Translation (A) into fluent prose using Published Translation (B) as same-scene evidence for voice and meaning. Do not copy unrelated wording, add unsupported detail, or replace a source event merely to sound more literary.
 2. RESOLVE MACHINE TRANSLATION ERRORS (DECEPTIVE ARTIFACTS):
    Machine translations frequently output grammatically valid English words that make zero logical sense inside the scene. Before preserving any sentence verbatim, verify its Discourse Coherence against the immediate scene:
    - Conversational Logic: If a noun, exclamation, or idiom violates the conversational or emotional logic of the scene (e.g. an unrelated economic noun during a physical confrontation, or a bizarre non-sequitur), recognize it as a deceptive artifact and repair it to match (B)'s phrasing.
    - Cause-and-Effect Pronoun Inversion: When pronoun cause-and-effect is inverted (e.g. an attacker hitting someone else "so that I could come to my senses"), correct the pronoun logic to restore clear narrative causality matching (B).
    - Speaker Attribution & Sentence Ownership: Disentangle dialogue turns merged into single blocks, ensuring every line belongs to its rightful speaker matching (B). Correct misattributed pronouns caused by MTL pronoun dropping.
    - Inverted Negation & State Flipping (Common MTL Error): Korean double-negatives often cause machine translation to output flipped positive/negative states ("shouldn't" instead of "should", or "couldn't" instead of "could"). If a sentence logically contradicts the speaker's obvious intent due to this MTL error, flip the negation to restore the true meaning.
-3. Maintain exact scene pacing by reproducing all beats from (A), but you have full freedom to rephrase sentences for literary quality to match (B). DO NOT merge distinct paragraphs into blocks.
+3. Preserve every beat from (A) and use (B) only to resolve meaning and style. Preserve paragraph boundaries; split only genuinely merged dialogue turns and never merge distinct paragraphs.
 </Rules>
 
 <Examples>
@@ -823,7 +886,7 @@ def rewrite(
     # Alias bridging: use a lightweight LLM call to map MTL transliterations
     # (e.g. "Noh Young-ju") to canonical policy names (e.g. "Lord Noh").
     # This runs before the retriever so the updated match lists capture MTL forms.
-    if glossary and (do_llm or reference_text is not None or style_profile is not None):
+    if glossary and do_llm:
         keys = _get_groq_keys(api_key_env)
         if keys:
             logger.debug("Running alias bridging (MTL -> canonical)...")
@@ -851,9 +914,19 @@ def rewrite(
     prepassed_text, trace = apply_prepass(text, resolution)
     logger.debug(f"Pre-pass applied {len(trace)} deterministic edits")
 
-    # Deterministic heuristic application of known errors
-    prepassed_text = apply_known_errors(prepassed_text)
-    logger.debug("Applied known errors heuristically")
+    # Known-error rules must not overwrite a canonical entity or policy form.
+    protected_terms = [form for policy in policy_list for form in policy.match]
+    if glossary:
+        for entry in glossary:
+            forms = entry.get("match", [])
+            protected_terms.extend(forms if isinstance(forms, list) else [forms])
+    prepassed_text, known_error_trace = apply_known_errors(
+        prepassed_text,
+        protected_terms=protected_terms,
+        with_trace=True,
+    )
+    trace.extend(known_error_trace)
+    logger.debug(f"Applied {len(known_error_trace)} known-error corrections")
 
     # Prompted (non-deterministic, non-rejected) policies for the LLM
     prompted = [p for p in matched if p.applies == "prompted" and not p.llm_rejected]
@@ -868,23 +941,29 @@ def rewrite(
         mode = "fallback_faithful_repair"
     logger.debug(f"Rewrite mode: {mode}")
 
-    # A reference or style profile only makes sense with the LLM on; force it.
-    use_llm = do_llm or (reference_text is not None) or (style_profile is not None)
-    # The LLM has something to do if do_llm is True, or if there's a reference / style bank.
-    need_llm = do_llm or (reference_text is not None) or (style_profile is not None)
-    logger.debug(f"LLM: use={use_llm}, need={need_llm}")
+    use_llm = do_llm
+    logger.debug(f"LLM: use={use_llm}")
 
     # Entity shielding: replace glossary entries with placeholders before LLM,
     # restore after. This prevents the LLM from mangling entity names and makes
     # the faithfulness guard almost unnecessary for glossary entities.
     shielded_text = _normalize_newlines(prepassed_text)
     restore_map: Dict[str, str] = {}
-    if glossary and use_llm and need_llm:
+    if glossary and use_llm:
         shielded_text, restore_map = shield_entities(shielded_text, glossary)
         logger.debug(f"Shielded {len(restore_map)} entities")
 
+    faithfulness_source = None
     if reference_text:
         reference_text = _normalize_newlines(reference_text)
+        faithfulness_source = reference_text
+        if restore_map:
+            placeholder_by_canonical = {canonical: placeholder for placeholder, canonical in restore_map.items()}
+            reference_text, _ = shield_entities(
+                reference_text,
+                glossary or [],
+                placeholder_by_canonical=placeholder_by_canonical,
+            )
 
     # Long chapters exceed the small model's per-request token budget, so rewrite
     # in capped chunks (supervised: MTL chunk + matching reference chunk, aligned
@@ -899,7 +978,7 @@ def rewrite(
 
     rewritten_text = shielded_text
     client = None
-    if use_llm and need_llm:
+    if use_llm:
         keys = _get_groq_keys(api_key_env)
         if keys:
             client = GroqRotatingClient(keys, base_url)
@@ -911,9 +990,12 @@ def rewrite(
 
                 # Context continuity between chunks
                 if k == 0:
-                    context_tail = previous_tail
+                    previous_paras = _split_paragraphs(previous_tail or "")
+                    context_tail = "\n\n".join(previous_paras[-2:]) if previous_paras else ""
                 else:
-                    prev_paras = _split_paragraphs(mtl_chunks[k - 1])
+                    # Continuity comes from the repaired prior chunk, not the
+                    # broken MTL that prompted this rewrite.
+                    prev_paras = _split_paragraphs(out_parts[-1])
                     context_tail = "\n\n".join(prev_paras[-2:]) if prev_paras else ""
 
                 # Find active cast from placeholders and known aliases/titles
@@ -924,7 +1006,7 @@ def rewrite(
                         active_canonicals.update(
                             canon
                             for ph, canon in restore_map.items()
-                            if ph in mtl_chunk
+                            if ph in mtl_chunk or ph in context_tail
                         )
                     for entry in glossary:
                         canon = entry.get("canonical", "")
@@ -965,7 +1047,20 @@ def rewrite(
                     ],
                     temperature=0.45,
                 )
-                out_parts.append(_strip_echo(resp.choices[0].message.content))
+                candidate = _strip_echo(resp.choices[0].message.content)
+                expected_placeholders = {
+                    placeholder: mtl_chunk.count(placeholder) for placeholder in restore_map if placeholder in mtl_chunk
+                }
+                found_placeholders = set(re.findall(r"__ENT_(\d+)__", candidate))
+                expected_ids = {placeholder[6:-2] for placeholder in expected_placeholders}
+                valid_placeholders = (
+                    all(candidate.count(placeholder) == count for placeholder, count in expected_placeholders.items())
+                    and found_placeholders.issubset(expected_ids)
+                )
+                if not valid_placeholders:
+                    logger.warning("LLM mutated entity placeholders in chunk %d; using deterministic chunk", k + 1)
+                    candidate = mtl_chunk
+                out_parts.append(candidate)
             rewritten_text = "\n\n".join(out_parts)
             logger.info(f"LLM rewrite complete: {len(out_parts)} chunks")
 
@@ -986,13 +1081,14 @@ def rewrite(
     # noisy to serve as a reliable source (it would false-positive on every
     # correct MTL→canonical correction like "Noh Young-ju" → "Lord Noh").
     canon = _canonical_set(glossary)
-    if client is not None and reference_text is not None:
-        novel = _novel_entities(rewritten_text, reference_text, whitelist=canon)
+    if client is not None and faithfulness_source is not None:
+        novel = _novel_entities(rewritten_text, faithfulness_source, whitelist=canon)
         if novel:
             logger.warning(
                 f"Faithfulness guard: {len(novel)} novel entities detected: {novel}"
             )
-            guard_prompt = _faithfulness_prompt(rewritten_text, novel)
+            before_guard = rewritten_text
+            guard_prompt = _faithfulness_prompt(rewritten_text, novel, faithfulness_source)
             resp = _llm_complete(
                 client,
                 model=model,
@@ -1007,7 +1103,12 @@ def rewrite(
                 temperature=0.1,
             )
             rewritten_text = _strip_echo(resp.choices[0].message.content)
-            logger.info("Faithfulness guard applied")
+            remaining = _novel_entities(rewritten_text, faithfulness_source, whitelist=canon)
+            if remaining:
+                logger.warning("Faithfulness guard failed validation; restoring pre-guard output")
+                rewritten_text = before_guard
+            else:
+                logger.info("Faithfulness guard applied")
         else:
             logger.debug("Faithfulness guard: no novel entities found")
 

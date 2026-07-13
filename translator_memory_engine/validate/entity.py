@@ -10,7 +10,7 @@ def validate_entity_consistency(rewritten_text: str, trace: List[Dict]) -> List[
     Args:
         rewritten_text: The final output text from the rewriter.
         trace: A list of dictionaries representing the deterministic edits made during the pre-pass.
-               Each dictionary should have a 'replacement' key.
+               Each dictionary records its replacement in the ``output`` key.
 
     Returns:
         A list of warning messages for any expected entities that are missing.
@@ -20,7 +20,9 @@ def validate_entity_consistency(rewritten_text: str, trace: List[Dict]) -> List[
     # Collect expected canonical terms from the deterministic trace
     expected_terms: Set[str] = set()
     for edit in trace:
-        replacement = edit.get("replacement", "").strip()
+        if edit.get("kind") == "known_error":
+            continue
+        replacement = edit.get("output", "").strip()
         if replacement:
             expected_terms.add(replacement)
 

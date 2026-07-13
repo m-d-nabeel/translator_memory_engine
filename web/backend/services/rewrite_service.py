@@ -57,6 +57,9 @@ async def rewrite_chapter(
         from translator_memory_engine.rewrite.clean import clean_mtl_artifacts
         from translator_memory_engine.rewrite.rewriter import rewrite as core_rewrite
 
+        if chapter.source_type != "mtl":
+            raise ValueError("Only MTL chapters can be rewritten; original chapters are reference material.")
+
         logs.append(f"{_ts()} Pre-processing: Executing clean_mtl_artifacts to strip formatting noise.")
         cleaned_text = clean_mtl_artifacts(chapter.raw_text)
         orig_len = len(chapter.raw_text)
@@ -70,12 +73,23 @@ async def rewrite_chapter(
         # ---------------------------------------------------------------
         policies_result = await db.execute(select(Policy).where(Policy.novel_id == chapter.novel_id))
         db_policies = policies_result.scalars().all()
-        policy_list = db_policies_to_list(db_policies)
+        verified_policies = [
+            policy
+            for policy in db_policies
+            if (policy.needs_review or "false").lower() != "true"
+            and (policy.llm_rejected or "false").lower() != "true"
+        ]
+        policy_list = db_policies_to_list(verified_policies)
         policy_count = len(policy_list)
 
         glossary_result = await db.execute(select(GlossaryEntry).where(GlossaryEntry.novel_id == chapter.novel_id))
         db_glossary = glossary_result.scalars().all()
-        glossary_data = db_glossary_to_list(db_glossary)
+        verified_canonicals = {policy.trigger.lower() for policy in verified_policies}
+        glossary_data = [
+            entry
+            for entry in db_glossary_to_list(db_glossary)
+            if entry.get("canonical", "").lower() in verified_canonicals
+        ]
         glossary_count = len(glossary_data)
 
         snippets_result = await db.execute(select(StyleSnippet).where(StyleSnippet.novel_id == chapter.novel_id))
@@ -86,11 +100,36 @@ async def rewrite_chapter(
             f"{glossary_count} glossary terms, and {len(style_profile)} style snippets indexed from SQLite DB."
         )
 
-        # The LLM is enabled when the caller requests it AND there are
-        # policies available to apply. Previously this checked for a file
-        # on disk, which caused a false fast-finish when policies.jsonl
-        # was missing — the engine would skip the LLM entirely.
-        do_llm_flag = do_llm and policy_count > 0
+        # The caller controls whether an LLM is used. A style profile or a
+        # reference must never override an explicit deterministic-only run.
+        do_llm_flag = do_llm
+
+        reference_result = await db.execute(
+            select(Chapter)
+            .where(
+                Chapter.novel_id == chapter.novel_id,
+                Chapter.chapter_number == chapter.chapter_number,
+                Chapter.source_type == "original",
+            )
+            .limit(1)
+        )
+        reference_chapter = reference_result.scalar_one_or_none()
+        reference_text = reference_chapter.raw_text if reference_chapter else None
+
+        previous_result = await db.execute(
+            select(Chapter)
+            .where(
+                Chapter.novel_id == chapter.novel_id,
+                Chapter.source_type == "mtl",
+                Chapter.chapter_number < chapter.chapter_number,
+                Chapter.status == "completed",
+                Chapter.refined_text.is_not(None),
+            )
+            .order_by(Chapter.chapter_number.desc())
+            .limit(1)
+        )
+        previous_chapter = previous_result.scalar_one_or_none()
+        previous_tail = previous_chapter.refined_text if previous_chapter else None
         logs.append(
             f"{_ts()} Executing translator_memory_engine pipeline "
             f"(deterministic pre-pass + {'LLM contextual polish' if do_llm_flag else 'deterministic only'})..."
@@ -110,8 +149,10 @@ async def rewrite_chapter(
             base_url=settings.LLM_BASE_URL,
             api_key_env=settings.LLM_API_KEY_ENV,
             do_llm=do_llm_flag,
+            reference_text=reference_text,
             style_profile=style_profile if style_profile else None,
             glossary=glossary_data,
+            previous_tail=previous_tail,
         )
 
         det_count = result.get("deterministic_count", 0)

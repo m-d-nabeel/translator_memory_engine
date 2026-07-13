@@ -1,6 +1,7 @@
 """Tests for the faithfulness evaluation (the 1st eval pillar)."""
 
 from translator_memory_engine.eval.faith import faithfulness_vs_source
+from translator_memory_engine.validate.entity import validate_entity_consistency
 
 
 def test_invented_name_flagged():
@@ -32,3 +33,11 @@ def test_no_invention_when_faithful():
     r = faithfulness_vs_source(gen, src)
     assert r["novel_person_count"] == 0
     assert r["intrusion_score"] == 0.0
+
+
+def test_entity_validator_uses_prepass_trace_output_field():
+    warnings = validate_entity_consistency("The boy left.", [{"output": "Dominic"}])
+    assert warnings == [
+        "Missing Expected Entity: 'Dominic' was expected based on the original MTL, "
+        "but does not appear in the final rewritten text. The LLM may have skipped it."
+    ]

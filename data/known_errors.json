@@ -22,6 +22,7 @@
     "mtl_phrase": "Profit!",
     "korean_source": "흑!",
     "correct_translation": "Tch!",
+    "auto_apply": false,
     "category": "onomatopoeia",
     "context": "teeth-gritting, frustration, or annoyance",
     "notes": "흑 is a sound of teeth-gritting/frustration, not the English word 'Profit'. Already fixed by system message removal."

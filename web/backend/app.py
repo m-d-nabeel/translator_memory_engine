@@ -26,9 +26,10 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    from sqlalchemy import update
+
     from web.backend.db.database import async_session
     from web.backend.db.models import Chapter, ProcessingJob
-    from sqlalchemy import update
 
     active_statuses = [
         "processing",

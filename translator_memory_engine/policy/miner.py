@@ -674,7 +674,7 @@ def _verify_with_llm(
                             results_list.append(b)
                     except Exception:
                         pass
-                
+
                 if not results_list:
                     # If recovery completely fails, raise so the outer try-except catches it
                     raise ValueError(f"Could not recover any JSON objects. Original error: {json_err}")
