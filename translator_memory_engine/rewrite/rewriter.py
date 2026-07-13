@@ -332,17 +332,24 @@ def _split_paragraphs(text: str) -> List[str]:
 _SENT_RE = re.compile(r"(?<=[.!?])\s+")
 
 
-def _chunk_text(text: str, max_chars: int = 3500) -> List[str]:
-    """Split text into chunks capped at ``max_chars``.
+def _chunk_text(
+    text: str,
+    target_chars: int = 3600,
+    min_chars: int = 2800,
+    hard_cap: int = 4800,
+) -> List[str]:
+    """Split text into chunks with dialogue and scene boundary awareness.
 
-    Paragraphs are grouped; any single paragraph longer than the cap is further
-    split at sentence boundaries. Setting max_chars=3500 (~600-700 words) ensures
-    the actual story text outweighs the prompt scaffolding (~550 words) by ~1.2:1,
-    preventing small models from hallucinating prompt bullets into the output while
-    staying safely inside Groq's token budget. For supervised mode, the SAME chunker
-    is run on the MTL and its reference so chunk k of each stays roughly aligned.
+    Instead of a blind character cutoff that splits mid-dialogue, this chunker uses
+    a soft target (`target_chars`) and accumulates paragraphs until it finds a clean
+    narrative boundary (scene break `***` / `---` or descriptive transition) or until
+    it hits `hard_cap`. If two adjacent paragraphs are both dialogue turns (starting/ending
+    with quotation marks), the chunker avoids splitting between them.
     """
     paras = _split_paragraphs(text)
+    if not paras:
+        return []
+
     chunks: List[str] = []
     cur: List[str] = []
     cur_len = 0
@@ -355,16 +362,78 @@ def _chunk_text(text: str, max_chars: int = 3500) -> List[str]:
             cur_len = 0
 
     for p in paras:
-        pieces = _SENT_RE.split(p) if len(p) > max_chars else [p]
-        for piece in pieces:
-            if not piece.strip():
-                continue
-            if cur_len + len(piece) > max_chars and cur:
+        # If a single paragraph is longer than hard_cap, split at sentence boundaries
+        if len(p) > hard_cap:
+            if cur:
                 flush()
-            cur.append(piece)
-            cur_len += len(piece)
+            pieces = _SENT_RE.split(p)
+            for piece in pieces:
+                if not piece.strip():
+                    continue
+                if cur_len + len(piece) > target_chars and cur:
+                    flush()
+                cur.append(piece)
+                cur_len += len(piece)
+            continue
+
+        if cur_len + len(p) > hard_cap and cur:
+            flush()
+        elif cur_len + len(p) >= target_chars and cur_len >= min_chars and cur:
+            # Check if we should flush before adding `p`:
+            # 1. Check if `p` or `cur[-1]` is a scene break
+            prev_p = cur[-1].strip()
+            is_scene_break = (
+                prev_p in ("***", "---", "* * *", "- - -")
+                or p.strip() in ("***", "---", "* * *", "- - -")
+            )
+
+            # 2. Check if we are right in the middle of back-to-back dialogue turns
+            prev_is_quote = (
+                prev_p.startswith(('"', "“", "'")) or prev_p.endswith(('"', "”", "'"))
+            )
+            curr_is_quote = p.strip().startswith(('"', "“", "'"))
+            in_active_dialogue = prev_is_quote and curr_is_quote
+
+            if is_scene_break or not in_active_dialogue:
+                flush()
+
+        cur.append(p)
+        cur_len += len(p)
+
     flush()
     return chunks
+
+
+def _align_reference_chunks(
+    mtl_chunks: List[str], reference_text: str
+) -> List[str]:
+    """Slice reference_text proportionally to match the paragraph counts of each MTL chunk.
+
+    In supervised mode, character-based chunking on translation vs reference causes
+    rapid alignment drift because translations expand/contract differently from MTL.
+    By matching the proportional paragraph/line distribution of `mtl_chunks`, each
+    reference chunk stays locked to the exact same scene as its MTL counterpart.
+    """
+    ref_paras = _split_paragraphs(reference_text)
+    if not ref_paras or not mtl_chunks:
+        return []
+
+    mtl_para_counts = [len(_split_paragraphs(ch)) for ch in mtl_chunks]
+    total_mtl_paras = sum(mtl_para_counts)
+    if total_mtl_paras == 0:
+        return [reference_text] * len(mtl_chunks)
+
+    ref_chunks: List[str] = []
+    start_idx = 0
+    for k, count in enumerate(mtl_para_counts):
+        if k == len(mtl_para_counts) - 1:
+            chunk_paras = ref_paras[start_idx:]
+        else:
+            slice_len = max(1, int(round((count / total_mtl_paras) * len(ref_paras))))
+            chunk_paras = ref_paras[start_idx : start_idx + slice_len]
+            start_idx += slice_len
+        ref_chunks.append("\n\n".join(chunk_paras))
+    return ref_chunks
 
 
 def _apply_deterministic(text: str, policies: List[Policy]) -> str:
@@ -474,15 +543,28 @@ _STYLE_REFERENCE = [
 # Never invent. (8B models love to echo the scaffolding — see _strip_echo.)
 _FALLBACK_RULES = """<Rules>
 1. ELEVATE THE PROSE: Do not just copy-paste or make minute changes! You must completely rewrite the text into fluent, natural English prose. Inject emotional weight, vivid vocabulary, and natural rhythm to make it read like a professionally published fantasy novel. Replace dry, clinical phrasing with engaging literary prose.
-2. RESOLVE DISCOURSE & NARRATIVE COHERENCE ANOMALIES (DECEPTIVE MTL ARTIFACTS):
+2. RESOLVE MACHINE TRANSLATION ERRORS (DECEPTIVE ARTIFACTS):
    Machine translations frequently output grammatically valid English words that make zero logical sense inside the scene (due to homograph dictionary lookups, flipped pronouns, or literalized idioms).
    Before preserving any sentence or exclamation verbatim, verify its Discourse Coherence against the immediate scene:
    - Conversational Logic: If a standalone noun, exclamation, or idiom violates the conversational or emotional logic of the scene (e.g. an unrelated economic/technical noun during a physical confrontation, or a bizarre non-sequitur), recognize it as a deceptive MTL homograph/idiom artifact and repair it so it makes natural sense inside the scene's context.
-   - Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses" or bending "her own arm" while attacking an enemy), correct the pronoun logic ("so that you would come to your senses" / "bent his arm") to restore clear narrative causality.
-   - Speaker Attribution & Sentence Ownership: If distinct characters' dialogue lines are merged into a single quotation block, disentangle them into distinct dialogue turns. If a dialogue line attributes an identity to the wrong speaker due to MTL pronoun dropping, correct the pronoun and speaker attribution to ensure every sentence belongs to its rightful speaker.
-   - Inverted Negation & Contradictions: Korean double-negatives frequently cause MTL to flip positive/negative states (e.g. outputting "shouldn't" instead of "should", or "couldn't" instead of "could"). CRITICAL: If a sentence contradicts the physical or conversational logic of the scene (like a thug making an illogical taunt), flip the negation to restore the correct meaning!
+   - Cause-and-Effect Pronoun Inversion: When pronoun cause-and-effect is inverted (e.g. an attacker hitting someone else "so that I could come to my senses" or bending "her own arm" while attacking an enemy), correct the pronouns to restore clear narrative causality.
+   - Speaker Attribution & Sentence Ownership: Disentangle dialogue turns merged into single blocks, ensuring every line belongs to its rightful speaker. Correct misattributed pronouns caused by MTL pronoun dropping.
+   - Inverted Negation & State Flipping (Common MTL Error): Korean double-negatives often cause machine translation to output flipped positive/negative states ("shouldn't" instead of "should", or "couldn't" instead of "could"). If a sentence logically contradicts the speaker's obvious intent due to this MTL error, flip the negation to restore the true meaning.
 3. Faithfully reproduce the original plot events, but you have full freedom to rephrase sentences for literary quality. DO NOT merge distinct paragraphs into blocks.
 </Rules>
+
+<Examples>
+<example>
+  <error_type>Cause-and-Effect Pronoun Inversion</error_type>
+  <raw_mt>I was going to finish it with just one hit so that I could come to my senses.</raw_mt>
+  <repaired>I was going to finish it with just one hit so that you would come to your senses.</repaired>
+</example>
+<example>
+  <error_type>Inverted Negation (State Flipping)</error_type>
+  <raw_mt>If you missed the young man's touch, you shouldn't have said that you missed it.</raw_mt>
+  <repaired>If you missed the young man's touch, you should have just said so!</repaired>
+</example>
+</Examples>
 
 <Format>
 - Output ONLY the repaired chapter text without conversational filler. No scaffolding or headers.
@@ -610,14 +692,27 @@ def build_prompt(
 </TranslatorPolicies>
 <Rules>
 1. ELEVATE THE PROSE: Do not just copy-paste! Rewrite the Machine Translation (A) so it READS LIKE the Published Translation (B). Match its phrasing, voice, tone, rhythm, and emotional weight as closely as possible.
-2. RESOLVE DISCOURSE & NARRATIVE COHERENCE ANOMALIES (DECEPTIVE MTL ARTIFACTS):
+2. RESOLVE MACHINE TRANSLATION ERRORS (DECEPTIVE ARTIFACTS):
    Machine translations frequently output grammatically valid English words that make zero logical sense inside the scene. Before preserving any sentence verbatim, verify its Discourse Coherence against the immediate scene:
    - Conversational Logic: If a noun, exclamation, or idiom violates the conversational or emotional logic of the scene (e.g. an unrelated economic noun during a physical confrontation, or a bizarre non-sequitur), recognize it as a deceptive artifact and repair it to match (B)'s phrasing.
-   - Cause-and-Effect Pronouns: If pronoun cause-and-effect is inverted (e.g. a character hitting someone else "so that I could come to my senses"), correct the pronoun logic to restore clear narrative causality.
-   - Speaker Attribution & Sentence Ownership: Disentangle merged dialogue turns into distinct turns with correct speaker attributions matching (B). Correct any misattributed pronouns so every sentence belongs to its rightful speaker.
-   - Inverted Negation & Contradictions: If the MTL outputs a flipped negation (e.g. "shouldn't" instead of "should") that contradicts the obvious logical intent of the speaker, flip the negation to restore the correct meaning.
+   - Cause-and-Effect Pronoun Inversion: When pronoun cause-and-effect is inverted (e.g. an attacker hitting someone else "so that I could come to my senses"), correct the pronoun logic to restore clear narrative causality matching (B).
+   - Speaker Attribution & Sentence Ownership: Disentangle dialogue turns merged into single blocks, ensuring every line belongs to its rightful speaker matching (B). Correct misattributed pronouns caused by MTL pronoun dropping.
+   - Inverted Negation & State Flipping (Common MTL Error): Korean double-negatives often cause machine translation to output flipped positive/negative states ("shouldn't" instead of "should", or "couldn't" instead of "could"). If a sentence logically contradicts the speaker's obvious intent due to this MTL error, flip the negation to restore the true meaning.
 3. Maintain exact scene pacing by reproducing all beats from (A), but you have full freedom to rephrase sentences for literary quality to match (B). DO NOT merge distinct paragraphs into blocks.
 </Rules>
+
+<Examples>
+<example>
+  <error_type>Cause-and-Effect Pronoun Inversion</error_type>
+  <raw_mt>I was going to finish it with just one hit so that I could come to my senses.</raw_mt>
+  <repaired>I was going to finish it with just one hit so that you would come to your senses.</repaired>
+</example>
+<example>
+  <error_type>Inverted Negation (State Flipping)</error_type>
+  <raw_mt>If you missed the young man's touch, you shouldn't have said that you missed it.</raw_mt>
+  <repaired>If you missed the young man's touch, you should have just said so!</repaired>
+</example>
+</Examples>
 
 <Format>
 - Output ONLY the repaired chapter text without headers, scaffolding, or code fences.
@@ -795,7 +890,11 @@ def rewrite(
     # in capped chunks (supervised: MTL chunk + matching reference chunk, aligned
     # by chunk index).
     mtl_chunks = _chunk_text(shielded_text)
-    ref_chunks = _chunk_text(reference_text) if reference_text else []
+    ref_chunks = (
+        _align_reference_chunks(mtl_chunks, reference_text)
+        if reference_text
+        else []
+    )
     logger.debug(f"Split into {len(mtl_chunks)} chunks")
 
     rewritten_text = shielded_text
@@ -814,7 +913,8 @@ def rewrite(
                 if k == 0:
                     context_tail = previous_tail
                 else:
-                    context_tail = mtl_chunks[k - 1][-800:]
+                    prev_paras = _split_paragraphs(mtl_chunks[k - 1])
+                    context_tail = "\n\n".join(prev_paras[-2:]) if prev_paras else ""
 
                 # Find active cast from placeholders and known aliases/titles
                 active_cast_entries = []
