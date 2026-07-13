@@ -76,8 +76,7 @@ async def rewrite_chapter(
         verified_policies = [
             policy
             for policy in db_policies
-            if (policy.needs_review or "false").lower() != "true"
-            and (policy.llm_rejected or "false").lower() != "true"
+            if (policy.needs_review or "false").lower() != "true" and (policy.llm_rejected or "false").lower() != "true"
         ]
         policy_list = db_policies_to_list(verified_policies)
         policy_count = len(policy_list)

@@ -45,7 +45,7 @@ function DuplicateClusterItem({
   const [targetId, setTargetId] = useState<number>(cluster.target.id);
   const targetEntry = useMemo(
     () => allMembers.find((m) => m.id === targetId) || cluster.target,
-    [allMembers, targetId],
+    [allMembers, targetId, cluster.target],
   );
   const otherCandidates = useMemo(
     () => allMembers.filter((m) => m.id !== targetId),

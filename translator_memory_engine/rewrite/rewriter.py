@@ -46,9 +46,7 @@ class GroqRotatingClient:
     Cycles through all keys up to ``max_rounds`` times before giving up.
     """
 
-    def __init__(
-        self, keys: List[str], base_url: Optional[str] = None, max_rounds: int = 2
-    ):
+    def __init__(self, keys: List[str], base_url: Optional[str] = None, max_rounds: int = 2):
         from openai import OpenAI
 
         client_kwargs: Dict[str, Any] = {"base_url": base_url} if base_url else {}
@@ -65,16 +63,12 @@ class GroqRotatingClient:
                 return self._clients[self._idx].chat.completions.create(**kwargs)
             except RateLimitError as e:
                 last_err = e
-                logger.warning(
-                    f"Rate limit on key #{self._idx + 1}, rotating to next key..."
-                )
+                logger.warning(f"Rate limit on key #{self._idx + 1}, rotating to next key...")
                 self._idx = (self._idx + 1) % self._num_keys
                 time.sleep(5)
         if last_err is not None:
             raise last_err
-        raise RuntimeError(
-            "Groq rate limit retries exhausted or zero retries configured."
-        )
+        raise RuntimeError("Groq rate limit retries exhausted or zero retries configured.")
 
 
 def _get_groq_keys(api_key_env: str = "LLM_API_KEY") -> List[str]:
@@ -87,18 +81,10 @@ def _get_groq_keys(api_key_env: str = "LLM_API_KEY") -> List[str]:
     load_dotenv(override=True)
     primary = os.environ.get(api_key_env, "")
     if not primary and api_key_env != "LLM_API_KEY":
-        primary = os.environ.get("GROQ_API_KEY", "") or os.environ.get(
-            "LLM_API_KEY", ""
-        )
+        primary = os.environ.get("GROQ_API_KEY", "") or os.environ.get("LLM_API_KEY", "")
     if primary:
         extra_keys = sorted(
-            [
-                k
-                for k in os.environ
-                if k.startswith("GROQ_API_KEY")
-                and os.environ[k]
-                and os.environ[k] != primary
-            ]
+            [k for k in os.environ if k.startswith("GROQ_API_KEY") and os.environ[k] and os.environ[k] != primary]
         )
         extras = [os.environ[k] for k in extra_keys]
         return [primary] + extras
@@ -109,9 +95,7 @@ def _get_groq_keys(api_key_env: str = "LLM_API_KEY") -> List[str]:
 # Known MTL error corrections (data/known_errors.json)
 # ---------------------------------------------------------------------------
 
-_KNOWN_ERRORS_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "..", "data", "known_errors.json"
-)
+_KNOWN_ERRORS_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "known_errors.json")
 
 
 def _load_known_errors() -> List[Dict]:
@@ -123,9 +107,7 @@ def _load_known_errors() -> List[Dict]:
         return []
 
 
-def scan_known_errors(
-    text: str, known_errors: Optional[List[Dict]] = None
-) -> List[Dict]:
+def scan_known_errors(text: str, known_errors: Optional[List[Dict]] = None) -> List[Dict]:
     """Scan MTL text for known error phrases and return matches.
 
     Returns a list of dicts with keys: id, mtl_phrase, correct_translation,
@@ -133,18 +115,14 @@ def scan_known_errors(
     """
     if known_errors is None:
         known_errors = _load_known_errors()
-        logger.debug(
-            f"Loaded {len(known_errors)} known errors from {_KNOWN_ERRORS_PATH}"
-        )
+        logger.debug(f"Loaded {len(known_errors)} known errors from {_KNOWN_ERRORS_PATH}")
 
     matches = []
     for error in known_errors:
         phrase = error.get("mtl_phrase", "")
         if phrase and re.search(re.escape(phrase), text, re.IGNORECASE):
             matches.append(error)
-            logger.debug(
-                f"Known error detected: '{phrase}' → '{error.get('correct_translation', '?')}'"
-            )
+            logger.debug(f"Known error detected: '{phrase}' → '{error.get('correct_translation', '?')}'")
     if matches:
         logger.info(f"Detected {len(matches)} known MTL errors for correction")
     return matches
@@ -262,9 +240,7 @@ def _align_mtl_entities(
         _spacy_nlp = spacy.load("en_core_web_sm")
     except Exception:
         return {}
-    doc = _spacy_nlp(
-        mtl_text
-    )  # parse full chapter so late-introduced entities are caught
+    doc = _spacy_nlp(mtl_text)  # parse full chapter so late-introduced entities are caught
     mtl_entities = set()
     for ent in doc.ents:
         if ent.label_ in ("PERSON", "ORG", "GPE", "LOC"):
@@ -434,10 +410,7 @@ def _chunk_text(
             # Check if we should flush before adding `p`:
             # 1. Check if `p` or `cur[-1]` is a scene break
             prev_p = cur[-1].strip()
-            is_scene_break = (
-                prev_p in ("***", "---", "* * *", "- - -")
-                or p.strip() in ("***", "---", "* * *", "- - -")
-            )
+            is_scene_break = prev_p in ("***", "---", "* * *", "- - -") or p.strip() in ("***", "---", "* * *", "- - -")
 
             # 2. Check if we are right in the middle of back-to-back dialogue turns
             in_active_dialogue = is_active_dialogue(prev_p, p)
@@ -452,9 +425,7 @@ def _chunk_text(
     return chunks
 
 
-def _align_reference_chunks(
-    mtl_chunks: List[str], reference_text: str
-) -> List[str]:
+def _align_reference_chunks(mtl_chunks: List[str], reference_text: str) -> List[str]:
     """Slice reference_text proportionally to match the paragraph counts of each MTL chunk.
 
     In supervised mode, character-based chunking on translation vs reference causes
@@ -672,13 +643,9 @@ def build_prompt(
             action = {}
         render_as = action.get("render_as", p.trigger)
         if p.type == "honorific":
-            lines.append(
-                f'- Always render "{p.trigger}" as the honorific "{render_as}".'
-            )
+            lines.append(f'- Always render "{p.trigger}" as the honorific "{render_as}".')
         elif p.type == "terminology":
-            lines.append(
-                f'- Use the terminology "{render_as}" (not variants of "{p.trigger}").'
-            )
+            lines.append(f'- Use the terminology "{render_as}" (not variants of "{p.trigger}").')
         else:
             lines.append(f'- Render "{p.trigger}" as "{render_as}".')
     instructions = "\n".join(lines) if lines else "  (no prompted policies)"
@@ -701,14 +668,10 @@ def build_prompt(
                     aliases = []
             if canon:
                 gender = meta.get("gender", "") if isinstance(meta, dict) else ""
-                identity = (
-                    meta.get("race_or_identity", "") if isinstance(meta, dict) else ""
-                )
+                identity = meta.get("race_or_identity", "") if isinstance(meta, dict) else ""
                 speech = meta.get("speech_style", "") if isinstance(meta, dict) else ""
 
-                alias_prefix = (
-                    f"[Aliases/Titles: {', '.join(aliases)}]" if aliases else ""
-                )
+                alias_prefix = f"[Aliases/Titles: {', '.join(aliases)}]" if aliases else ""
                 meta_parts = []
                 if gender:
                     meta_parts.append(f"({gender})")
@@ -893,16 +856,11 @@ def rewrite(
             _client = GroqRotatingClient(keys, base_url)
             alias_map = _align_mtl_entities(text, glossary, _client, model)
             if alias_map:
-                logger.debug(
-                    f"Discovered {len(alias_map)} aliases: {list(alias_map.keys())[:5]}"
-                )
+                logger.debug(f"Discovered {len(alias_map)} aliases: {list(alias_map.keys())[:5]}")
                 # Inject discovered aliases into policy match lists in memory
                 for p in policy_list:
                     for mtl_form, canonical in alias_map.items():
-                        if (
-                            p.trigger.lower() == canonical.lower()
-                            or canonical.lower() in [a.lower() for a in p.match]
-                        ):
+                        if p.trigger.lower() == canonical.lower() or canonical.lower() in [a.lower() for a in p.match]:
                             if mtl_form not in p.match:
                                 p.match.append(mtl_form)
 
@@ -969,11 +927,7 @@ def rewrite(
     # in capped chunks (supervised: MTL chunk + matching reference chunk, aligned
     # by chunk index).
     mtl_chunks = _chunk_text(shielded_text)
-    ref_chunks = (
-        _align_reference_chunks(mtl_chunks, reference_text)
-        if reference_text
-        else []
-    )
+    ref_chunks = _align_reference_chunks(mtl_chunks, reference_text) if reference_text else []
     logger.debug(f"Split into {len(mtl_chunks)} chunks")
 
     rewritten_text = shielded_text
@@ -1004,9 +958,7 @@ def rewrite(
                     active_canonicals = set()
                     if restore_map:
                         active_canonicals.update(
-                            canon
-                            for ph, canon in restore_map.items()
-                            if ph in mtl_chunk or ph in context_tail
+                            canon for ph, canon in restore_map.items() if ph in mtl_chunk or ph in context_tail
                         )
                     for entry in glossary:
                         canon = entry.get("canonical", "")
@@ -1016,9 +968,7 @@ def rewrite(
                                 aliases = json.loads(aliases)
                             except Exception:
                                 aliases = []
-                        if canon in active_canonicals or any(
-                            a and a.lower() in mtl_chunk.lower() for a in aliases
-                        ):
+                        if canon in active_canonicals or any(a and a.lower() in mtl_chunk.lower() for a in aliases):
                             active_cast_entries.append(entry)
 
                 system_prompt, user_prompt = build_prompt(
@@ -1053,10 +1003,9 @@ def rewrite(
                 }
                 found_placeholders = set(re.findall(r"__ENT_(\d+)__", candidate))
                 expected_ids = {placeholder[6:-2] for placeholder in expected_placeholders}
-                valid_placeholders = (
-                    all(candidate.count(placeholder) == count for placeholder, count in expected_placeholders.items())
-                    and found_placeholders.issubset(expected_ids)
-                )
+                valid_placeholders = all(
+                    candidate.count(placeholder) == count for placeholder, count in expected_placeholders.items()
+                ) and found_placeholders.issubset(expected_ids)
                 if not valid_placeholders:
                     logger.warning("LLM mutated entity placeholders in chunk %d; using deterministic chunk", k + 1)
                     candidate = mtl_chunk
@@ -1084,9 +1033,7 @@ def rewrite(
     if client is not None and faithfulness_source is not None:
         novel = _novel_entities(rewritten_text, faithfulness_source, whitelist=canon)
         if novel:
-            logger.warning(
-                f"Faithfulness guard: {len(novel)} novel entities detected: {novel}"
-            )
+            logger.warning(f"Faithfulness guard: {len(novel)} novel entities detected: {novel}")
             before_guard = rewritten_text
             guard_prompt = _faithfulness_prompt(rewritten_text, novel, faithfulness_source)
             resp = _llm_complete(

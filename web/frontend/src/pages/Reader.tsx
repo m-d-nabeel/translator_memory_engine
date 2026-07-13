@@ -31,7 +31,8 @@ export function Reader() {
   >(null);
 
   const reprocessMutation = useMutation({
-    mutationFn: ({ doLlm, force }: { doLlm: boolean; force: boolean }) => api.reprocessChapter(id, doLlm, force),
+    mutationFn: ({ doLlm, force }: { doLlm: boolean; force: boolean }) =>
+      api.reprocessChapter(id, doLlm, force),
     onMutate: () => {
       setProcessingTriggeredAt(Date.now());
       queryClient.setQueryData(["chapterStatus", id], (old: any) =>
@@ -113,11 +114,12 @@ export function Reader() {
     "rewriting",
     "validating",
     "extracting_lore",
-    "extracting"
+    "extracting",
   ];
-  const isCurrentlyProcessing =
+  const isCurrentlyProcessing = Boolean(
     (chapterData?.status && activeStatuses.includes(chapterData.status)) ||
-    (chapter?.status && activeStatuses.includes(chapter.status));
+    (chapter?.status && activeStatuses.includes(chapter.status)),
+  );
 
   useEffect(() => {
     if (processingTriggeredAt) {
@@ -190,7 +192,7 @@ export function Reader() {
       }
       setInitialModeSetFor(id);
     }
-  }, [id, chapter, allChapters, initialModeSetFor]);
+  }, [id, chapter, allChapters, initialModeSetFor, setViewMode]);
 
   const prevStatusRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -204,7 +206,7 @@ export function Reader() {
       }
     }
     prevStatusRef.current = chapter?.status;
-  }, [chapter?.status, chapter?.refined_text, queryClient]);
+  }, [chapter?.status, chapter?.refined_text, queryClient, setViewMode]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -240,7 +242,7 @@ export function Reader() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [neighbors, navigate, chapterData, showSettings, showToc]);
+  }, [neighbors, navigate, chapterData, showSettings, showToc, setViewMode]);
 
   // Auto-hide controls when scrolling down, show when scrolling up
   useEffect(() => {
