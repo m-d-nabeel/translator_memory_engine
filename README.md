@@ -2,6 +2,9 @@
 
 [![CI](https://github.com/m-d-nabeel/translator_memory_engine/actions/workflows/ci.yml/badge.svg)](https://github.com/m-d-nabeel/translator_memory_engine/actions/workflows/ci.yml)
 
+> **⚠️ Archived — 2026-08-29.** Stopping here. The core hypothesis didn't hold up — see
+> [why](#why-this-project-is-archived) below and D19 in `docs/decision-history.md`.
+
 Extracts named-entity/terminology/honorific policies from good-translated + MTL web-novel text, then rewrites MTL chapters into fluent, voice-consistent output. Includes a full web application for reading, reprocessing, and managing editorial policies.
 
 ## Quick Start
@@ -100,3 +103,32 @@ Before rewriting chapters, clean and lock your knowledge base:
 
 - `data/translator_memory.db` — Your SQLite database (created automatically).
 - `logs/app.log` — Backend service and API logs (rotating file handler).
+
+## Why this project is archived
+
+The engine (`translator_memory_engine/`) was built on a premise that no longer holds:
+that terminology consistency and translator voice across a long-form novel had to be
+mined into discrete, explicit "policies" — extracted, scored, clustered, retrieved —
+because no model could hold a full glossary and several reference chapters in context
+at once, or follow them reliably if it could.
+
+That premise was true when I froze the design. It isn't true of current long-context
+models. A single call carrying the curated glossary, two or three full reference
+chapters, and a coherence-repair prompt matched the full mining/retrieval/
+conflict-resolution pipeline on a real held-out chapter (ch. 39, which has both an MTL
+and a human-translated version — comparison in D19, `docs/decision-history.md`). The
+miner, scorer, confidence model, conflict resolver, retriever, supervised/unsupervised
+mode split, and faithfulness guard — most of this repo — were compensating for a
+context-window limitation that no longer applies.
+
+There's also a ceiling I couldn't engineer around: **no Korean source text, ever, only
+MTL English.** Without the source, no retrieval or scoring distinguishes a
+*coherent-but-wrong* sentence (flipped negation, mis-resolved pronoun, consistently-wrong
+name) from a correct one — both read as valid English. Only *incoherent* errors are
+fixable monolingually. Fixed by the data, not by architecture.
+
+What was worth keeping — deterministic post-substitution to guarantee name consistency,
+entity shielding during the LLM call, the reader UI — is small next to what this grew
+into. The honest shape of the idea is a curated glossary + one well-loaded prompt + a
+decent reader, not a research engine. Full trail, including what was right, in
+`docs/decision-history.md`.

@@ -429,3 +429,107 @@ The known error dictionary provides the missing context.
 - **SQLite JSON Column Deserialization Fix:** SQLAlchemy's `JSON` column on SQLite stores data as text. We added a lightweight safety parser directly in `prepass.py` and `rewriter.py` to intercept stringified JSON actions and `json.loads()` them on the fly, preventing `AttributeError: 'str' object has no attribute 'get'`.
 - **Fallback Faithful Repair Execution Guarantee:** Modified the `need_llm` execution boolean. If `do_llm` is toggled ON, the LLM will _always_ run, even if the policy count is zero. This ensures the "Fallback Faithful Repair" prompt kicks in to fix poor MTL grammar, remove deceptive idioms, and repair discourse coherence independently of the terminology dictionary.
 - **Granular Database Reset Script:** Expanded the `clear_data.py` CLI script to include a `--clear-all-db-except-chapters` flag. This performs a targeted soft-reset: wiping jobs, policies, glossary, and refined text, while perfectly preserving the raw `novels` and `chapters` tables.
+
+---
+
+## D19 — Project archived: the premise expired, and a hard ceiling was never solvable
+
+**Context:** A full-codebase review (all of `translator_memory_engine/`, `web/`, `pipeline.py`,
+the live `data/translator_memory.db`, and this document) was requested to decide whether the
+project needed a rewrite. The review found the engine's core packages well-factored (125
+passing tests, clean lint/typecheck) but surfaced concrete defects concentrated in the web
+lore-extraction path: a monolingual-corruption bug where `Korea`/`Korean` variant-clustered at
+edit distance 0.167 and the deterministic pre-pass silently rewrote "Korean" to "Korea"
+mid-word wherever it appeared; the `introduction_context` field the lore prompt emits was never
+read by any consumer (both call sites read `introduction_snippet`/`background` instead), so
+zero of 73 live glossary rows had evidence quotes despite that being a headline feature; the
+lore-extraction writer bypassed every quality gate the Policy Miner enforces (`_is_generic`,
+`_FRAGMENT_LEADS`, real scoring), producing deterministic naming policies for `The boy`,
+`The Merchant`, `Countess`, `Grandfather`, and similar generic phrases; all 90 live policies sat
+at exactly one of three constants (0.99 / 0.90 / 0.85), meaning the decomposed
+frequency/consistency/context confidence model from D7 was carrying no real information; the
+Sinclair family occupied 15 separate ungrouped glossary rows; and a single scene shipped 100+
+sentence-fragment paragraphs to the LLM after `_chunk_text` split an over-`hard_cap` paragraph
+and never rejoined it. These were assessed as containable, not fatal — the initial recommendation
+was to fix the lore-extraction gate and keep the architecture.
+
+**What changed the conclusion:** Two questions the containable-bugs framing didn't reach.
+
+**1. Korean source text was never available — not a gap, a permanent ceiling.** The corpus
+holds zero characters of source-language text anywhere except ten hand-transcribed entries in
+`data/known_errors.json`. D12 already named the real problem precisely ("without Korean source
+text, the model cannot distinguish correct English from MTL errors that happen to be valid
+English words") but the response was to hand-curate ten dictionary entries and build inference
+machinery — the Miner, scorer, retriever, conflict resolver, faithfulness guard — on top of the
+assumption that the source stays missing. Monolingual repair can fix *incoherent* errors (a
+sentence that violates its own scene's logic) but cannot fix *coherent-but-wrong* errors (a
+flipped negation, a mis-resolved pronoun, a consistently-wrong transliteration) — both read as
+valid English, and no amount of retrieval, scoring, or clustering recovers information that
+isn't in the input. This ceiling was fixed by the available data from the start and no
+architecture change could have addressed it.
+
+**2. The mining/retrieval architecture solved a context-window problem that no longer exists.**
+The design was frozen (D0–D11) around small-context, weak-instruction-following models, which
+made mining discrete rules and substituting them mechanically the only reliable path to
+consistency. Two corpus facts, both measured against the live database rather than assumed,
+showed the assumption had expired:
+
+- **65,508 characters of aligned MTL↔human chapter pairs already existed** (chapters 1–5, 39 —
+  same underlying source, both versions in the DB) and were being spent on "supervised rewrite
+  mode": rewriting chapters a human translation already existed for. Zero transfer value.
+  Redirected, that aligned data is exactly what a *mined* error dictionary needs — the same MT
+  engine's same recurring artifacts, on the same novel, transferring to the 40+ MTL-only
+  chapters that are the actual use case.
+- **349,377 characters of the translator's voice existed with no MTL pair**, and the style-bank
+  retrieval path (`per_chapter=1, max_chars=300, k=4`) delivered roughly 1,200 characters of it
+  to the LLM per rewrite — **0.34%** of the available voice signal. Two or three full reference
+  chapters in a long-context call carry more style signal than the entire retrieval layer built
+  to approximate them.
+
+**Decision:** A single long-context call — curated glossary + 2–3 full reference chapters +
+the discourse-coherence repair rules, no mining or retrieval — was compared against the full
+pipeline on chapter 39 (held out, both MTL and human versions available). The result was
+unimpressive and roughly equivalent between conditions; the gap the four-condition ablation
+(§12, D10) was designed to attribute never existed. The project is **archived**, not repaired.
+The mining/scoring/retrieval/conflict-resolution machinery — most of `translator_memory_engine/`
+— was built to compensate for a context-window limitation that no longer applies, on top of a
+missing-source-text ceiling that no version of the architecture could have solved. Continuing
+would mean maintaining a research engine whose research question no longer has a hypothesis
+worth testing at this project's scale, in service of a translation-fidelity ceiling that was
+never reachable.
+
+**What was right and would inform any future attempt:**
+
+- Deterministic post-substitution to *guarantee* (not merely encourage) name consistency —
+  correct given the constraint, and cheap (`rewrite/prepass.py`, ~40 meaningful lines).
+- Entity shielding during the LLM call, with collisions resolved globally by span length so a
+  longer match always wins regardless of insertion order (`rewrite/shield.py`) — this held up
+  and generalizes past this project.
+- Report-only validators kept structurally separate from auto-fix (`validate/`) — correct
+  separation of concerns, worth keeping in any successor.
+- Rejecting vector DBs, story graphs, and O(N²) pairwise LLM deduplication with real arguments
+  (D16, D17) — the judgment calls in this document were consistently sound; the premise they
+  were reasoning about is what expired.
+- The decision-history discipline itself. Recording *why*, including the parts that turned out
+  wrong, is what made this conclusion possible to reach with evidence instead of by feel.
+
+**What was wrong:** treating the missing-source-text problem as solvable with more inference
+machinery instead of naming it as a ceiling early (D12 named it correctly but the response
+didn't follow through); a confidence model with three effective values dressed as a decomposed
+score; and — the largest cost — never running the ablation study the architecture's own D10
+made a hard requirement for, until a review requested nearly two years into the project's life
+forced the comparison that should have gated every major addition after D10.
+
+---
+
+## Current state (post-D19)
+
+- **Archived 2026-08-29.** Stopping here.
+- Root cause: (1) no Korean source text was ever available, which caps monolingual repair at
+  fixing incoherent (not coherent-but-wrong) errors, permanently; (2) the mining/retrieval
+  architecture was solving a small-context-window problem current long-context models no
+  longer have — confirmed by an unimpressive single-prompt-vs-full-pipeline comparison on a
+  real held-out chapter.
+- Worth keeping if I ever revisit this: `rewrite/shield.py` (entity shielding),
+  `rewrite/clean.py` (MTL artifact cleaning), `rewrite/prepass.py` (deterministic
+  substitution pattern).
